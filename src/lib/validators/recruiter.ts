@@ -15,6 +15,7 @@ export const vacancySchema = z.object({
   location: z.string().min(2, 'Location is required'),
   skills: z.array(z.string()).min(1, 'Add at least one skill tag'),
   jobType: z.string().min(2, 'Job type is required'),
+  experienceLevel: z.string().min(2, 'Experience level is required'),
   salary: z.string().min(2, 'Salary info is required'),
   description: z.string().min(10, 'Description must be at least 10 characters'),
   applyLink: z.string().url('Must be a valid URL'),

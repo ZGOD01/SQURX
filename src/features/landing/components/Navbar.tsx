@@ -27,10 +27,12 @@ export function Navbar() {
                 {/* Left Logo */}
                 <div className="flex flex-1 justify-start">
                     <Link to="/" className="flex items-center gap-2.5 group">
-                        <div className="bg-[#111] text-white p-2 rounded-xl group-hover:rotate-[15deg] group-hover:scale-110 group-active:scale-95 transition-all duration-300 shadow-sm border border-gray-900">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>
-                        </div>
-                        <span className="text-[20px] md:text-[22px] font-black tracking-tight text-[#111] font-sans mt-0.5" style={{ fontFamily: "'Outfit', sans-serif" }}>SQURX</span>
+                        <img 
+                            src="/squrx01.png" 
+                            alt="SQURX Logo" 
+                            className="h-12 w-auto object-contain group-hover:rotate-[5deg] group-hover:scale-105 group-active:scale-95 transition-all duration-300 drop-shadow-sm"
+                        />
+                        <span className="text-[20px] md:text-[24px] font-black tracking-tight bg-gradient-to-r from-[#8711c1] to-[#ff007f] text-transparent bg-clip-text font-sans mt-0.5" style={{ fontFamily: "'Outfit', sans-serif" }}>SQURX</span>
                     </Link>
                 </div>
 

@@ -76,8 +76,9 @@ export function AppShell() {
 
             {/* Sidebar */}
             <aside className="hidden md:flex flex-col w-64 border-r border-border bg-card">
-                <div className="flex h-16 items-center border-b border-border px-6">
-                    <span className="text-xl font-bold font-sans tracking-tight">Squrx</span>
+                <div className="flex h-16 items-center gap-2.5 border-b border-border px-6">
+                    <img src="/squrx01.png" alt="SQURX Logo" className="w-7 h-7 object-contain drop-shadow-sm" />
+                    <span className="text-xl font-black tracking-tight bg-gradient-to-r from-[#8711c1] to-[#ff007f] text-transparent bg-clip-text font-sans mt-0.5">SQURX</span>
                 </div>
 
                 <div className="flex-1 overflow-y-auto py-6 px-4 space-y-2">
@@ -126,7 +127,10 @@ export function AppShell() {
 
                 {/* Topbar */}
                 <header className="flex h-16 items-center justify-between border-b border-border bg-card px-6">
-                    <div className="md:hidden text-lg font-bold">Squrx</div>
+                    <div className="md:hidden flex items-center gap-2">
+                        <img src="/squrx01.png" alt="SQURX Logo" className="w-6 h-6 object-contain drop-shadow-sm" />
+                        <span className="text-lg font-black tracking-tight bg-gradient-to-r from-[#8711c1] to-[#ff007f] text-transparent bg-clip-text font-sans mt-0.5">SQURX</span>
+                    </div>
                     <div className="flex-1" />
                     <nav className="flex items-center gap-4">
                     </nav>

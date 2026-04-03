@@ -21,7 +21,8 @@ export function RecruiterVacancies() {
         resolver: zodResolver(vacancySchema),
         defaultValues: {
             skills: [],
-            jobType: 'Full-Time'
+            jobType: 'Full-Time',
+            experienceLevel: 'Mid-Level'
         }
     });
 
@@ -39,6 +40,7 @@ export function RecruiterVacancies() {
                 location: data.location,
                 skills: data.skills,
                 jobType: data.jobType,
+                experienceLevel: data.experienceLevel,
                 salary: data.salary,
                 description: data.description,
                 applyLink: data.applyLink,
