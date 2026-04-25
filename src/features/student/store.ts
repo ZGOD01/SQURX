@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { mockApi } from '@/lib/mockApi';
 import type { StudentProfile, JobVacancy, JobApplication, ConsultationBooking, SystemActivity } from '@/lib/mockDb/schema';
+import { consultationApi } from '@/lib/consultationApi';
 
 interface StudentStore {
   profile: StudentProfile | null;
@@ -19,7 +20,7 @@ interface StudentStore {
   updateProfile: (userId: string, data: Partial<StudentProfile>) => Promise<void>;
   fetchVacancies: () => Promise<void>;
   applyForJob: (userId: string, vacancyId: string) => Promise<void>;
-  bookConsultation: (studentId: string, date: string, timeSlot: string) => Promise<void>;
+  bookConsultation: (studentId: string, payload: any) => Promise<void>;
   cancelConsultation: (studentId: string) => Promise<void>;
   deleteAccount: (userId: string) => Promise<void>;
   
@@ -48,11 +49,28 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
         await mockApi.updateStudentProfile(userId, {});
         profile = await mockApi.getStudentProfile(userId);
       }
-      const [applications, consultation, activities] = await Promise.all([
+      
+      const [applications, activities] = await Promise.all([
         mockApi.getAppliedJobs(userId),
-        mockApi.getConsultation(userId),
         mockApi.getStudentActivities(userId)
       ]);
+      
+      let consultation = null;
+      try {
+        const myAppointments = await consultationApi.getMyAppointments();
+        consultation = myAppointments.data && myAppointments.data.length > 0 ? myAppointments.data[0] : null;
+        if (consultation) {
+           consultation = {
+               ...consultation,
+               date: consultation.appointmentDate,
+               timeSlot: consultation.appointmentTime
+           };
+        }
+      } catch (e) {
+        console.warn("Failed to fetch real appointments, falling back to mock");
+        consultation = await mockApi.getConsultation(userId);
+      }
+      
       set({ profile, applications, consultation, activities, isLoading: false });
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
@@ -94,21 +112,27 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
     }
   },
 
-  bookConsultation: async (studentId: string, date: string, timeSlot: string) => {
+  bookConsultation: async (studentId: string, payload: any) => {
     set({ isLoading: true });
     try {
-      const booking: ConsultationBooking = {
-          id: `cons-${Date.now()}`,
-          studentId,
-          date,
-          timeSlot,
-          bookedAt: new Date().toISOString()
-      };
-      await mockApi.bookConsultation(booking);
-      const [consultation, activities] = await Promise.all([
-        mockApi.getConsultation(studentId),
-        mockApi.getStudentActivities(studentId)
-      ]);
+      await consultationApi.bookConsultation(payload);
+      
+      let consultation = null;
+      try {
+         const myAppointments = await consultationApi.getMyAppointments();
+         consultation = myAppointments.data && myAppointments.data.length > 0 ? myAppointments.data[0] : null;
+         if (consultation) {
+           consultation = {
+               ...consultation,
+               date: consultation.appointmentDate,
+               timeSlot: consultation.appointmentTime
+           };
+         }
+      } catch(e) {
+         console.warn("Failed to fetch real appointments");
+      }
+
+      const activities = await mockApi.getStudentActivities(studentId);
       set({ consultation, activities, isLoading: false });
     } catch (err: any) {
       set({ error: err.message, isLoading: false });

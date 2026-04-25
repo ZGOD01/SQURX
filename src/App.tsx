@@ -8,6 +8,7 @@ import { EmailToaster } from '@/components/ui';
 import { Landing } from '@/features/landing/Landing';
 import { Login } from '@/features/auth/Login';
 import { Register } from '@/features/auth/Register';
+import { ForgotPassword } from '@/features/auth/ForgotPassword';
 import { Onboarding } from '@/features/auth/Onboarding';
 
 import { StudentDashboard, StudentProfile, StudentJobs, StudentPreferences, StudentConsultation } from '@/features/student/StudentViews';
@@ -22,6 +23,7 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/auth/login" element={<Login />} />
         <Route path="/auth/register" element={<Register />} />
+        <Route path="/auth/forgot-password" element={<ForgotPassword />} />
         <Route path="/auth/onboarding" element={
           <ProtectedRoute>
             <Onboarding />

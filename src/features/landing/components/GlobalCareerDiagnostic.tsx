@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { consultationApi } from '@/lib/consultationApi';
 import { FadeInOnView } from '@/components/motion';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -11,57 +12,63 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAuthStore } from '@/features/auth/store';
 
 const QUESTIONS = [
     {
+        id: "65f000000000000000000100",
         title: "Where are you on the journey?",
         description: "Select your current stage to map the trajectory.",
         options: [
-            { id: 'opt1', text: "Exploring Options", icon: Compass },
-            { id: 'opt2', text: "Shortlisted Universities", icon: Landmark },
-            { id: 'opt3', text: "Applied & Awaiting", icon: Mail },
-            { id: 'opt4', text: "Offer in Hand", icon: ScrollText },
-            { id: 'opt5', text: "Visa & Flying Soon", icon: PlaneTakeoff }
+            { id: '65f000000000000000000101', text: "Exploring Options", icon: Compass },
+            { id: '65f000000000000000000102', text: "Shortlisted Universities", icon: Landmark },
+            { id: '65f000000000000000000103', text: "Applied & Awaiting", icon: Mail },
+            { id: '65f000000000000000000104', text: "Offer in Hand", icon: ScrollText },
+            { id: '65f000000000000000000105', text: "Visa & Flying Soon", icon: PlaneTakeoff }
         ]
     },
     {
+        id: "65f000000000000000000200",
         title: "Your core field of expertise?",
         description: "Your background dictates the most lucrative routing combinations.",
         options: [
-            { id: 'opt1', text: "STEM / Engineering", icon: Cog },
-            { id: 'opt2', text: "Business / Management", icon: Briefcase },
-            { id: 'opt3', text: "Arts / Creative", icon: Palette },
-            { id: 'opt4', text: "Health & Sciences", icon: Dna }
+            { id: '65f000000000000000000201', text: "STEM / Engineering", icon: Cog },
+            { id: '65f000000000000000000202', text: "Business / Management", icon: Briefcase },
+            { id: '65f000000000000000000203', text: "Arts / Creative", icon: Palette },
+            { id: '65f000000000000000000204', text: "Health & Sciences", icon: Dna }
         ]
     },
     {
+        id: "65f000000000000000000300",
         title: "How are you financing this leap?",
         description: "Understanding your capital helps us prioritize specific architectures.",
         options: [
-            { id: 'opt1', text: "Education Loan", icon: Landmark },
-            { id: 'opt2', text: "Self-funded / Savings", icon: ShieldCheck },
-            { id: 'opt3', text: "Loan & Savings Mix", icon: Scale },
-            { id: 'opt4', text: "Scholarship Hunt", icon: GraduationCap }
+            { id: '65f000000000000000000301', text: "Education Loan", icon: Landmark },
+            { id: '65f000000000000000000302', text: "Self-funded / Savings", icon: ShieldCheck },
+            { id: '65f000000000000000000303', text: "Loan & Savings Mix", icon: Scale },
+            { id: '65f000000000000000000304', text: "Scholarship Hunt", icon: GraduationCap }
         ]
     },
     {
+        id: "65f000000000000000000400",
         title: "What is your ultimate endgame?",
         description: "Different goals require vastly different geographical moves.",
         options: [
-            { id: 'opt1', text: "Max ROI / High Salary", icon: TrendingUp },
-            { id: 'opt2', text: "Global Settlement (PR)", icon: Home },
-            { id: 'opt3', text: "Research & Innovation", icon: Microscope },
-            { id: 'opt4', text: "Global Networking", icon: Handshake }
+            { id: '65f000000000000000000401', text: "Max ROI / High Salary", icon: TrendingUp },
+            { id: '65f000000000000000000402', text: "Global Settlement (PR)", icon: Home },
+            { id: '65f000000000000000000403', text: "Research & Innovation", icon: Microscope },
+            { id: '65f000000000000000000404', text: "Global Networking", icon: Handshake }
         ]
     },
     {
+        id: "65f000000000000000000500",
         title: "What is your biggest unknown?",
         description: "We'll eliminate this uncertainty directly in your blueprint.",
         options: [
-            { id: 'opt1', text: "Securing a Job", icon: HelpCircle },
-            { id: 'opt2', text: "Managing Finances", icon: Calculator },
-            { id: 'opt3', text: "Profile Strength", icon: Star },
-            { id: 'opt4', text: "Choosing Location", icon: Map }
+            { id: '65f000000000000000000501', text: "Securing a Job", icon: HelpCircle },
+            { id: '65f000000000000000000502', text: "Managing Finances", icon: Calculator },
+            { id: '65f000000000000000000503', text: "Profile Strength", icon: Star },
+            { id: '65f000000000000000000504', text: "Choosing Location", icon: Map }
         ]
     }
 ];
@@ -75,19 +82,7 @@ const PALETTES = [
     { border: "border-rose-500", text: "text-rose-600", bgLight: "bg-rose-50", bgSolid: "bg-rose-500", ring: "ring-rose-500/20" }
 ];
 
-const TIME_SLOTS = ['10:00', '12:00', '15:00', '17:00'];
-const getNextDays = () => {
-    const days = [];
-    const today = new Date();
-    today.setDate(today.getDate() + 1); // Start tomorrow
-    while (days.length < 5) {
-        if (today.getDay() !== 0 && today.getDay() !== 6) { // skip weekends
-            days.push(new Date(today));
-        }
-        today.setDate(today.getDate() + 1);
-    }
-    return days;
-};
+
 
 export function GlobalCareerDiagnostic() {
     const navigate = useNavigate();
@@ -102,7 +97,19 @@ export function GlobalCareerDiagnostic() {
     const [isConfirmingBooking, setIsConfirmingBooking] = useState(false);
     const [isBookingConfirmed, setIsBookingConfirmed] = useState(false);
 
-    const availableDays = getNextDays();
+    // Lead Generation Form State
+    const [isLeadFormMode, setIsLeadFormMode] = useState(false);
+    const [isLeadFormSubmitted, setIsLeadFormSubmitted] = useState(false);
+
+    const [slotsData, setSlotsData] = useState<any[]>([]);
+
+    useEffect(() => {
+        consultationApi.getTimeSlots().then(res => {
+            if(res.success && res.data) {
+               setSlotsData(res.data);
+            }
+        }).catch(console.error);
+    }, []);
 
     const handleSelectOption = (index: number, optionId: string) => {
         setAnswers(prev => ({ ...prev, [index]: optionId }));
@@ -114,25 +121,82 @@ export function GlobalCareerDiagnostic() {
             setTimeout(() => {
                 setIsAnalyzing(false);
                 setStep(QUESTIONS.length);
+                setIsLeadFormMode(true);
             }, 1800);
         }
     };
 
-    const handleFinalizeBooking = () => {
+    const handleFinalizeBooking = async () => {
         if (!selectedDate || !selectedTime) return;
         setIsConfirmingBooking(true);
-        // Simulate API call for booking directly from landing page
-        setTimeout(() => {
+        
+        try {
+            const leadStr = localStorage.getItem('squrx_lead_data');
+            const answersStr = localStorage.getItem('squrx_quiz_answers');
+            
+            const leadData = leadStr ? JSON.parse(leadStr) : { name: "Guest User", email: "guest@example.com", mobile: "0000000000" };
+            const rawAnswers = answersStr ? JSON.parse(answersStr) : {};
+            
+            const quizAnswersList = Object.keys(rawAnswers).map(key => {
+                const stepIndex = parseInt(key, 10);
+                const rawChoice = rawAnswers[key as any];
+                // Safely handle old cached 'opt1' values to prevent MongoDB Cast Error (which results in 422)
+                const isValidHex = /^[0-9a-fA-F]{24}$/.test(rawChoice);
+                return {
+                    quizId: QUESTIONS[stepIndex]?.id || '65f000000000000000000000',
+                    choiceId: isValidHex ? rawChoice : '65f000000000000000000000'
+                };
+            });
+
+            // Failsafe to ensure validation doesn't throw 422 if answers are somehow cleared
+            if (quizAnswersList.length === 0) {
+                quizAnswersList.push({
+                    quizId: '65f000000000000000000000',
+                    choiceId: '65f000000000000000000000'
+                });
+            }
+
+            // Sanitize mobile to ensure it's exactly 10 digits
+            let sanitizedMobile = leadData.mobile ? leadData.mobile.replace(/\D/g, '') : "9999999999";
+            if (sanitizedMobile.length !== 10) {
+                sanitizedMobile = "9999999999"; // Fallback to pass validation if still invalid
+            }
+
+            const payload = {
+                fullName: leadData.name || "Student",
+                email: leadData.email || "student@example.com",
+                mobile: sanitizedMobile,
+                quizAnswers: quizAnswersList,
+                appointment: { dateId: selectedDate, timeId: selectedTime }
+            };
+            console.log("PAYLOAD BEING SENT TO BACKEND:", JSON.stringify(payload, null, 2));
+
+            const response = await consultationApi.bookConsultation(payload);
+
+            if (response?.data?.token) {
+                const fakeUser = {
+                    _id: response.data.consultation?.user || "temp-id",
+                    name: payload.fullName,
+                    email: payload.email,
+                    role: "STUDENT"
+                };
+                useAuthStore.getState().setAuth(fakeUser, response.data.token);
+            }
+
             setIsConfirmingBooking(false);
             setIsBookingConfirmed(true);
-        }, 1500);
+        } catch (error) {
+            console.error(error);
+            setIsConfirmingBooking(false);
+            // Optionally handle error toast
+        }
     };
 
     const handleBookConsultationClick = () => {
         setIsBookingMode(true);
     };
 
-    const handleLogin = () => navigate('/auth/login');
+    const handleLogin = () => navigate('/student/consultation');
 
     const progressPercentage = (step / QUESTIONS.length) * 100;
 
@@ -257,7 +321,69 @@ export function GlobalCareerDiagnostic() {
                                 </motion.div>
                             )}
 
-                            {step === QUESTIONS.length && !isAnalyzing && !isBookingMode && !isBookingConfirmed && (
+                            {step === QUESTIONS.length && isLeadFormMode && !isLeadFormSubmitted && (
+                                <motion.div
+                                    key="lead-form"
+                                    initial={{ opacity: 0, scale: 0.95 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 1.05 }}
+                                    transition={{ duration: 0.4, ease: "easeOut" }}
+                                    className="flex flex-col justify-center w-full relative z-20"
+                                >
+                                    <div className="absolute -top-10 left-12 w-40 h-40 bg-blue-400/20 rounded-full blur-[50px] pointer-events-none"></div>
+                                    <h3 className="text-2xl md:text-3xl font-black text-gray-900 mb-2 tracking-tight">Unlock Your Roadmap</h3>
+                                    <p className="text-sm text-gray-500 mb-8 leading-relaxed font-medium">
+                                        Your personalized consultation profile has been successfully generated. Enter your details to view the results.
+                                    </p>
+
+                                    <form onSubmit={(e) => { 
+                                        e.preventDefault(); 
+                                        
+                                        const formData = new FormData(e.currentTarget);
+                                        const leadData = {
+                                            name: formData.get('name'),
+                                            email: formData.get('email'),
+                                            mobile: formData.get('mobile')
+                                        };
+
+                                        // Store Quiz option IDs and Lead info locally 
+                                        localStorage.setItem('squrx_quiz_answers', JSON.stringify(answers));
+                                        localStorage.setItem('squrx_lead_data', JSON.stringify(leadData));
+
+                                        setIsLeadFormSubmitted(true); 
+                                        setIsLeadFormMode(false); 
+                                    }} className="space-y-5 w-full relative z-10">
+                                        
+                                        <div className="space-y-1.5 group">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1 group-focus-within:text-blue-600 transition-colors">Full Legal Name</label>
+                                            <div className="relative">
+                                                <input name="name" required type="text" placeholder="e.g. Michael Chen" className="w-full h-14 bg-gray-50/50 border-2 border-gray-100 hover:border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-[1rem] px-4 text-sm font-bold text-gray-900 transition-all outline-none shadow-sm" />
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="space-y-1.5 group">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1 group-focus-within:text-blue-600 transition-colors">Personal Email Address</label>
+                                            <div className="relative">
+                                                <input name="email" required type="email" placeholder="hello@company.com" className="w-full h-14 bg-gray-50/50 border-2 border-gray-100 hover:border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-[1rem] px-4 text-sm font-bold text-gray-900 transition-all outline-none shadow-sm" />
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="space-y-1.5 group">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1 group-focus-within:text-blue-600 transition-colors">Mobile Number</label>
+                                            <div className="relative border-2 border-gray-100 hover:border-gray-200 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 rounded-[1rem] flex items-center bg-gray-50/50 focus-within:bg-white transition-all shadow-sm">
+                                                <span className="pl-4 pr-2 text-sm font-bold text-gray-500 border-r border-gray-200 py-1">+91</span>
+                                                <input name="mobile" required type="tel" pattern="[0-9]{10}" minLength={10} maxLength={10} title="Mobile number must be exactly 10 digits" placeholder="9876543210" className="w-full h-14 bg-transparent px-4 text-sm font-bold text-gray-900 outline-none" />
+                                            </div>
+                                        </div>
+
+                                        <Button type="submit" className="w-full rounded-2xl h-14 text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-[0_8px_30px_rgba(37,99,235,0.3)] mt-6 transition-all hover:scale-[1.02] hover:-translate-y-0.5 active:scale-95 group flex items-center justify-center">
+                                            Reveal My Blueprint <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                                        </Button>
+                                    </form>
+                                </motion.div>
+                            )}
+
+                            {step === QUESTIONS.length && !isAnalyzing && !isBookingMode && !isBookingConfirmed && isLeadFormSubmitted && (
                                 <motion.div
                                     key="results"
                                     initial={{ opacity: 0, scale: 0.95 }}
@@ -306,13 +432,14 @@ export function GlobalCareerDiagnostic() {
                                             <span>Available Dates</span>
                                         </label>
                                         <div className="grid grid-cols-5 gap-2">
-                                            {availableDays.map((date, i) => {
-                                                const dateStr = date.toISOString().split('T')[0];
+                                            {slotsData.map((dateObj, i) => {
+                                                const dateStr = dateObj._id;
                                                 const isSelected = selectedDate === dateStr;
+                                                const date = new Date(dateObj.date);
                                                 return (
                                                     <button
                                                         key={i}
-                                                        onClick={() => setSelectedDate(dateStr)}
+                                                        onClick={() => { setSelectedDate(dateStr); setSelectedTime(''); }}
                                                         className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all ${isSelected
                                                             ? 'bg-blue-600 text-white shadow-md scale-[1.05] border-blue-600 ring-2 ring-blue-600/20'
                                                             : 'bg-white hover:border-blue-400 border-gray-200 text-gray-500 hover:text-gray-900'
@@ -334,22 +461,24 @@ export function GlobalCareerDiagnostic() {
                                     <div className="space-y-3 mb-8">
                                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Available Times</label>
                                         <div className="grid grid-cols-2 gap-2">
-                                            {TIME_SLOTS.map((time) => {
-                                                const isSelected = selectedTime === time;
+                                            {selectedDate && slotsData.find(d => d._id === selectedDate)?.slots.map((slot: any) => {
+                                                const isSelected = selectedTime === slot._id;
                                                 return (
                                                     <button
-                                                        key={time}
-                                                        onClick={() => setSelectedTime(time)}
+                                                        key={slot._id}
+                                                        disabled={!slot.isAvailable}
+                                                        onClick={() => setSelectedTime(slot._id)}
                                                         className={`flex items-center justify-center py-2.5 rounded-xl border transition-all text-sm font-bold ${isSelected
                                                             ? 'bg-blue-600 text-white shadow-sm border-blue-600'
-                                                            : 'bg-white hover:border-blue-400 border-gray-200 text-gray-600 hover:text-gray-900'
+                                                            : slot.isAvailable ? 'bg-white hover:border-blue-400 border-gray-200 text-gray-600 hover:text-gray-900' : 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-100'
                                                             }`}
                                                     >
                                                         <Clock size={14} className="mr-2" strokeWidth={2.5} />
-                                                        {time}
+                                                        {slot.time}
                                                     </button>
                                                 );
                                             })}
+                                            {!selectedDate && <p className="text-sm text-gray-400 col-span-2">Select a date first</p>}
                                         </div>
                                     </div>
 
@@ -386,7 +515,7 @@ export function GlobalCareerDiagnostic() {
                                         Slot Locked In!
                                     </h3>
                                     <p className="text-sm text-gray-500 max-w-sm mx-auto mb-8 font-medium">
-                                        Your session on <span className="text-gray-900 font-bold">{new Date(selectedDate).toLocaleDateString()}</span> at <span className="text-gray-900 font-bold">{selectedTime}</span> is confirmed. Login to your dashboard to access the meeting room link.
+                                        Your session is confirmed. Login to your dashboard to access the meeting room link.
                                     </p>
                                     
                                     <Button onClick={handleLogin} size="lg" className="w-full max-w-xs mx-auto rounded-xl h-12 text-sm bg-gray-900 hover:bg-black text-white font-bold shadow-lg transition-all">

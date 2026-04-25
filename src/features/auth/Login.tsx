@@ -2,19 +2,25 @@ import { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from './store';
+import { useLoginMutation } from '@/lib/store/authApi';
 import { Button, Input, Toast } from '@/components/ui';
 import { PageTransition } from '@/components/motion';
 import { loginSchema, type LoginFormValues } from '@/lib/validators/auth';
 import { Loader2, ArrowRight, KeyRound } from 'lucide-react';
 
 export function Login() {
-    const [isLoading, setIsLoading] = useState(false);
-    const [toastOpen, setToastOpen] = useState(false);
+    const [toast, setToast] = useState<{ open: boolean; type: 'success'|'error'|'info'; title: string; message: string }>({ open: false, type: 'success', title: '', message: '' });
+
+    const showToast = (type: 'success'|'error'|'info', title: string, message: string) => {
+        setToast({ open: true, type, title, message });
+        setTimeout(() => setToast(prev => ({ ...prev, open: false })), 4000);
+    };
     const navigate = useNavigate();
     const location = useLocation();
-    const { login } = useAuthStore();
+    const { setAuth } = useAuthStore();
+    const [loginMutation, { isLoading }] = useLoginMutation();
 
     const { register: formRegister, handleSubmit, formState: { errors } } = useForm<LoginFormValues>({
         resolver: zodResolver(loginSchema),
@@ -24,32 +30,32 @@ export function Login() {
     const from = location.state?.from?.pathname || null;
 
     const onSubmit = async (data: LoginFormValues) => {
-        setIsLoading(true);
-        // Simulate API call delay
-        await new Promise(resolve => setTimeout(resolve, 800));
-
         try {
-            await login(data.email);
-            setToastOpen(true);
-
-            // Fetch the user to determine role after login
-            const authStore = useAuthStore.getState();
-            const role = authStore.user?.role || 'STUDENT';
-
-            setTimeout(() => {
-                if (from && from !== '/' && from !== '/auth/login') {
-                    navigate(from);
-                } else {
-                    switch (role) {
-                        case 'STUDENT': navigate('/auth/onboarding'); break;
-                        case 'RECRUITER': navigate('/recruiter'); break;
-                        case 'ADMIN': navigate('/admin'); break;
+            const result = await loginMutation(data).unwrap();
+            
+            if (result.success && result.data?.token) {
+                setAuth(result.data.user, result.data.token);
+                showToast('success', 'Welcome Back', 'Logged in safely. Redirecting...');
+                
+                const role = String(result.data.user.role).toUpperCase();
+                
+                setTimeout(() => {
+                    if (from && from !== '/' && from !== '/auth/login') {
+                        navigate(from);
+                    } else {
+                        switch (role) {
+                            case 'STUDENT': navigate('/auth/onboarding'); break;
+                            case 'RECRUITER': navigate('/recruiter'); break;
+                            case 'ADMIN': navigate('/admin'); break;
+                            default: navigate('/auth/onboarding'); break;
+                        }
                     }
-                }
-            }, 1200);
+                }, 1200);
+            } else {
+                 throw new Error(result.message || 'Login failed');
+            }
         } catch (err: any) {
-            alert(err.message || 'Login failed. Try registering.');
-            setIsLoading(false);
+            showToast('error', 'Login Failed', err.data?.message || err.message || 'Login failed. Please check your credentials.');
         }
     };
 
@@ -123,7 +129,7 @@ export function Login() {
                                     <div className="space-y-2 group">
                                         <div className="flex justify-between items-center pl-1">
                                             <label className="text-xs font-semibold text-black/70 uppercase tracking-widest group-focus-within:text-black transition-colors" htmlFor="password">Password</label>
-                                            <a href="#" className="text-[10px] font-bold tracking-widest uppercase text-black/40 hover:text-black transition-colors">Forgot?</a>
+                                            <Link to="/auth/forgot-password" className="text-[10px] font-bold tracking-widest uppercase text-black/40 hover:text-black transition-colors border-b border-transparent hover:border-black pb-0.5">Forgot password?</Link>
                                         </div>
                                         <Input
                                             id="password"
@@ -157,13 +163,26 @@ export function Login() {
                 </div>
             </div>
 
-            {toastOpen && (
-                <div className="fixed bottom-4 right-4 z-[100]">
-                    <Toast variant="success" title="Success" onClose={() => setToastOpen(false)}>
-                        Logged in safely. Redirecting...
-                    </Toast>
-                </div>
-            )}
+            <div className="fixed bottom-4 right-4 z-[100] flex flex-col pointer-events-none">
+                <AnimatePresence>
+                    {toast.open && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+                            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                            className="pointer-events-auto"
+                        >
+                            <Toast 
+                                variant={toast.type} 
+                                title={toast.title} 
+                                description={toast.message} 
+                                onClose={() => setToast(prev => ({ ...prev, open: false }))} 
+                            />
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
         </PageTransition>
     );
 }

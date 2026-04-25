@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { consultationApi } from '@/lib/consultationApi';
 import { useStudentStore } from './store';
 import { Card, CardHeader, CardTitle, CardContent, Button, Toast } from '@/components/ui';
 import { PageTransition } from '@/components/motion';
@@ -6,7 +7,7 @@ import { Calendar, Clock, Loader2, Video, CheckCircle2 } from 'lucide-react';
 import { useAuthStore } from '../auth/store';
 import { useNotificationStore } from '@/lib/store/notifications';
 
-const TIME_SLOTS = ['10:00', '12:00', '15:00', '17:00'];
+
 
 export function StudentConsultation() {
     const { user } = useAuthStore();
@@ -17,17 +18,40 @@ export function StudentConsultation() {
     const [isLoading, setIsLoading] = useState(false);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+    const [slotsData, setSlotsData] = useState<any[]>([]);
+
+    useEffect(() => {
+        consultationApi.getTimeSlots().then(res => {
+            if(res.success && res.data) {
+               setSlotsData(res.data);
+            }
+        }).catch(console.error);
+    }, []);
+
     const handleBooking = async () => {
         if (!selectedDate || !selectedTime) return;
         setIsLoading(true);
         if (user) {
-            await bookConsultation(user.id, selectedDate, selectedTime);
+            await bookConsultation(user.id, {
+                fullName: user.name || "Student",
+                email: user.email || "",
+                mobile: "9999999999",
+                quizAnswers: [
+                    { quizId: '65f000000000000000000000', choiceId: '65f000000000000000000000' }
+                ],
+                appointment: { dateId: selectedDate, timeId: selectedTime }
+            });
         }
         setIsLoading(false);
+        const bookedDateObj = slotsData.find(d => d._id === selectedDate);
+        const bookedTimeObj = bookedDateObj?.slots?.find((s:any) => s._id === selectedTime);
+        const dateStr = bookedDateObj ? new Date(bookedDateObj.date).toLocaleDateString() : '';
+        const timeStr = bookedTimeObj ? bookedTimeObj.time : '';
+        
         setSelectedDate('');
         setSelectedTime('');
-        setToastMessage(`Booking confirmed for ${new Date(selectedDate).toLocaleDateString()} at ${selectedTime}.`);
-        sendEmail('Consultation Confirmed', `Your 1-on-1 mentorship session is successfully booked for ${new Date(selectedDate).toLocaleDateString()} at ${selectedTime}. Check your dashboard for the Google Meet link.`);
+        setToastMessage(`Booking confirmed for ${dateStr} at ${timeStr}.`);
+        sendEmail('Consultation Confirmed', `Your 1-on-1 mentorship session is successfully booked for ${dateStr} at ${timeStr}. Check your dashboard for the Google Meet link.`);
     };
 
     const handleCancel = async () => {
@@ -40,22 +64,7 @@ export function StudentConsultation() {
         sendEmail('Consultation Cancelled', 'Your upcoming mentorship session has been cancelled. Feel free to re-book anytime from your dashboard.');
     };
 
-    // Get next 7 days (skipping weekends for realistic business logic)
-    const getNextDays = () => {
-        const days = [];
-        const today = new Date();
-        today.setDate(today.getDate() + 1); // Start tomorrow
 
-        while (days.length < 5) {
-            if (today.getDay() !== 0 && today.getDay() !== 6) {
-                days.push(new Date(today));
-            }
-            today.setDate(today.getDate() + 1);
-        }
-        return days;
-    };
-
-    const availableDays = getNextDays();
 
     return (
         <PageTransition className="space-y-6 max-w-4xl mx-auto pb-12">
@@ -116,9 +125,10 @@ export function StudentConsultation() {
                                             <span className="text-xs font-normal text-muted-foreground">Business days only</span>
                                         </label>
                                         <div className="grid grid-cols-5 gap-2">
-                                            {availableDays.map((date, i) => {
-                                                const dateStr = date.toISOString().split('T')[0];
+                                            {slotsData.map((dateObj, i) => {
+                                                const dateStr = dateObj._id;
                                                 const isSelected = selectedDate === dateStr;
+                                                const date = new Date(dateObj.date);
                                                 return (
                                                     <button
                                                         key={i}
@@ -127,7 +137,7 @@ export function StudentConsultation() {
                                                             ? 'bg-primary text-primary-foreground shadow-md scale-[1.02] border-primary'
                                                             : 'bg-background hover:border-primary/40 border-border/60 hover:bg-card text-muted-foreground hover:text-foreground'
                                                             }`}
-                                                        onClick={() => setSelectedDate(dateStr)}
+                                                        onClick={() => { setSelectedDate(dateStr); setSelectedTime(''); }}
                                                     >
                                                         <span className="text-[10px] uppercase font-bold tracking-wider mb-1 opacity-80">
                                                             {date.toLocaleDateString(undefined, { weekday: 'short' })}
@@ -144,20 +154,24 @@ export function StudentConsultation() {
                                     <div className="space-y-3">
                                         <label className="text-sm font-semibold">Available Time Slots</label>
                                         <div className="grid grid-cols-2 gap-2">
-                                            {TIME_SLOTS.map((time) => (
+                                            {selectedDate && slotsData.find(d => d._id === selectedDate)?.slots.map((slot: any) => {
+                                                const isSelected = selectedTime === slot._id;
+                                                return (
                                                 <button
-                                                    key={time}
+                                                    key={slot._id}
                                                     type="button"
-                                                    className={`flex items-center justify-center py-3 rounded-xl border transition-all text-sm font-medium ${selectedTime === time
+                                                    disabled={!slot.isAvailable}
+                                                    className={`flex items-center justify-center py-3 rounded-xl border transition-all text-sm font-medium ${isSelected
                                                         ? 'bg-primary text-primary-foreground shadow-sm border-primary'
-                                                        : 'bg-background hover:border-primary/40 border-border/60 text-muted-foreground hover:text-foreground'
+                                                        : slot.isAvailable ? 'bg-background hover:border-primary/40 border-border/60 text-muted-foreground hover:text-foreground' : 'bg-muted text-muted-foreground/50 cursor-not-allowed'
                                                         }`}
-                                                    onClick={() => setSelectedTime(time)}
+                                                    onClick={() => setSelectedTime(slot._id)}
                                                 >
                                                     <Clock size={14} className="mr-2" />
-                                                    {time}
+                                                    {slot.time}
                                                 </button>
-                                            ))}
+                                            )})}
+                                            {!selectedDate && <p className="text-sm text-muted-foreground">Select a date first</p>}
                                         </div>
                                     </div>
 

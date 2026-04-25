@@ -1,0 +1,2263 @@
+﻿
+window.onload = function() {
+  // Build a system
+  var url = window.location.search.match(/url=([^&]+)/);
+  if (url && url.length > 1) {
+    url = decodeURIComponent(url[1]);
+  } else {
+    url = window.location.origin;
+  }
+  var options = {
+  "swaggerDoc": {
+    "openapi": "3.0.0",
+    "info": {
+      "title": "Squrx Backend API",
+      "version": "1.0.0",
+      "description": "Role-based REST API for Students and Recruiters with OTP verification and JWT authentication.",
+      "contact": {
+        "name": "Squrx Team"
+      }
+    },
+    "servers": [
+      {
+        "url": "http://localhost:8000/api/v1",
+        "description": "Development server"
+      },
+      {
+        "url": "https://squrx-backend.onrender.com/api/v1",
+        "description": "Production server"
+      }
+    ],
+    "components": {
+      "securitySchemes": {
+        "BearerAuth": {
+          "type": "http",
+          "scheme": "bearer",
+          "bearerFormat": "JWT",
+          "description": "Enter your JWT token"
+        }
+      },
+      "schemas": {
+        "ApiResponse": {
+          "type": "object",
+          "properties": {
+            "statusCode": {
+              "type": "integer"
+            },
+            "success": {
+              "type": "boolean"
+            },
+            "message": {
+              "type": "string"
+            },
+            "data": {
+              "type": "object"
+            }
+          }
+        },
+        "ErrorResponse": {
+          "type": "object",
+          "properties": {
+            "success": {
+              "type": "boolean",
+              "example": false
+            },
+            "statusCode": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "StudentSignup": {
+          "type": "object",
+          "required": [
+            "fullName",
+            "email",
+            "mobile",
+            "password",
+            "role"
+          ],
+          "properties": {
+            "fullName": {
+              "type": "string",
+              "example": "John Doe"
+            },
+            "email": {
+              "type": "string",
+              "format": "email",
+              "example": "john@example.com"
+            },
+            "mobile": {
+              "type": "string",
+              "example": "9876543210"
+            },
+            "password": {
+              "type": "string",
+              "format": "password",
+              "example": "secret123"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "student"
+              ],
+              "example": "student"
+            },
+            "resume": {
+              "type": "string",
+              "format": "binary",
+              "description": "PDF/DOC file"
+            },
+            "schoolLeavingCertificate": {
+              "type": "string",
+              "format": "binary",
+              "description": "PDF/DOC file"
+            }
+          }
+        },
+        "RecruiterSignup": {
+          "type": "object",
+          "required": [
+            "fullName",
+            "email",
+            "password",
+            "role"
+          ],
+          "properties": {
+            "fullName": {
+              "type": "string",
+              "example": "Jane Recruiter"
+            },
+            "email": {
+              "type": "string",
+              "format": "email",
+              "example": "jane@company.com"
+            },
+            "password": {
+              "type": "string",
+              "format": "password",
+              "example": "secret123"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "recruiter"
+              ],
+              "example": "recruiter"
+            }
+          }
+        },
+        "VerifyOtp": {
+          "type": "object",
+          "required": [
+            "userId",
+            "otp"
+          ],
+          "properties": {
+            "userId": {
+              "type": "string",
+              "example": "663f1a2b3c4d5e6f7a8b9c0d"
+            },
+            "otp": {
+              "type": "string",
+              "example": "3210",
+              "minLength": 4,
+              "maxLength": 4
+            }
+          }
+        },
+        "UserProfile": {
+          "type": "object",
+          "properties": {
+            "_id": {
+              "type": "string"
+            },
+            "fullName": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string"
+            },
+            "mobile": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "student",
+                "recruiter"
+              ]
+            },
+            "resume": {
+              "type": "string",
+              "nullable": true
+            },
+            "schoolLeavingCertificate": {
+              "type": "string",
+              "nullable": true
+            },
+            "isVerified": {
+              "type": "boolean"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        },
+        "Consultation": {
+          "type": "object",
+          "properties": {
+            "_id": {
+              "type": "string",
+              "example": "69dac82734efdf1db134f26b"
+            },
+            "user": {
+              "type": "string",
+              "example": "69d0d1776a8f0d5465660740"
+            },
+            "date": {
+              "type": "string",
+              "format": "date-time",
+              "example": "2026-04-12T18:30:00.000Z"
+            },
+            "time": {
+              "type": "string",
+              "example": "10:00 AM"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "confirmed",
+                "completed",
+                "cancelled"
+              ],
+              "example": "pending"
+            },
+            "notes": {
+              "type": "string",
+              "example": "Consultation notes"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        },
+        "ConsultationBookResponse": {
+          "type": "object",
+          "properties": {
+            "consultation": {
+              "$ref": "#/components/schemas/Consultation"
+            },
+            "token": {
+              "type": "string",
+              "example": "eyJhbGciOiJIUzI1NiIs..."
+            },
+            "tokenType": {
+              "type": "string",
+              "example": "Bearer"
+            }
+          }
+        }
+      }
+    },
+    "paths": {
+      "/admin/login": {
+        "post": {
+          "summary": "Admin login with hardcoded credentials",
+          "description": "Authenticates the admin user against hardcoded credentials\nand returns a JWT bearer token with admin user info.\n\n**Credentials:** `admin@squrx.com` / `Admin@123`\n",
+          "tags": [
+            "Admin"
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "email",
+                    "password"
+                  ],
+                  "properties": {
+                    "email": {
+                      "type": "string",
+                      "format": "email",
+                      "example": "admin@squrx.com"
+                    },
+                    "password": {
+                      "type": "string",
+                      "format": "password",
+                      "example": "Admin@123"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Admin login successful",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "statusCode": {
+                        "type": "integer",
+                        "example": 200
+                      },
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "message": {
+                        "type": "string",
+                        "example": "Admin login successful"
+                      },
+                      "data": {
+                        "type": "object",
+                        "properties": {
+                          "token": {
+                            "type": "string",
+                            "example": "eyJhbGciOiJIUzI1NiIs..."
+                          },
+                          "tokenType": {
+                            "type": "string",
+                            "example": "Bearer"
+                          },
+                          "user": {
+                            "type": "object",
+                            "properties": {
+                              "_id": {
+                                "type": "string",
+                                "example": "admin-001"
+                              },
+                              "fullName": {
+                                "type": "string",
+                                "example": "Squrx Admin"
+                              },
+                              "email": {
+                                "type": "string",
+                                "example": "admin@squrx.com"
+                              },
+                              "role": {
+                                "type": "string",
+                                "example": "admin"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Invalid email or password"
+            }
+          }
+        }
+      },
+      "/admin/articles": {
+        "post": {
+          "summary": "Create a new article",
+          "tags": [
+            "Admin - Articles"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "description",
+                    "content"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "example": "Getting Started with Squrx"
+                    },
+                    "description": {
+                      "type": "string",
+                      "example": "A quick guide to setting up your profile"
+                    },
+                    "content": {
+                      "type": "string",
+                      "example": "<h1>Welcome</h1><p>Here is how to get started...</p>"
+                    },
+                    "icon": {
+                      "type": "string",
+                      "example": "🚀"
+                    },
+                    "category": {
+                      "type": "string",
+                      "example": "career"
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "guide",
+                        "onboarding"
+                      ]
+                    },
+                    "author": {
+                      "type": "string",
+                      "example": "Squrx Team"
+                    },
+                    "isActive": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "publishedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Article created"
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "422": {
+              "description": "Validation error"
+            }
+          }
+        },
+        "get": {
+          "summary": "Get all articles (includes inactive)",
+          "tags": [
+            "Admin - Articles"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "parameters": [
+            {
+              "in": "query",
+              "name": "page",
+              "schema": {
+                "type": "integer",
+                "default": 1
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "schema": {
+                "type": "integer",
+                "default": 10
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "List of all articles with pagination"
+            },
+            "401": {
+              "description": "Unauthorized"
+            }
+          }
+        }
+      },
+      "/admin/articles/{id}": {
+        "get": {
+          "summary": "Get an article by ID",
+          "tags": [
+            "Admin - Articles"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Article details"
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "404": {
+              "description": "Article not found"
+            }
+          }
+        },
+        "put": {
+          "summary": "Update an article (use isActive to activate/deactivate)",
+          "tags": [
+            "Admin - Articles"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "icon": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": "string"
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "author": {
+                      "type": "string"
+                    },
+                    "isActive": {
+                      "type": "boolean",
+                      "description": "Set to false to deactivate (soft delete)"
+                    },
+                    "publishedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Article updated"
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "404": {
+              "description": "Article not found"
+            }
+          }
+        }
+      },
+      "/auth/signup": {
+        "post": {
+          "summary": "Register a new student or recruiter",
+          "description": "**Student**: Send as `multipart/form-data` with files (resume, schoolLeavingCertificate).\nOTP = last 4 digits of mobile number (mocked).\n\n**Recruiter**: Send as `multipart/form-data` or JSON with no files.\nOTP = `1234` (mocked).\n",
+          "tags": [
+            "Auth"
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "multipart/form-data": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "fullName",
+                    "email",
+                    "password",
+                    "role"
+                  ],
+                  "properties": {
+                    "fullName": {
+                      "type": "string",
+                      "example": "John Doe"
+                    },
+                    "email": {
+                      "type": "string",
+                      "format": "email",
+                      "example": "john@example.com"
+                    },
+                    "mobile": {
+                      "type": "string",
+                      "description": "Required for students (10 digits)",
+                      "example": "9876543210"
+                    },
+                    "password": {
+                      "type": "string",
+                      "format": "password",
+                      "example": "secret123"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "student",
+                        "recruiter"
+                      ],
+                      "example": "student"
+                    },
+                    "resume": {
+                      "type": "string",
+                      "format": "binary",
+                      "description": "PDF/DOC/DOCX (student only, max 5 MB)"
+                    },
+                    "schoolLeavingCertificate": {
+                      "type": "string",
+                      "format": "binary",
+                      "description": "PDF/DOC/DOCX (student only, max 5 MB)"
+                    },
+                    "quizAnswers": {
+                      "type": "string",
+                      "description": "Optional JSON array of quiz answers. Each item: { \"quizId\": \"...\", \"choiceId\": \"...\" }\n",
+                      "example": "[{\"quizId\":\"69d19182a1b5b19a7397380f\",\"choiceId\":\"69d19182a1b5b19a73973810\"}]"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "User created — OTP sent",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "statusCode": {
+                        "type": "integer",
+                        "example": 201
+                      },
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "message": {
+                        "type": "string",
+                        "example": "User registered. Please verify OTP to complete registration."
+                      },
+                      "data": {
+                        "type": "object",
+                        "properties": {
+                          "userId": {
+                            "type": "string",
+                            "example": "663f1a2b3c4d5e6f7a8b9c0d"
+                          },
+                          "role": {
+                            "type": "string",
+                            "example": "student"
+                          },
+                          "message": {
+                            "type": "string",
+                            "example": "OTP sent to mobile number ending with 3210"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "User already exists"
+            },
+            "422": {
+              "description": "Validation error"
+            }
+          }
+        }
+      },
+      "/auth/verify-otp": {
+        "post": {
+          "summary": "Verify OTP and complete registration",
+          "description": "Verifies the OTP and activates the user account.\nReturns a JWT bearer token + user profile on success.\n\n**Mock OTP values:**\n- Student: last 4 digits of mobile number\n- Recruiter: `1234`\n",
+          "tags": [
+            "Auth"
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyOtp"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OTP verified — registration complete",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "statusCode": {
+                        "type": "integer",
+                        "example": 200
+                      },
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "message": {
+                        "type": "string",
+                        "example": "OTP verified successfully. Registration complete."
+                      },
+                      "data": {
+                        "type": "object",
+                        "properties": {
+                          "token": {
+                            "type": "string",
+                            "example": "eyJhbGciOiJIUzI1NiIs..."
+                          },
+                          "tokenType": {
+                            "type": "string",
+                            "example": "Bearer"
+                          },
+                          "user": {
+                            "$ref": "#/components/schemas/UserProfile"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Invalid or expired OTP"
+            },
+            "404": {
+              "description": "User not found"
+            }
+          }
+        }
+      },
+      "/auth/resend-otp": {
+        "post": {
+          "summary": "Resend OTP for unverified users",
+          "description": "Generates and sends a new OTP to the user. Has a 60-second cooldown between requests.\n\n**Mock OTP values (same as signup):**\n- Student: last 4 digits of mobile number\n- Recruiter: `1234`\n",
+          "tags": [
+            "Auth"
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "userId"
+                  ],
+                  "properties": {
+                    "userId": {
+                      "type": "string",
+                      "example": "663f1a2b3c4d5e6f7a8b9c0d"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OTP resent successfully",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "statusCode": {
+                        "type": "integer",
+                        "example": 200
+                      },
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "message": {
+                        "type": "string",
+                        "example": "OTP resent successfully"
+                      },
+                      "data": {
+                        "type": "object",
+                        "properties": {
+                          "userId": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "User is already verified"
+            },
+            "404": {
+              "description": "User not found"
+            },
+            "422": {
+              "description": "Validation error"
+            },
+            "429": {
+              "description": "Too many requests — cooldown active"
+            }
+          }
+        }
+      },
+      "/auth/login": {
+        "post": {
+          "summary": "Login with email and password",
+          "description": "Authenticates a verified user and returns a JWT bearer token with user profile.",
+          "tags": [
+            "Auth"
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "email",
+                    "password"
+                  ],
+                  "properties": {
+                    "email": {
+                      "type": "string",
+                      "format": "email",
+                      "example": "john@example.com"
+                    },
+                    "password": {
+                      "type": "string",
+                      "format": "password",
+                      "example": "secret123"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Login successful",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "statusCode": {
+                        "type": "integer",
+                        "example": 200
+                      },
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "message": {
+                        "type": "string",
+                        "example": "Login successful"
+                      },
+                      "data": {
+                        "type": "object",
+                        "properties": {
+                          "token": {
+                            "type": "string",
+                            "example": "eyJhbGciOiJIUzI1NiIs..."
+                          },
+                          "tokenType": {
+                            "type": "string",
+                            "example": "Bearer"
+                          },
+                          "user": {
+                            "$ref": "#/components/schemas/UserProfile"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Invalid email or password"
+            },
+            "403": {
+              "description": "Account not verified"
+            },
+            "422": {
+              "description": "Validation error"
+            }
+          }
+        }
+      },
+      "/auth/forgot-password": {
+        "post": {
+          "summary": "Request password reset OTP",
+          "description": "Sends a mock OTP for password reset.\n- **Student**: OTP = last 4 digits of mobile\n- **Recruiter**: OTP = `1234`\n",
+          "tags": [
+            "Auth"
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "email"
+                  ],
+                  "properties": {
+                    "email": {
+                      "type": "string",
+                      "format": "email",
+                      "example": "john@example.com"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OTP sent for password reset",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "statusCode": {
+                        "type": "integer",
+                        "example": 200
+                      },
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "message": {
+                        "type": "string",
+                        "example": "Password reset OTP sent successfully"
+                      },
+                      "data": {
+                        "type": "object",
+                        "properties": {
+                          "userId": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "No account found with this email"
+            },
+            "422": {
+              "description": "Validation error"
+            }
+          }
+        }
+      },
+      "/auth/reset-password": {
+        "post": {
+          "summary": "Reset password with OTP",
+          "description": "Verifies OTP and sets a new password. User can then login with the new password.",
+          "tags": [
+            "Auth"
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "userId",
+                    "otp",
+                    "newPassword"
+                  ],
+                  "properties": {
+                    "userId": {
+                      "type": "string",
+                      "example": "663f1a2b3c4d5e6f7a8b9c0d"
+                    },
+                    "otp": {
+                      "type": "string",
+                      "example": "3210"
+                    },
+                    "newPassword": {
+                      "type": "string",
+                      "format": "password",
+                      "example": "newSecret456"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Password reset successfully"
+            },
+            "400": {
+              "description": "Invalid or expired OTP"
+            },
+            "404": {
+              "description": "User not found"
+            },
+            "422": {
+              "description": "Validation error"
+            }
+          }
+        }
+      },
+      "/consultations/book": {
+        "post": {
+          "summary": "Book a new consultation appointment",
+          "description": "Creates or updates a user as a lead (consultation role) and books an appointment. Returns a token for immediate access to appointments.",
+          "tags": [
+            "Consultation"
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "fullName",
+                    "email",
+                    "mobile",
+                    "quizAnswers",
+                    "appointment"
+                  ],
+                  "properties": {
+                    "fullName": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "mobile": {
+                      "type": "string"
+                    },
+                    "quizAnswers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "quizId": {
+                            "type": "string"
+                          },
+                          "choiceId": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "appointment": {
+                      "type": "object",
+                      "properties": {
+                        "dateId": {
+                          "type": "string"
+                        },
+                        "timeId": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Consultation booked successfully",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "statusCode": {
+                        "type": "integer",
+                        "example": 201
+                      },
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "message": {
+                        "type": "string"
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/ConsultationBookResponse"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Time slot not found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorResponse"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/consultations/my-appointments": {
+        "get": {
+          "summary": "Get all consultation appointments for the logged-in user",
+          "tags": [
+            "Consultation"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "List of appointments categorized into active and past",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "statusCode": {
+                        "type": "integer",
+                        "example": 200
+                      },
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "message": {
+                        "type": "string"
+                      },
+                      "data": {
+                        "type": "object",
+                        "properties": {
+                          "active": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/Consultation"
+                            }
+                          },
+                          "past": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/Consultation"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/admin/domains": {
+        "post": {
+          "summary": "Create a new domain",
+          "tags": [
+            "Admin - Domains"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "name"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "example": "Software Engineering"
+                    },
+                    "isActive": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Domain created"
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "409": {
+              "description": "Domain already exists"
+            },
+            "422": {
+              "description": "Validation error"
+            }
+          }
+        },
+        "get": {
+          "summary": "Get all domains (includes inactive)",
+          "tags": [
+            "Admin - Domains"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "List of all domains"
+            },
+            "401": {
+              "description": "Unauthorized"
+            }
+          }
+        }
+      },
+      "/admin/domains/{id}": {
+        "get": {
+          "summary": "Get a domain by ID",
+          "tags": [
+            "Admin - Domains"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Domain details"
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "404": {
+              "description": "Domain not found"
+            }
+          }
+        },
+        "put": {
+          "summary": "Update a domain (use isActive to activate/deactivate)",
+          "tags": [
+            "Admin - Domains"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "isActive": {
+                      "type": "boolean",
+                      "description": "Set to false to deactivate"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Domain updated"
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "404": {
+              "description": "Domain not found"
+            }
+          }
+        }
+      },
+      "/health": {
+        "get": {
+          "summary": "Health check",
+          "description": "Returns server uptime, memory usage, and database connection status.",
+          "tags": [
+            "System"
+          ],
+          "responses": {
+            "200": {
+              "description": "Server is healthy",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "statusCode": {
+                        "type": "integer",
+                        "example": 200
+                      },
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "message": {
+                        "type": "string",
+                        "example": "Server is healthy"
+                      },
+                      "data": {
+                        "type": "object",
+                        "properties": {
+                          "uptime": {
+                            "type": "number",
+                            "example": 120.5
+                          },
+                          "timestamp": {
+                            "type": "integer"
+                          },
+                          "database": {
+                            "type": "string",
+                            "enum": [
+                              "connected",
+                              "disconnected"
+                            ],
+                            "example": "connected"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/articles": {
+        "get": {
+          "summary": "Get all active articles (public)",
+          "description": "Returns only active articles. No authentication required.",
+          "tags": [
+            "Articles (Public)"
+          ],
+          "parameters": [
+            {
+              "in": "query",
+              "name": "page",
+              "schema": {
+                "type": "integer",
+                "default": 1
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "schema": {
+                "type": "integer",
+                "default": 10
+              }
+            },
+            {
+              "in": "query",
+              "name": "category",
+              "schema": {
+                "type": "string"
+              },
+              "description": "Filter by category"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "List of active articles"
+            }
+          }
+        }
+      },
+      "/articles/{idOrSlug}": {
+        "get": {
+          "summary": "Get a single article by ID or slug (public)",
+          "description": "Returns an active article by MongoDB ID or URL slug. No authentication required.",
+          "tags": [
+            "Articles (Public)"
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "idOrSlug",
+              "required": true,
+              "schema": {
+                "type": "string"
+              },
+              "description": "Article ID or slug"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Article details"
+            },
+            "404": {
+              "description": "Article not found"
+            }
+          }
+        }
+      },
+      "/domains": {
+        "get": {
+          "summary": "Get all active domains (public)",
+          "description": "Returns only active domains. Supports search by name. No authentication required.",
+          "tags": [
+            "Domains (Public)"
+          ],
+          "parameters": [
+            {
+              "in": "query",
+              "name": "search",
+              "schema": {
+                "type": "string"
+              },
+              "description": "Search domains by name (case-insensitive)"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "List of active domains"
+            }
+          }
+        }
+      },
+      "/quizzes": {
+        "get": {
+          "summary": "Get all active quizzes (public)",
+          "description": "Returns all active quizzes with title, description, and options. No authentication required.",
+          "tags": [
+            "Public - Quiz"
+          ],
+          "responses": {
+            "200": {
+              "description": "List of active quizzes",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "statusCode": {
+                        "type": "integer",
+                        "example": 200
+                      },
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "message": {
+                        "type": "string",
+                        "example": "Quizzes fetched successfully"
+                      },
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "_id": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string",
+                              "example": "What is your favourite programming language?"
+                            },
+                            "description": {
+                              "type": "string",
+                              "example": "Choose the language you enjoy coding in the most"
+                            },
+                            "options": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "_id": {
+                                    "type": "string"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "example": "JavaScript"
+                                  },
+                                  "icon": {
+                                    "type": "string",
+                                    "example": "🟨"
+                                  }
+                                }
+                              }
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/quizzes/{id}": {
+        "get": {
+          "summary": "Get a single quiz by ID (public)",
+          "description": "Returns a single active quiz. No authentication required.",
+          "tags": [
+            "Public - Quiz"
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              },
+              "description": "Quiz ID"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Quiz details"
+            },
+            "404": {
+              "description": "Quiz not found or inactive"
+            }
+          }
+        }
+      },
+      "/admin/quiz": {
+        "post": {
+          "summary": "Create a new quiz",
+          "tags": [
+            "Admin - Quiz"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "options"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "example": "What is your favourite programming language?"
+                    },
+                    "description": {
+                      "type": "string",
+                      "example": "Choose the language you enjoy coding in the most"
+                    },
+                    "options": {
+                      "type": "array",
+                      "minItems": 2,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "text"
+                        ],
+                        "properties": {
+                          "text": {
+                            "type": "string",
+                            "example": "JavaScript"
+                          },
+                          "icon": {
+                            "type": "string",
+                            "example": "🟨"
+                          }
+                        }
+                      },
+                      "example": [
+                        {
+                          "text": "JavaScript",
+                          "icon": "🟨"
+                        },
+                        {
+                          "text": "Python",
+                          "icon": "🐍"
+                        },
+                        {
+                          "text": "Java",
+                          "icon": "☕"
+                        },
+                        {
+                          "text": "Go",
+                          "icon": "🐹"
+                        }
+                      ]
+                    },
+                    "isActive": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Quiz created"
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "422": {
+              "description": "Validation error"
+            }
+          }
+        },
+        "get": {
+          "summary": "Get all quizzes (paginated)",
+          "tags": [
+            "Admin - Quiz"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "parameters": [
+            {
+              "in": "query",
+              "name": "page",
+              "schema": {
+                "type": "integer",
+                "default": 1
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "schema": {
+                "type": "integer",
+                "default": 10
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "List of quizzes with pagination"
+            },
+            "401": {
+              "description": "Unauthorized"
+            }
+          }
+        }
+      },
+      "/admin/quiz/{id}": {
+        "get": {
+          "summary": "Get a quiz by ID",
+          "tags": [
+            "Admin - Quiz"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              },
+              "description": "Quiz ID"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Quiz details"
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "404": {
+              "description": "Quiz not found"
+            }
+          }
+        },
+        "put": {
+          "summary": "Update a quiz (use isActive to activate/deactivate)",
+          "tags": [
+            "Admin - Quiz"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "text": {
+                            "type": "string"
+                          },
+                          "icon": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "isActive": {
+                      "type": "boolean",
+                      "description": "Set to false to deactivate (soft delete)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Quiz updated"
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "404": {
+              "description": "Quiz not found"
+            }
+          }
+        }
+      },
+      "/admin/time-slots": {
+        "post": {
+          "summary": "Create new time slots for a date",
+          "tags": [
+            "Admin - Time Slot"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "date",
+                    "slots"
+                  ],
+                  "properties": {
+                    "date": {
+                      "type": "string",
+                      "format": "date",
+                      "example": "2026-04-12"
+                    },
+                    "slots": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "time": {
+                            "type": "string",
+                            "example": "09:00 AM"
+                          },
+                          "isAvailable": {
+                            "type": "boolean",
+                            "default": true
+                          }
+                        }
+                      }
+                    },
+                    "isActive": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Time slots created"
+            },
+            "409": {
+              "description": "Date conflict"
+            }
+          }
+        },
+        "get": {
+          "summary": "Get all time slots (admin)",
+          "tags": [
+            "Admin - Time Slot"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "parameters": [
+            {
+              "in": "query",
+              "name": "page",
+              "schema": {
+                "type": "integer",
+                "default": 1
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "schema": {
+                "type": "integer",
+                "default": 10
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "List of time slots"
+            }
+          }
+        }
+      },
+      "/admin/time-slots/{id}": {
+        "get": {
+          "summary": "Get time slot details by ID",
+          "tags": [
+            "Admin - Time Slot"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Time slot details"
+            },
+            "404": {
+              "description": "Not found"
+            }
+          }
+        },
+        "put": {
+          "summary": "Update time slots",
+          "tags": [
+            "Admin - Time Slot"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "date": {
+                      "type": "string"
+                    },
+                    "slots": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Updated"
+            }
+          }
+        },
+        "delete": {
+          "summary": "Delete time slots",
+          "tags": [
+            "Admin - Time Slot"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Deleted"
+            }
+          }
+        }
+      },
+      "/time-slots": {
+        "get": {
+          "summary": "Get all active time slots (public)",
+          "tags": [
+            "Public - Time Slot"
+          ],
+          "responses": {
+            "200": {
+              "description": "List of available dates and time slots"
+            }
+          }
+        }
+      },
+      "/user/me": {
+        "get": {
+          "summary": "Get current user's profile",
+          "description": "Returns the authenticated user's full profile including selected domain. Requires a valid JWT bearer token.",
+          "tags": [
+            "User"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-user-id",
+              "schema": {
+                "type": "string"
+              },
+              "required": false,
+              "description": "Optional user ID for cross-validation with token"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "User profile fetched successfully"
+            },
+            "401": {
+              "description": "Unauthorized — missing or invalid token"
+            },
+            "403": {
+              "description": "Account not verified"
+            }
+          }
+        },
+        "put": {
+          "summary": "Update current user's profile",
+          "description": "Update user info such as selecting a domain. Requires a valid JWT bearer token.",
+          "tags": [
+            "User"
+          ],
+          "security": [
+            {
+              "BearerAuth": []
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "domain": {
+                      "type": "string",
+                      "description": "Domain ID to select (must be an active domain)",
+                      "example": "69d19182a1b5b19a7397380f"
+                    },
+                    "customDomain": {
+                      "type": "string",
+                      "description": "Custom domain name (auto-created in Domain list if new)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Profile updated successfully"
+            },
+            "400": {
+              "description": "Selected domain is not active"
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "404": {
+              "description": "Domain not found"
+            }
+          }
+        }
+      }
+    },
+    "tags": []
+  },
+  "customOptions": {
+    "requestSnippetsEnabled": true,
+    "requestSnippets": {
+      "generators": {
+        "curl_bash": {
+          "title": "cURL (bash)",
+          "syntax": "bash"
+        },
+        "curl_cmd": {
+          "title": "cURL (cmd)",
+          "syntax": "bash"
+        }
+      },
+      "defaultExpanded": true,
+      "languagesMask": [
+        "curl_bash",
+        "curl_cmd"
+      ]
+    }
+  }
+};
+  url = options.swaggerUrl || url
+  var urls = options.swaggerUrls
+  var customOptions = options.customOptions
+  var spec1 = options.swaggerDoc
+  var swaggerOptions = {
+    spec: spec1,
+    url: url,
+    urls: urls,
+    dom_id: '#swagger-ui',
+    deepLinking: true,
+    presets: [
+      SwaggerUIBundle.presets.apis,
+      SwaggerUIStandalonePreset
+    ],
+    plugins: [
+      SwaggerUIBundle.plugins.DownloadUrl
+    ],
+    layout: "StandaloneLayout"
+  }
+  for (var attrname in customOptions) {
+    swaggerOptions[attrname] = customOptions[attrname];
+  }
+  var ui = SwaggerUIBundle(swaggerOptions)
+
+  if (customOptions.oauth) {
+    ui.initOAuth(customOptions.oauth)
+  }
+
+  if (customOptions.preauthorizeApiKey) {
+    const key = customOptions.preauthorizeApiKey.authDefinitionKey;
+    const value = customOptions.preauthorizeApiKey.apiKeyValue;
+    if (!!key && !!value) {
+      const pid = setInterval(() => {
+        const authorized = ui.preauthorizeApiKey(key, value);
+        if(!!authorized) clearInterval(pid);
+      }, 500)
+
+    }
+  }
+
+  if (customOptions.authAction) {
+    ui.authActions.authorize(customOptions.authAction)
+  }
+
+  window.ui = ui
+}
+

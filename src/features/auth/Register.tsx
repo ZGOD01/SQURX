@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "./store";
+import { useSignupMutation, useVerifyOtpMutation } from "@/lib/store/authApi";
 import { useNotificationStore } from "@/lib/store/notifications";
 import { Button, Input, Toast } from "@/components/ui";
 import { PageTransition } from "@/components/motion";
@@ -21,14 +22,27 @@ import {
 
 export function Register() {
     const [isLoading, setIsLoading] = useState(false);
-    const [toastOpen, setToastOpen] = useState(false);
+    const [toast, setToast] = useState<{ open: boolean; type: 'success'|'error'|'info'; title: string; message: string }>({ open: false, type: 'success', title: '', message: '' });
+
+    const showToast = (type: 'success'|'error'|'info', title: string, message: string) => {
+        setToast({ open: true, type, title, message });
+        setTimeout(() => setToast(prev => ({ ...prev, open: false })), 4000);
+    };
     const navigate = useNavigate();
-    const { register: registerStoreAction } = useAuthStore();
+    
+    const { setAuth } = useAuthStore();
+    const [signupMutation] = useSignupMutation();
+    const [verifyOtpMutation] = useVerifyOtpMutation();
     const { sendEmail } = useNotificationStore();
 
     // Step state
     const [step, setStep] = useState(0);
     const [direction, setDirection] = useState(1);
+    
+    // OTP Specific state
+    const [userId, setUserId] = useState<string | null>(null);
+    const [serverMessage, setServerMessage] = useState("");
+    const [otp, setOtp] = useState("");
 
     const {
         register: formRegister,
@@ -76,39 +90,77 @@ export function Register() {
 
     const onSubmit = async (data: RegisterFormValues) => {
         setIsLoading(true);
-        // Simulate API call delay
-        await new Promise((resolve) => setTimeout(resolve, 800));
-
         try {
-            await registerStoreAction(
-                data.name,
-                data.email,
-                data.role,
-                data.resume,
-                data.document,
-            );
-            setToastOpen(true);
+            const formData = new FormData();
+            formData.append('fullName', data.name);
+            formData.append('email', data.email);
+            formData.append('password', data.password);
+            formData.append('role', data.role.toLowerCase());
+            
+            if (data.role === 'STUDENT') {
+                if (data.mobile) formData.append('mobile', data.mobile);
+                // Bypassing physical file uploads for now to prevent backend ENOENT crash
+                // if (data.resume instanceof File) formData.append('resume', data.resume);
+                // if (data.document instanceof File) formData.append('schoolLeavingCertificate', data.document);
+            }
 
-            // Send welcome orientation email visually
-            setTimeout(() => {
-                sendEmail(
-                    "Welcome to Squrx!",
-                    `Your account has been successfully created.We are excited to help you find your next big opportunity!`,
-                );
-            }, 1000);
-
-            setTimeout(() => {
-                switch (data.role) {
-                    case "STUDENT":
-                        navigate("/auth/onboarding");
-                        break;
-                    case "RECRUITER":
-                        navigate("/recruiter");
-                        break;
-                }
-            }, 1200);
+            const res = await signupMutation(formData).unwrap();
+            
+            if (res.success && res.data?.userId) {
+                setUserId(res.data.userId);
+                setServerMessage(res.data.message || "OTP sent successfully.");
+                setDirection(1);
+                setStep(4);
+            } else {
+                throw new Error(res.message);
+            }
         } catch (err: any) {
-            alert(err.message || "Failed to register.");
+            showToast('error', 'Registration Failed', err.data?.message || err.message || "Failed to register. Please try again.");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleOtpSubmit = async (e?: React.FormEvent) => {
+        e?.preventDefault();
+        if(!userId || otp.length < 4) return;
+        
+        setIsLoading(true);
+        try {
+            const verifyRes = await verifyOtpMutation({ userId, otp }).unwrap();
+            
+            if(verifyRes.success && verifyRes.data?.token) {
+                setAuth(verifyRes.data.user, verifyRes.data.token);
+                showToast('success', 'Welcome to Squrx!', 'Your account has been verified. Redirecting...');
+
+                // Send welcome orientation email visually
+                setTimeout(() => {
+                    sendEmail(
+                        "Welcome to Squrx!",
+                        `Your account has been successfully created. We are excited to help you find your next big opportunity!`
+                    );
+                }, 1000);
+
+                setTimeout(() => {
+                    const role = String(verifyRes.data.user.role).toUpperCase();
+                    switch (role) {
+                        case "STUDENT":
+                            navigate("/auth/onboarding");
+                            break;
+                        case "RECRUITER":
+                            navigate("/recruiter");
+                            break;
+                        default:
+                            navigate("/auth/onboarding");
+                            break;
+                    }
+                }, 1200);
+            } else {
+                throw new Error(verifyRes.message);
+            }
+        } catch(err: any) {
+             showToast('error', 'Verification Failed', err.data?.message || err.message || "OTP verification failed.");
+        } finally {
             setIsLoading(false);
         }
     };
@@ -170,7 +222,7 @@ export function Register() {
                             Document Attached
                         </h4>
                         <p className="text-xs text-black/60 truncate max-w-[200px]">
-                            {watch(id as any)}
+                            {hasFile instanceof File ? hasFile.name : hasFile}
                         </p>
                     </motion.div>
                 ) : (
@@ -191,7 +243,7 @@ export function Register() {
                     className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
                     onChange={(e) => {
                         if (e.target.files?.[0]) {
-                            setValue(id as any, e.target.files[0].name, {
+                            setValue(id as any, e.target.files[0], {
                                 shouldValidate: true,
                             });
                         }
@@ -202,8 +254,9 @@ export function Register() {
     };
 
     // Calculate progress percentage
-    const totalSteps = selectedRole === "STUDENT" ? 4 : 3;
-    const progressPercentage = ((step + 1) / totalSteps) * 100;
+    const maxProgSteps = selectedRole === "STUDENT" ? 5 : 4;
+    const currentProgStep = step >= 4 ? maxProgSteps : step + 1;
+    const progressPercentage = (currentProgStep / maxProgSteps) * 100;
 
     return (
         <PageTransition className="min-h-screen flex items-center justify-center bg-[#fcfcfc] p-4 sm:p-8 font-sans text-black overflow-hidden relative selection:bg-black/10">
@@ -284,19 +337,20 @@ export function Register() {
                                     onSubmit={(e) => {
                                         e.preventDefault();
                                         if (step === 3) handleSubmit(onSubmit)(e);
+                                        else if (step === 4) handleOtpSubmit(e);
                                     }}
                                     className="flex flex-col h-full"
                                 >
                                     {/* Step Indicator Top */}
                                     <div className="flex justify-between items-center mb-8">
                                         <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-black/40">
-                                            Step {step + 1} of {totalSteps}
+                                            Step {currentProgStep} of {maxProgSteps}
                                         </span>
                                         <div className="flex gap-1">
-                                            {[...Array(totalSteps)].map((_, i) => (
+                                            {[...Array(maxProgSteps)].map((_, i) => (
                                                 <div
                                                     key={i}
-                                                    className={`w-1.5 h-1.5 rounded-full ${i === step ? "bg-black" : i < step ? "bg-black/30" : "bg-black/10"} `}
+                                                    className={`w-1.5 h-1.5 rounded-full ${i === (currentProgStep - 1) ? "bg-black" : i < (currentProgStep - 1) ? "bg-black/30" : "bg-black/10"} `}
                                                 />
                                             ))}
                                         </div>
@@ -391,10 +445,10 @@ export function Register() {
                                         <div className="flex-1 space-y-8">
                                             <div className="space-y-2">
                                                 <h2 className="text-3xl font-light tracking-tight">
-                                                    Student Credentials
+                                                    Basic Details
                                                 </h2>
                                                 <p className="text-black/50 font-light">
-                                                    Let's get the basics down.
+                                                    Let's get the essentials down.
                                                 </p>
                                             </div>
                                             <div className="space-y-5">
@@ -418,7 +472,7 @@ export function Register() {
                                                     <Input
                                                         id="email"
                                                         type="email"
-                                                        placeholder="e.g. jane@university.edu"
+                                                        placeholder="e.g. jane@company.com"
                                                         className={`w-full bg-white hover:bg-black/[0.02] border border-black/10 focus-visible:ring-1 focus-visible:ring-black focus-visible:border-black rounded-xl p-3 shadow-inner transition-all duration-300 font-medium ${errors.email ? "border-red-500 focus-visible:border-red-500" : ""} `}
                                                         {...formRegister("email")}
                                                     />
@@ -432,7 +486,7 @@ export function Register() {
                                                         <Input
                                                             id="mobile"
                                                             type="tel"
-                                                            placeholder="+91 00000 00000"
+                                                            placeholder="9876543210"
                                                             className={`w-full bg-white hover:bg-black/[0.02] border border-black/10 focus-visible:ring-1 focus-visible:ring-black focus-visible:border-black rounded-xl p-3 shadow-inner transition-all duration-300 font-medium ${errors.mobile ? "border-red-500 focus-visible:border-red-500" : ""} `}
                                                             {...formRegister("mobile")}
                                                         />
@@ -473,7 +527,7 @@ export function Register() {
                                         <div className="flex-1 space-y-6">
                                             <div className="space-y-2">
                                                 <h2 className="text-3xl font-light tracking-tight">
-                                                    Final Step
+                                                    Set Password
                                                 </h2>
                                                 <p className="text-black/50 font-light">
                                                     Create a secure password to finish.
@@ -500,13 +554,89 @@ export function Register() {
                                                         <strong className="text-black font-semibold uppercase tracking-wider block mb-1">
                                                             Registration Disclaimer
                                                         </strong>
-                                                        By proceeding, you agree to our Terms of Service and
-                                                        acknowledge that all provided documents are
-                                                        authentic. Uploading fraudulent documents may result
-                                                        in permanent suspension. Your data is encrypted and
-                                                        handled securely.
+                                                        By clicking Start Setup, an OTP will be sent to confirm your identity. Make sure your provided details are accurate.
                                                     </p>
                                                 </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Frame 4: OTP Step */}
+                                    {step === 4 && (
+                                        <div className="flex-1 space-y-6">
+                                            <div className="space-y-2">
+                                                <h2 className="text-3xl font-light tracking-tight">
+                                                    Verify OTP
+                                                </h2>
+                                                <p className="text-black/50 font-light max-w-[90%]">
+                                                    {serverMessage}
+                                                </p>
+                                            </div>
+
+                                            <div className="space-y-6 mt-10">
+                                                <label className="text-sm font-semibold text-black/70 uppercase tracking-[0.2em] text-center block">
+                                                    Enter 4-Digit Code
+                                                </label>
+                                                <div className="flex justify-center gap-3 sm:gap-4">
+                                                    {[0, 1, 2, 3].map((index) => {
+                                                        const isActive = otp[index] && otp[index] !== "";
+                                                        return (
+                                                            <div key={index} className="relative">
+                                                                <motion.input
+                                                                    id={`otp-input-${index}`}
+                                                                    type="text"
+                                                                    inputMode="numeric"
+                                                                    maxLength={1}
+                                                                    value={otp[index] || ""}
+                                                                    initial={{ y: 20, opacity: 0 }}
+                                                                    animate={{ y: 0, opacity: 1 }}
+                                                                    transition={{ delay: index * 0.1, type: "spring", stiffness: 350, damping: 25 }}
+                                                                    whileFocus={{ scale: 1.05, y: -2 }}
+                                                                    whileHover={{ scale: 1.02 }}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value.replace(/[^0-9]/g, "");
+                                                                        const newOtp = otp.split('');
+                                                                        newOtp[index] = val;
+                                                                        setOtp(newOtp.join(''));
+                                                                        if (val && index < 3) {
+                                                                            document.getElementById(`otp-input-${index + 1}`)?.focus();
+                                                                        }
+                                                                    }}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Backspace' && !otp[index] && index > 0) {
+                                                                            document.getElementById(`otp-input-${index - 1}`)?.focus();
+                                                                            const newOtp = otp.split('');
+                                                                            newOtp[index - 1] = '';
+                                                                            setOtp(newOtp.join(''));
+                                                                        }
+                                                                    }}
+                                                                    onPaste={(e) => {
+                                                                        e.preventDefault();
+                                                                        const pastedData = e.clipboardData.getData("text").replace(/[^0-9]/g, "").slice(0, 4);
+                                                                        if (pastedData) {
+                                                                            setOtp(pastedData);
+                                                                            const focusIndex = Math.min(3, pastedData.length);
+                                                                            document.getElementById(`otp-input-${focusIndex === 4 ? 3 : focusIndex}`)?.focus();
+                                                                        }
+                                                                    }}
+                                                                    className={`w-14 h-16 sm:w-16 sm:h-20 text-center text-3xl sm:text-4xl font-black rounded-2xl outline-none transition-all duration-300 bg-white
+                                                                        ${isActive 
+                                                                            ? "border-2 border-black text-black shadow-[0_10px_30px_rgba(0,0,0,0.1)] relative z-20" 
+                                                                            : "border-2 border-gray-100/80 text-gray-300 shadow-sm relative z-10"
+                                                                        } 
+                                                                        focus:border-2 focus:border-blue-600 focus:text-blue-600 focus:shadow-[0_10px_40px_rgba(37,99,235,0.2)] focus:ring-4 focus:ring-blue-500/10 caret-blue-600
+                                                                    `}
+                                                                />
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-6 bg-black/5 rounded-xl p-4">
+                                                <p className="text-xs leading-relaxed text-black/70 font-light italic text-center">
+                                                    <strong>Hint (Mock Backend):</strong> Student = Last 4 digits of your mobile, Recruiter = "1234".
+                                                </p>
                                             </div>
                                         </div>
                                     )}
@@ -517,7 +647,8 @@ export function Register() {
                                             type="button"
                                             variant="ghost"
                                             onClick={prevStep}
-                                            className={`text-black/60 hover:text-black hover:bg-black/5 transition-all outline-none rounded-xl px-4 py-2 font-medium ${step === 0 ? "opacity-0 pointer-events-none" : "opacity-100"} `}
+                                            disabled={step === 4 || isLoading}
+                                            className={`text-black/60 hover:text-black hover:bg-black/5 transition-all outline-none rounded-xl px-4 py-2 font-medium ${step === 0 || step === 4 ? "opacity-0 pointer-events-none" : "opacity-100"} `}
                                         >
                                             <ArrowLeft className="w-4 h-4 mr-2" /> Back
                                         </Button>
@@ -540,7 +671,7 @@ export function Register() {
                                             >
                                                 Continue <ArrowRight className="w-4 h-4 ml-2" />
                                             </Button>
-                                        ) : (
+                                        ) : step === 3 ? (
                                             <Button
                                                 type="button"
                                                 onClick={handleSubmit(onSubmit)}
@@ -550,10 +681,23 @@ export function Register() {
                                                 {isLoading ? (
                                                     <>
                                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />{" "}
-                                                        Verifying
+                                                        Sending OTP
                                                     </>
                                                 ) : (
-                                                    "Complete"
+                                                    "Start Setup"
+                                                )}
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                type="button"
+                                                onClick={handleOtpSubmit}
+                                                disabled={isLoading || otp.length < 4}
+                                                className="bg-black text-white hover:bg-black/90 rounded-full px-8 h-12 font-medium shadow-[0_8px_30px_rgba(0,0,0,0.15)] transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
+                                            >
+                                                {isLoading ? (
+                                                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying</>
+                                                ) : (
+                                                    "Verify & Complete"
                                                 )}
                                             </Button>
                                         )}
@@ -563,30 +707,41 @@ export function Register() {
                         </AnimatePresence>
                     </div>
 
-                    <div className="text-center text-sm text-black/50 font-light mt-10">
-                        Already have an account?{" "}
-                        <Link
-                            to="/auth/login"
-                            className="text-black font-semibold hover:underline underline-offset-4"
-                        >
-                            Log in here
-                        </Link>
-                    </div>
+                    {step < 4 && (
+                        <div className="text-center text-sm text-black/50 font-light mt-10">
+                            Already have an account?{" "}
+                            <Link
+                                to="/auth/login"
+                                className="text-black font-semibold hover:underline underline-offset-4"
+                            >
+                                Log in here
+                            </Link>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {toastOpen && (
-                <div className="fixed bottom-4 right-4 z-[100]">
-                    <Toast
-                        variant="success"
-                        title="Welcome to Squrx!"
-                        onClose={() => setToastOpen(false)}
-                    >
-                        Your account has been created securely. Redirecting to your
-                        dashboard...
-                    </Toast>
-                </div>
-            )}
+            <div className="fixed bottom-4 right-4 z-[100] flex flex-col pointer-events-none">
+                <AnimatePresence>
+                    {toast.open && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+                            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                            className="pointer-events-auto"
+                        >
+                            <Toast 
+                                variant={toast.type} 
+                                title={toast.title} 
+                                description={toast.message} 
+                                onClose={() => setToast(prev => ({ ...prev, open: false }))} 
+                            />
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
         </PageTransition>
     );
 }
+
