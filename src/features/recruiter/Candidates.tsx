@@ -127,7 +127,7 @@ export function RecruiterCandidates() {
                                         <CardContent className="p-6">
                                             <div className="flex items-center gap-4 mb-4">
                                                 <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-lg shrink-0">
-                                                    {student.user.name.charAt(0)}
+                                                    {student.user.name ? student.user.name.charAt(0) : 'U'}
                                                 </div>
                                                 <div>
                                                     <h4 className="font-bold leading-tight line-clamp-1">{student.user.name}</h4>
@@ -184,10 +184,10 @@ export function RecruiterCandidates() {
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
                                 <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-2xl shrink-0">
-                                    {selectedCandidate.user.name.charAt(0)}
+                                    {selectedCandidate.user.name ? selectedCandidate.user.name.charAt(0) : 'U'}
                                 </div>
                                 <div>
-                                    <h3 className="text-xl font-bold">{selectedCandidate.user.name}</h3>
+                                    <h3 className="text-xl font-bold">{selectedCandidate.user.name || 'Unknown Candidate'}</h3>
                                     <p className="text-sm text-muted-foreground">{selectedCandidate.user.email}</p>
                                 </div>
                             </div>

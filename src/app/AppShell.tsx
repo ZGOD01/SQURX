@@ -31,8 +31,9 @@ export function AppShell() {
             if (diffDays >= 10) {
                 // Sent after a slight delay so they see it entering the dashboard
                 setTimeout(() => {
+                    const firstName = user.name ? user.name.split(' ')[0] : 'there';
                     sendEmail(
-                        `We missed you, ${user.name.split(' ')[0]}!`,
+                        `We missed you, ${firstName}!`,
                         `It's been ${diffDays} days since you last checked for opportunities on Squrx. Log back in to see fresh matches tailored for you!`
                     );
                 }, 2000);
@@ -108,10 +109,10 @@ export function AppShell() {
                 <div className="border-t border-border p-4">
                     <div className="flex items-center gap-3 mb-4 px-2">
                         <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center font-bold text-xs text-secondary-foreground">
-                            {user?.name.charAt(0).toUpperCase()}
+                            {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
                         </div>
                         <div className="overflow-hidden">
-                            <p className="text-sm font-medium truncate">{user?.name}</p>
+                            <p className="text-sm font-medium truncate">{user?.name || 'User'}</p>
                             <p className="text-xs text-muted-foreground truncate">{user?.role}</p>
                         </div>
                     </div>

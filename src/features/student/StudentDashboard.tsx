@@ -54,7 +54,7 @@ export function StudentDashboard() {
         <PageTransition className="space-y-8 max-w-7xl mx-auto pb-12">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Welcome back, {user?.name.split(' ')[0]}</h1>
+                    <h1 className="text-3xl font-bold tracking-tight">Welcome back, {user?.name ? user.name.split(' ')[0] : 'there'}</h1>
                     <p className="text-muted-foreground mt-1">
                         Here are the latest <strong className="text-primary">{preferredDomain ? displayDomainName : 'Recommended'}</strong> opportunities fetched for you.
                     </p>

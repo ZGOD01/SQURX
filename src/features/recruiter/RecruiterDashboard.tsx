@@ -57,7 +57,7 @@ export function RecruiterDashboard() {
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Recruiter Operations</h1>
-                    <p className="text-muted-foreground mt-1">Welcome back, {user?.name.split(' ')[0]}. Manage {company.name || 'your company'}'s hiring funnel.</p>
+                    <p className="text-muted-foreground mt-1">Welcome back, {user?.name ? user.name.split(' ')[0] : 'there'}. Manage {company.name || 'your company'}'s hiring funnel.</p>
                 </div>
                 <Link to="/recruiter/vacancies">
                     <Button>Post New Vacancy</Button>
