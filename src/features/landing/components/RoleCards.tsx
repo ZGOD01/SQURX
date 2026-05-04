@@ -1,11 +1,15 @@
-import { motion } from 'framer-motion';
-import { ArrowUpRight, GraduationCap, Building2, Sparkles } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowUpRight, GraduationCap, Building2, Sparkles, X } from 'lucide-react';
+import { Modal } from '@/components/ui';
 
 const ROLES = [
     {
+        targetRole: "student",
         title: "Students & Grads",
         subtitle: "The Dreamers",
         desc: "Stop applying into the void. Build your profile, showcase your real vibe, and let the perfect opportunities magically find you.",
+        extendedDesc: "The traditional job search is broken. We believe you are more than a single page PDF. Here, you get to build a comprehensive, multi-dimensional profile that captures your true potential, skills, and personality. Join a thriving ecosystem where top-tier companies actively seek out your specific energy and talent. Get matched with incredible mentors, land your dream opportunities, and accelerate your career trajectory—all in one place.",
         icon: GraduationCap,
         tags: ["Profile Building", "Mentorship", "Jobs"],
         bgOrb1: "bg-blue-400/20",
@@ -15,9 +19,11 @@ const ROLES = [
         hoverShadow: "hover:shadow-blue-500/10 hover:border-blue-200"
     },
     {
+        targetRole: "recruiter",
         title: "Companies",
         subtitle: "The Builders",
         desc: "Culture fit matters more than a resume. Connect with brilliant, motivated individuals who match your incredible team's energy.",
+        extendedDesc: "Hiring the right talent is about more than just matching keywords on a resume. It's about finding the perfect culture add for your team. Our platform gives you unprecedented access to a curated pool of ambitious, verified talent. View rich profiles, understand candidates beyond their technical skills, and streamline your entire recruitment pipeline. Stop wasting time on endless interviews and start building the team that will build your future.",
         icon: Building2,
         tags: ["Hiring", "Culture", "Talent"],
         bgOrb1: "bg-orange-400/20",
@@ -27,9 +33,11 @@ const ROLES = [
         hoverShadow: "hover:shadow-orange-500/10 hover:border-orange-200"
     },
     {
+        targetRole: "mentor",
         title: "Mentors",
         subtitle: "The Guides",
         desc: "Share your journey. Shape the next generation of bright minds and get rewarded for making a genuine difference in their lives.",
+        extendedDesc: "You've walked the path, faced the challenges, and built the expertise. Now, it's time to pass the torch. Join our elite network of mentors and connect with highly motivated individuals who are eager to learn from your experiences. Whether you are providing 1-on-1 consultations, sharing industry insights, or guiding someone through a tough career transition, your impact here will shape the future of the industry.",
         icon: Sparkles,
         tags: ["Networking", "Guidance", "Impact"],
         bgOrb1: "bg-emerald-400/20",
@@ -41,6 +49,48 @@ const ROLES = [
 ];
 
 export function RoleCards() {
+    const [articles, setArticles] = useState<any[]>([]);
+    const [selectedRole, setSelectedRole] = useState<any | null>(null);
+
+    useEffect(() => {
+        fetch('https://squrx-backend.onrender.com/api/v1/articles')
+            .then(res => res.json())
+            .then(res => {
+                if (res.success && res.data) {
+                    // Ensure the response is an array before setting state to prevent .find crashes
+                    const fetchedItems = Array.isArray(res.data) ? res.data : (Array.isArray(res.data.articles) ? res.data.articles : []);
+                    setArticles(fetchedItems);
+                }
+            })
+            .catch(console.error);
+    }, []);
+
+    // Hide Navbar and prevent background scrolling when overlay is active
+    useEffect(() => {
+        const navbar = document.getElementById('main-navbar');
+        if (selectedRole) {
+            if (navbar) {
+                navbar.style.opacity = '0';
+                navbar.style.pointerEvents = 'none';
+            }
+            document.body.style.overflow = 'hidden';
+        } else {
+            if (navbar) {
+                navbar.style.opacity = '1';
+                navbar.style.pointerEvents = 'auto';
+            }
+            document.body.style.overflow = 'unset';
+        }
+        
+        return () => {
+            if (navbar) {
+                navbar.style.opacity = '1';
+                navbar.style.pointerEvents = 'auto';
+            }
+            document.body.style.overflow = 'unset';
+        };
+    }, [selectedRole]);
+
     return (
         <section className="relative py-24 w-full bg-[#fafafa] overflow-hidden">
             {/* Global background ambient glow */}
@@ -91,9 +141,17 @@ export function RoleCards() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-10">
                     {ROLES.map((role, i) => {
                         const Icon = role.icon;
+                        const matchedArticle = Array.isArray(articles) ? articles.find(a => a.targetRole === role.targetRole && a.isActive) : undefined;
+                        const displayTitle = matchedArticle ? matchedArticle.title : role.title;
+                        // Use a short preview of the content for the card description if article exists
+                        const displayDesc = matchedArticle && matchedArticle.content 
+                            ? (matchedArticle.content.length > 120 ? matchedArticle.content.substring(0, 120) + '...' : matchedArticle.content)
+                            : role.desc;
+
                         return (
                             <motion.div 
                                 key={i} 
+                                onClick={() => setSelectedRole({ ...role, article: matchedArticle })}
                                 initial={{ opacity: 0, y: 40 }}
                                 whileInView={{ opacity: 1, y: 0 }}
                                 viewport={{ once: true, margin: "-50px" }}
@@ -126,11 +184,11 @@ export function RoleCards() {
                                 {/* Content */}
                                 <div className="relative z-10 flex-1 flex flex-col">
                                     <h3 className="text-[32px] font-black text-[#111] mb-5 tracking-tight leading-[1.1]" style={{ fontFamily: "'Outfit', sans-serif" }}>
-                                        {role.title}
+                                        {displayTitle}
                                     </h3>
                                     
                                     <p className="text-gray-600 font-medium text-[16px] md:text-[17px] leading-[1.7] mb-10">
-                                        {role.desc}
+                                        {displayDesc}
                                     </p>
 
                                     {/* Lush Pastel Tags */}
@@ -157,6 +215,90 @@ export function RoleCards() {
                 </div>
 
             </div>
+
+            {/* Highly Impactful Custom Article Overlay */}
+            <AnimatePresence>
+                {selectedRole && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6"
+                    >
+                        {/* Backdrop Blur */}
+                        <div 
+                            className="absolute inset-0 bg-black/60 backdrop-blur-md transition-opacity"
+                            onClick={() => setSelectedRole(null)}
+                        />
+
+                        {/* Modal Content */}
+                        <motion.div
+                            initial={{ scale: 0.9, y: 20, opacity: 0 }}
+                            animate={{ scale: 1, y: 0, opacity: 1 }}
+                            exit={{ scale: 0.95, y: 10, opacity: 0 }}
+                            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                            className="relative w-full max-w-3xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+                        >
+                            {/* Header Gradient & Icon */}
+                            <div className={`relative h-28 md:h-36 w-full bg-gradient-to-br ${selectedRole.iconGradient} flex items-center justify-center overflow-hidden flex-shrink-0`}>
+                                {/* Abstract Orbs in Header */}
+                                <div className="absolute top-0 right-0 w-48 h-48 bg-white/20 rounded-full blur-2xl transform translate-x-1/2 -translate-y-1/2" />
+                                <div className="absolute bottom-0 left-0 w-48 h-48 bg-black/10 rounded-full blur-2xl transform -translate-x-1/2 translate-y-1/2" />
+                                
+                                {selectedRole.icon && <selectedRole.icon className="w-16 h-16 md:w-20 md:h-20 text-white opacity-90 drop-shadow-md relative z-10" strokeWidth={1.5} />}
+                                
+                                {/* Close Button */}
+                                <button 
+                                    onClick={() => setSelectedRole(null)}
+                                    className="absolute top-4 right-4 md:top-6 md:right-6 w-9 h-9 bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-colors z-20"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            {/* Body Content */}
+                            <div className="flex-1 overflow-y-auto p-6 md:p-8">
+                                <div className="inline-block px-3 py-1 rounded-full bg-gray-100 text-gray-600 text-[10px] md:text-[11px] font-bold uppercase tracking-[0.2em] mb-4">
+                                    {selectedRole.subtitle}
+                                </div>
+                                
+                                <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-4 tracking-tight leading-[1.1]" style={{ fontFamily: "'Outfit', sans-serif" }}>
+                                    {selectedRole?.article?.title || selectedRole.title}
+                                </h2>
+                                
+                                <div className="prose prose-base md:prose-lg max-w-none">
+                                    {selectedRole?.article?.content ? (
+                                        <p className="text-lg md:text-xl leading-relaxed text-gray-600 font-medium">
+                                            {selectedRole.article.content}
+                                        </p>
+                                    ) : (
+                                        <div className="space-y-4 md:space-y-6">
+                                            <p className="text-lg md:text-xl leading-relaxed text-gray-800 font-semibold">
+                                                {selectedRole.desc}
+                                            </p>
+                                            <p className="text-base md:text-lg leading-relaxed text-gray-600 font-medium">
+                                                {selectedRole.extendedDesc}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {selectedRole?.article && (
+                                    <div className="mt-8 p-4 md:p-5 bg-blue-50/50 rounded-2xl border border-blue-100/50 flex items-start gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                                            <Sparkles className="w-5 h-5 text-blue-600" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm md:text-base font-bold text-gray-900">Admin Curated Insight</h4>
+                                            <p className="text-xs md:text-sm text-gray-500 mt-0.5 md:mt-1 leading-relaxed">This exclusive content has been published and curated directly by the Squrx administration team to guide your journey.</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </section>
     );
 }

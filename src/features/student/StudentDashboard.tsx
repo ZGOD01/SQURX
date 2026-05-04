@@ -33,18 +33,22 @@ export function StudentDashboard() {
 
     // Filter jobs roughly matching their "domain/careerGoal"
     const preferredDomain = profile?.careerGoal || '';
-    const displayDomainName = domainMapping[preferredDomain] || 'Your Chosen Domain';
+    const displayDomainName = domainMapping[preferredDomain] || preferredDomain || 'Your Chosen Domain';
 
     // Mock filtering logic for the domain
     const personalizedJobs = jobs.filter(j => {
         if (!preferredDomain) return true;
         const text = (j.title + ' ' + j.description).toLowerCase();
+        const goal = preferredDomain.toLowerCase();
 
+        // Specific mappings for legacy keys
         if (preferredDomain === 'operation' && (text.includes('dev') || text.includes('system') || text.includes('operations') || text.includes('cloud'))) return true;
         if (preferredDomain === 'testing' && (text.includes('qa') || text.includes('test') || text.includes('automation') || text.includes('quality'))) return true;
         if (preferredDomain === 'developer' && (text.includes('developer') || text.includes('engineer') || text.includes('software') || text.includes('frontend') || text.includes('backend'))) return true;
 
-        return false;
+        // Generic keyword matching for other domains
+        const keywords = goal.split(' ').filter(k => k.length > 2);
+        return keywords.some(k => text.includes(k));
     });
 
     // Fallback if no specific match, just show some jobs to prevent a fully empty screen during demo
@@ -54,7 +58,7 @@ export function StudentDashboard() {
         <PageTransition className="space-y-8 max-w-7xl mx-auto pb-12">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Welcome back, {user?.name ? user.name.split(' ')[0] : 'there'}</h1>
+                    <h1 className="text-3xl font-bold tracking-tight">Welcome back, {(user?.name || user?.fullName) ? (user.name || user.fullName).split(' ')[0] : 'there'}</h1>
                     <p className="text-muted-foreground mt-1">
                         Here are the latest <strong className="text-primary">{preferredDomain ? displayDomainName : 'Recommended'}</strong> opportunities fetched for you.
                     </p>

@@ -105,7 +105,29 @@ export function GlobalCareerDiagnostic() {
     const [showOverlay, setShowOverlay] = useState(true);
     const [initialChoice, setInitialChoice] = useState<'jobs' | 'consultation' | null>(null);
 
+    const [questions, setQuestions] = useState<any[]>(QUESTIONS);
+
     useEffect(() => {
+        // Fetch real quizzes
+        fetch('https://squrx-backend.onrender.com/api/v1/quizzes')
+            .then(res => res.json())
+            .then(res => {
+                if (res.success && res.data && res.data.length > 0) {
+                    const mapped = res.data.map((q: any) => ({
+                        id: q._id,
+                        title: q.title,
+                        description: q.description,
+                        options: q.options.map((o: any) => ({
+                            id: o._id,
+                            text: o.text,
+                            icon: o.icon || '✨'
+                        }))
+                    }));
+                    setQuestions(mapped);
+                }
+            })
+            .catch(console.error);
+
         consultationApi.getTimeSlots().then(res => {
             if(res.success && res.data) {
                setSlotsData(res.data);
@@ -116,13 +138,13 @@ export function GlobalCareerDiagnostic() {
     const handleSelectOption = (index: number, optionId: string) => {
         setAnswers(prev => ({ ...prev, [index]: optionId }));
         
-        if (index < QUESTIONS.length - 1) {
+        if (index < questions.length - 1) {
             setTimeout(() => setStep(index + 1), 250);
         } else {
             setIsAnalyzing(true);
             setTimeout(() => {
                 setIsAnalyzing(false);
-                setStep(QUESTIONS.length);
+                setStep(questions.length);
                 setIsLeadFormMode(true);
             }, 1800);
         }
@@ -145,7 +167,7 @@ export function GlobalCareerDiagnostic() {
                 // Safely handle old cached 'opt1' values to prevent MongoDB Cast Error (which results in 422)
                 const isValidHex = /^[0-9a-fA-F]{24}$/.test(rawChoice);
                 return {
-                    quizId: QUESTIONS[stepIndex]?.id || '65f000000000000000000000',
+                    quizId: questions[stepIndex]?.id || '65f000000000000000000000',
                     choiceId: isValidHex ? rawChoice : '65f000000000000000000000'
                 };
             });
@@ -203,7 +225,7 @@ export function GlobalCareerDiagnostic() {
     const handleInitialChoice = (choice: 'jobs' | 'consultation') => {
         setInitialChoice(choice);
         if (choice === 'jobs') {
-            setStep(QUESTIONS.length);
+            setStep(questions.length);
             setIsLeadFormSubmitted(true);
             setIsLeadFormMode(false);
         } else {
@@ -212,7 +234,7 @@ export function GlobalCareerDiagnostic() {
         setShowOverlay(false);
     };
 
-    const progressPercentage = (step / QUESTIONS.length) * 100;
+    const progressPercentage = (step / questions.length) * 100;
 
     return (
         <section className="relative py-16 md:py-20 w-full bg-white overflow-hidden font-sans border-t justify-center flex border-gray-100">
@@ -327,11 +349,11 @@ export function GlobalCareerDiagnostic() {
                                     transition={{ duration: 0.3 }}
                                 >
                                     <h2 className="text-3xl md:text-3xl lg:text-4xl font-black text-gray-900 tracking-tight leading-[1.15] mb-4">
-                                        {step < QUESTIONS.length ? QUESTIONS[step].title : "Trajectory Locked."}
+                                        {step < questions.length ? questions[step].title : "Trajectory Locked."}
                                     </h2>
                                     <p className="text-base text-gray-500 font-medium leading-relaxed">
-                                        {step < QUESTIONS.length 
-                                            ? QUESTIONS[step].description 
+                                        {step < questions.length 
+                                            ? questions[step].description 
                                             : "Your asymmetrical variables have been compiled into a personalized roadmap."}
                                     </p>
                                 </motion.div>
@@ -340,8 +362,8 @@ export function GlobalCareerDiagnostic() {
 
                         <div className="mt-10 md:mt-0">
                             <div className="flex justify-between items-center mb-2 text-[11px] font-bold text-gray-400 tracking-widest uppercase">
-                                <span>Phase {step < QUESTIONS.length ? step + 1 : 'Complete'}</span>
-                                <span>{QUESTIONS.length} Questions</span>
+                                <span>Phase {step < questions.length ? step + 1 : 'Complete'}</span>
+                                <span>{questions.length} Questions</span>
                             </div>
                             <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden shadow-inner relative">
                                 <motion.div 
@@ -371,7 +393,7 @@ export function GlobalCareerDiagnostic() {
                                 </motion.div>
                             )}
 
-                            {step < QUESTIONS.length && !isAnalyzing && (
+                            {step < questions.length && !isAnalyzing && (
                                 <motion.div
                                     key={step}
                                     initial={{ opacity: 0, x: 20 }}
@@ -381,7 +403,7 @@ export function GlobalCareerDiagnostic() {
                                     className="w-full max-w-lg mx-auto"
                                 >
                                     <div className="flex flex-col gap-3">
-                                        {QUESTIONS[step].options.map((opt, idx) => {
+                                        {questions[step].options.map((opt: any, idx: number) => {
                                             const Icon = opt.icon;
                                             const isSelected = answers[step] === opt.id;
                                             const color = PALETTES[idx % PALETTES.length];
@@ -402,7 +424,11 @@ export function GlobalCareerDiagnostic() {
                                                         ? `${color.bgSolid} text-white scale-110 shadow-md` 
                                                         : `${color.bgLight} ${color.text} group-hover:shadow-md group-hover:scale-105`
                                                     }`}>
-                                                        <Icon size={20} strokeWidth={2} />
+                                                        {typeof Icon === 'string' ? (
+                                                            <span className="text-2xl">{Icon}</span>
+                                                        ) : (
+                                                            <Icon size={20} strokeWidth={2} />
+                                                        )}
                                                     </div>
 
                                                     {/* Text Focus Area */}
@@ -425,7 +451,7 @@ export function GlobalCareerDiagnostic() {
                                 </motion.div>
                             )}
 
-                            {step === QUESTIONS.length && isLeadFormMode && !isLeadFormSubmitted && (
+                            {step === questions.length && isLeadFormMode && !isLeadFormSubmitted && (
                                 <motion.div
                                     key="lead-form"
                                     initial={{ opacity: 0, scale: 0.95 }}
@@ -487,7 +513,7 @@ export function GlobalCareerDiagnostic() {
                                 </motion.div>
                             )}
 
-                            {step === QUESTIONS.length && !isAnalyzing && !isBookingMode && !isBookingConfirmed && isLeadFormSubmitted && (
+                            {step === questions.length && !isAnalyzing && !isBookingMode && !isBookingConfirmed && isLeadFormSubmitted && (
                                 <motion.div
                                     key="results"
                                     initial={{ opacity: 0, scale: 0.95 }}
@@ -531,7 +557,7 @@ export function GlobalCareerDiagnostic() {
                                 </motion.div>
                             )}
 
-                            {step === QUESTIONS.length && isBookingMode && !isBookingConfirmed && (
+                            {step === questions.length && isBookingMode && !isBookingConfirmed && (
                                 <motion.div
                                     key="booking-flow"
                                     initial={{ opacity: 0, scale: 0.95 }}
@@ -614,7 +640,7 @@ export function GlobalCareerDiagnostic() {
                                 </motion.div>
                             )}
 
-                            {step === QUESTIONS.length && isBookingConfirmed && (
+                            {step === questions.length && isBookingConfirmed && (
                                 <motion.div
                                     key="booking-success"
                                     initial={{ opacity: 0, scale: 0.95 }}

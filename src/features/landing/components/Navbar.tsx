@@ -13,7 +13,7 @@ export function Navbar() {
     }, []);
 
     return (
-        <header className={cn(
+        <header id="main-navbar" className={cn(
             "fixed top-0 inset-x-0 z-[100] w-full transition-all duration-300 flex justify-center",
             scrolled ? "py-4 md:py-6" : "py-6 md:py-8"
         )}>

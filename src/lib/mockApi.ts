@@ -33,11 +33,53 @@ export const mockApi = {
   // Student
   getStudentProfile: async (userId: string): Promise<StudentProfile | null> => {
     await delay(500);
-    return MockDB.getStudentProfile(userId);
+    const profile = MockDB.getStudentProfile(userId);
+    try {
+        const token = localStorage.getItem('token');
+        if (token && profile) {
+            const res = await fetch('https://squrx-backend.onrender.com/api/v1/user/me', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const { data } = await res.json();
+                if (data) {
+                    profile.cvUrl = data.resume || profile.cvUrl;
+                    profile.documentUrl = data.schoolLeavingCertificate || profile.documentUrl;
+                    // Sync the real domain/career goal
+                    if (data.domain?.name) {
+                        profile.careerGoal = data.domain.name;
+                    } else if (data.customDomain) {
+                        profile.careerGoal = data.customDomain;
+                    }
+                }
+            }
+        }
+    } catch(e) {
+        console.error("Failed to fetch real profile data", e);
+    }
+    return profile;
   },
   updateStudentProfile: async (userId: string, data: Partial<StudentProfile>): Promise<void> => {
     await delay();
     MockDB.updateStudentProfile(userId, data);
+    
+    // Attempt to sync with real backend
+    try {
+        const token = localStorage.getItem('token');
+        if (token && data.careerGoal) {
+            // we don't have domain ID here, just the name, so we use customDomain field
+            await fetch('https://squrx-backend.onrender.com/api/v1/user/me', {
+                method: 'PUT',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ customDomain: data.careerGoal })
+            });
+        }
+    } catch(e) {
+        console.error("Failed to sync profile update with backend", e);
+    }
   },
   deleteStudentAccount: async (userId: string): Promise<void> => {
     await delay(1000); // give it a mock delay for realism

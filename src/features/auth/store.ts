@@ -20,7 +20,14 @@ export const useAuthStore = create<AuthStore>()(
       setAuth: (user: any, token: string) => {
         // Ensure role is uppercase to match frontend role checking
         const role = String(user.role).toUpperCase();
-        set({ user: { ...user, role } });
+        // Map backend specific fields to frontend expected ones
+        const mappedUser = { 
+            ...user, 
+            role, 
+            name: user.fullName || user.name, 
+            id: user._id || user.id 
+        };
+        set({ user: mappedUser });
         localStorage.setItem('token', token);
       },
 

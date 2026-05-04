@@ -79,18 +79,11 @@ export function StudentProfile() {
         setToastMessage('CV uploaded successfully.');
         if (cvInputRef.current) cvInputRef.current.value = '';
     };
-
-        if (cvInputRef.current) cvInputRef.current.value = '';
-    };
-
     const removeCV = async () => {
         if (user) {
             await updateProfile(user.id, { cvUrl: null });
             setToastMessage('CV removed.');
             sendEmail('CV Removed', 'Your active Curriculum Vitae has been successfully removed from our internal databases.');
-        }
-    };
-
         }
     };
 
@@ -263,8 +256,6 @@ export function StudentProfile() {
                                 </div>
                             )}
                         </CardContent>
-                    </Card>
-
                     </Card>
                 </div>
             </div>

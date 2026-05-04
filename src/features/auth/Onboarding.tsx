@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from './store';
@@ -24,12 +24,33 @@ export function Onboarding() {
     const navigate = useNavigate();
 
     const { user } = useAuthStore();
-    const { updateProfile } = useStudentStore();
+    const { updateProfile, profile } = useStudentStore();
+
+    const [domainsList, setDomainsList] = useState<string[]>(ALL_DOMAINS);
+
+    useEffect(() => {
+        // If user already has a domain, skip onboarding
+        if (profile?.careerGoal) {
+            navigate('/student');
+            return;
+        }
+
+        fetch('https://squrx-backend.onrender.com/api/v1/domains')
+            .then(res => res.json())
+            .then(res => {
+                if (res.success && res.data) {
+                    const fetchedDomains = res.data.map((d: any) => d.name);
+                    const merged = Array.from(new Set([...ALL_DOMAINS, ...fetchedDomains])).sort();
+                    setDomainsList(merged);
+                }
+            })
+            .catch(console.error);
+    }, [profile, navigate]);
 
     const filteredDomains = useMemo(() => {
-        if (!searchQuery) return ALL_DOMAINS;
-        return ALL_DOMAINS.filter(d => d.toLowerCase().includes(searchQuery.toLowerCase()));
-    }, [searchQuery]);
+        if (!searchQuery) return domainsList;
+        return domainsList.filter(d => d.toLowerCase().includes(searchQuery.toLowerCase()));
+    }, [searchQuery, domainsList]);
 
     const handleContinue = async () => {
         if (!selectedDomain || !user) return;
