@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import UiPreview from '@/app/UiPreview';
 import { AppShell } from '@/app/AppShell';
 import { ProtectedRoute } from '@/app/ProtectedRoute';
+import { GuestRoute } from '@/app/GuestRoute';
 import { RoleGuard } from '@/app/RoleGuard';
 import { EmailToaster } from '@/components/ui';
 
@@ -21,9 +22,21 @@ function App() {
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<Landing />} />
-        <Route path="/auth/login" element={<Login />} />
-        <Route path="/auth/register" element={<Register />} />
-        <Route path="/auth/forgot-password" element={<ForgotPassword />} />
+        <Route path="/auth/login" element={
+          <GuestRoute>
+            <Login />
+          </GuestRoute>
+        } />
+        <Route path="/auth/register" element={
+          <GuestRoute>
+            <Register />
+          </GuestRoute>
+        } />
+        <Route path="/auth/forgot-password" element={
+          <GuestRoute>
+            <ForgotPassword />
+          </GuestRoute>
+        } />
         <Route path="/auth/onboarding" element={
           <ProtectedRoute>
             <Onboarding />

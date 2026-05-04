@@ -60,7 +60,6 @@ export function Register() {
             mobile: "",
             password: "",
             resume: undefined,
-            document: undefined,
         },
     });
 
@@ -512,11 +511,6 @@ export function Register() {
                                                     id="resume"
                                                     label="Latest Resume (CV)"
                                                     description="PDF, DOCX format. Max 5MB."
-                                                />
-                                                <FileUploadArea
-                                                    id="document"
-                                                    label="School Leaving Certificate"
-                                                    description="Required for identity verification."
                                                 />
                                             </div>
                                         </div>

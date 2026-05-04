@@ -18,13 +18,11 @@ export function StudentProfile() {
     
     const [isSaving, setIsSaving] = useState(false);
     const [isUploadingCV, setIsUploadingCV] = useState(false);
-    const [isUploadingDoc, setIsUploadingDoc] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
     const cvInputRef = useRef<HTMLInputElement>(null);
-    const docInputRef = useRef<HTMLInputElement>(null);
     const fetchedRef = useRef(false);
 
     const { register, handleSubmit, reset, formState: { errors } } = useForm<StudentProfileValues>({
@@ -82,23 +80,7 @@ export function StudentProfile() {
         if (cvInputRef.current) cvInputRef.current.value = '';
     };
 
-    const handleDocUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        if (file.size > 5 * 1024 * 1024) { alert("File is too large. Max size is 5MB."); return; }
-        const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-        if (!validTypes.includes(file.type)) { alert("Invalid format. PDF/DOC/DOCX only."); return; }
-
-        setIsUploadingDoc(true);
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        if (user) {
-            await updateProfile(user.id, { documentUrl: URL.createObjectURL(file) });
-            sendEmail('Document Verification Complete', `Your document (${file.name}) was successfully stored and marked as verified on your profile.`);
-        }
-        setIsUploadingDoc(false);
-        setToastMessage('Document uploaded successfully.');
-        if (docInputRef.current) docInputRef.current.value = '';
+        if (cvInputRef.current) cvInputRef.current.value = '';
     };
 
     const removeCV = async () => {
@@ -109,11 +91,6 @@ export function StudentProfile() {
         }
     };
 
-    const removeDoc = async () => {
-        if (user) {
-            await updateProfile(user.id, { documentUrl: null });
-            setToastMessage('Document removed.');
-            sendEmail('Document Removed', 'Your active document has been successfully removed from our internal databases.');
         }
     };
 
@@ -168,7 +145,7 @@ export function StudentProfile() {
                     <p className="text-muted-foreground mt-1 max-w-lg">
                         {completion === 100
                             ? "Your profile is fully complete! You are now 4x more likely to be noticed by top-tier firms."
-                            : `A complete profile is 4x more likely to be noticed. ${(!profile.cvUrl || !profile.documentUrl) ? 'Make sure you upload your CV and verified documents.' : 'Finish adding your details below to reach 100% visibility.'}`
+                            : `A complete profile is 4x more likely to be noticed. ${!profile.cvUrl ? 'Make sure you upload your CV.' : 'Finish adding your details below to reach 100% visibility.'}`
                         }
                     </p>
                 </div>
@@ -288,71 +265,6 @@ export function StudentProfile() {
                         </CardContent>
                     </Card>
 
-                    <Card className="border-border/60 shadow-sm bg-card">
-                        <CardHeader>
-                            <CardTitle>School Leaving Certificate</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {profile.documentUrl ? (
-                                <div className="space-y-4">
-                                    <div className="p-4 border border-border/60 bg-muted/20 rounded-xl flex items-start gap-4 shadow-sm">
-                                        <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                                            <FileText size={20} />
-                                        </div>
-                                        <div className="flex-1 overflow-hidden">
-                                            <h4 className="font-semibold text-sm truncate" title="Uploaded Document">{profile.documentUrl.replace(/^.*[\\/]/, '') || 'School_Certificate.doc'}</h4>
-                                            <p className="text-xs text-muted-foreground mt-0.5">Verified recently</p>
-                                        </div>
-                                        <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2" onClick={removeDoc}>
-                                            <Trash2 size={16} />
-                                        </Button>
-                                    </div>
-
-                                    <div className="relative">
-                                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border"></div></div>
-                                        <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">Replace Document</span></div>
-                                    </div>
-
-                                    <Button variant="outline" className="w-full cursor-pointer overflow-hidden relative group">
-                                        <span className="flex items-center gap-2 group-hover:text-primary transition-colors">
-                                            <UploadCloud size={18} /> Upload New Certificate
-                                        </span>
-                                        <input
-                                            type="file"
-                                            onChange={handleDocUpload}
-                                            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                            className="absolute inset-0 opacity-0 cursor-pointer"
-                                        />
-                                    </Button>
-                                </div>
-                            ) : (
-                                <div className="border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center justify-center text-center bg-muted/10 hover:bg-muted/30 hover:border-primary/40 transition-colors relative cursor-pointer group">
-                                    {isUploadingDoc ? (
-                                        <div className="flex flex-col items-center gap-4 py-8">
-                                            <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                                            <p className="text-sm font-medium">Processing document...</p>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                                <UploadCloud size={28} />
-                                            </div>
-                                            <h4 className="font-bold mb-1">Upload Certificate</h4>
-                                            <p className="text-sm text-muted-foreground max-w-[200px]">PDF, DOC, DOCX up to 5MB</p>
-                                            <Button size="sm" className="mt-6 font-medium px-6">Select File</Button>
-                                        </>
-                                    )}
-                                    <input
-                                        type="file"
-                                        ref={docInputRef}
-                                        onChange={handleDocUpload}
-                                        disabled={isUploadingDoc}
-                                        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                        className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-wait"
-                                    />
-                                </div>
-                            )}
-                        </CardContent>
                     </Card>
                 </div>
             </div>

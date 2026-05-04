@@ -102,6 +102,8 @@ export function GlobalCareerDiagnostic() {
     const [isLeadFormSubmitted, setIsLeadFormSubmitted] = useState(false);
 
     const [slotsData, setSlotsData] = useState<any[]>([]);
+    const [showOverlay, setShowOverlay] = useState(true);
+    const [initialChoice, setInitialChoice] = useState<'jobs' | 'consultation' | null>(null);
 
     useEffect(() => {
         consultationApi.getTimeSlots().then(res => {
@@ -198,14 +200,116 @@ export function GlobalCareerDiagnostic() {
 
     const handleLogin = () => navigate('/student/consultation');
 
+    const handleInitialChoice = (choice: 'jobs' | 'consultation') => {
+        setInitialChoice(choice);
+        if (choice === 'jobs') {
+            setStep(QUESTIONS.length);
+            setIsLeadFormSubmitted(true);
+            setIsLeadFormMode(false);
+        } else {
+            setStep(0);
+        }
+        setShowOverlay(false);
+    };
+
     const progressPercentage = (step / QUESTIONS.length) * 100;
 
     return (
         <section className="relative py-16 md:py-20 w-full bg-white overflow-hidden font-sans border-t justify-center flex border-gray-100">
-            <FadeInOnView className="max-w-[1000px] w-full mx-auto px-4 sm:px-6">
+            <FadeInOnView className="max-w-[1000px] w-full mx-auto px-4 sm:px-6 relative">
                 
+                {/* Overlay with Options */}
+                <AnimatePresence>
+                    {showOverlay && (
+                        <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 z-[100] flex items-center justify-center p-4 sm:p-6"
+                        >
+                            <div className="absolute inset-0 bg-white/20 backdrop-blur-sm pointer-events-none" />
+                            
+                            <motion.div 
+                                initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                                animate={{ scale: 1, opacity: 1, y: 0 }}
+                                transition={{ type: "spring", damping: 25, stiffness: 120 }}
+                                className="max-w-3xl w-full relative z-10"
+                            >
+                                <div className="text-center mb-10">
+                                    <motion.div 
+                                        initial={{ y: -20, opacity: 0 }}
+                                        animate={{ y: 0, opacity: 1 }}
+                                        transition={{ delay: 0.1 }}
+                                        className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-600 text-white text-[10px] font-black uppercase tracking-[0.2em] mb-6 shadow-xl shadow-blue-600/20"
+                                    >
+                                        <Compass size={14} strokeWidth={3} /> Select Path
+                                    </motion.div>
+                                    <h3 className="text-4xl md:text-5xl font-black text-gray-900 mb-4 tracking-tighter leading-none">
+                                        Tailor Your Experience.
+                                    </h3>
+                                    <p className="text-lg text-gray-500 font-medium max-w-lg mx-auto">
+                                        Whether you're seeking expert advice or immediate career moves, we have the right architecture for you.
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+                                    {/* Consultation Path */}
+                                    <motion.button 
+                                        whileHover={{ y: -8, scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={() => handleInitialChoice('consultation')}
+                                        className="relative group overflow-hidden bg-white rounded-[2.5rem] p-8 md:p-10 border-2 border-transparent hover:border-blue-600 transition-all duration-500 shadow-[0_20px_50px_rgba(0,0,0,0.05)] hover:shadow-[0_40px_80px_rgba(37,99,235,0.15)] text-left flex flex-col items-start"
+                                    >
+                                        <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity">
+                                            <CalendarDays size={120} strokeWidth={1} />
+                                        </div>
+                                        
+                                        <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-8 group-hover:bg-blue-600 group-hover:text-white transition-all duration-500 shadow-inner">
+                                            <CalendarDays size={32} strokeWidth={2.5} />
+                                        </div>
+                                        
+                                        <h4 className="text-2xl font-black text-gray-900 mb-3 tracking-tight group-hover:text-blue-600 transition-colors">Book Consultation</h4>
+                                        <p className="text-gray-500 font-medium leading-relaxed mb-8 flex-1">
+                                            Get a detailed diagnostic and 1-on-1 strategy session with global career architects.
+                                        </p>
+                                        
+                                        <div className="flex items-center gap-2 text-blue-600 font-black text-xs uppercase tracking-widest group-hover:gap-4 transition-all">
+                                            Start Diagnostic <ArrowRight size={16} strokeWidth={3} />
+                                        </div>
+                                    </motion.button>
+
+                                    {/* Jobs Path */}
+                                    <motion.button 
+                                        whileHover={{ y: -8, scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={() => handleInitialChoice('jobs')}
+                                        className="relative group overflow-hidden bg-white rounded-[2.5rem] p-8 md:p-10 border-2 border-transparent hover:border-purple-600 transition-all duration-500 shadow-[0_20px_50px_rgba(0,0,0,0.05)] hover:shadow-[0_40px_80px_rgba(124,58,237,0.15)] text-left flex flex-col items-start"
+                                    >
+                                        <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity">
+                                            <Briefcase size={120} strokeWidth={1} />
+                                        </div>
+
+                                        <div className="w-16 h-16 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mb-8 group-hover:bg-purple-600 group-hover:text-white transition-all duration-500 shadow-inner">
+                                            <Briefcase size={32} strokeWidth={2.5} />
+                                        </div>
+                                        
+                                        <h4 className="text-2xl font-black text-gray-900 mb-3 tracking-tight group-hover:text-purple-600 transition-colors">Explore Jobs</h4>
+                                        <p className="text-gray-500 font-medium leading-relaxed mb-8 flex-1">
+                                            Bypass the diagnostic and dive straight into high-impact global job opportunities.
+                                        </p>
+                                        
+                                        <div className="flex items-center gap-2 text-purple-600 font-black text-xs uppercase tracking-widest group-hover:gap-4 transition-all">
+                                            Browse Openings <ArrowRight size={16} strokeWidth={3} />
+                                        </div>
+                                    </motion.button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 {/* MEDIUM SIZED: Reduced min-h, rounded corners, shadow */}
-                <div className="flex flex-col md:flex-row w-full min-h-[480px] bg-white rounded-3xl overflow-hidden shadow-2xl shadow-gray-200/40">
+                <div className={`flex flex-col md:flex-row w-full min-h-[480px] bg-white rounded-3xl overflow-hidden shadow-2xl shadow-gray-200/40 transition-all duration-700 ${showOverlay ? 'blur-[12px] scale-[0.98] pointer-events-none brightness-95' : 'blur-0 scale-100'}`}>
                     
                     {/* LEFT SIDE: Heading & Context */}
                     <div className="w-full md:w-[45%] bg-white p-6 md:p-10 flex flex-col justify-between">
@@ -401,17 +505,29 @@ export function GlobalCareerDiagnostic() {
                                     </h3>
                                     
                                     <div className="flex flex-col gap-3 w-full max-w-xs mx-auto">
-                                        <Button onClick={handleBookConsultationClick} className="w-full rounded-xl h-12 text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-lg shadow-blue-600/20 hover:-translate-y-0.5 transition-all">
-                                            <CalendarDays className="mr-2 w-4 h-4" /> Book Consultation
-                                        </Button>
-                                        <Button variant="outline" onClick={handleLogin} className="w-full rounded-xl h-12 text-sm border-2 border-gray-200 text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-900 hover:text-gray-900 font-bold hover:-translate-y-0.5 transition-all">
-                                            <LogIn className="mr-2 w-4 h-4" /> Login
+                                        {initialChoice !== 'jobs' && (
+                                            <Button onClick={handleBookConsultationClick} className="w-full rounded-xl h-12 text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-lg shadow-blue-600/20 hover:-translate-y-0.5 transition-all">
+                                                <CalendarDays className="mr-2 w-4 h-4" /> Book Consultation
+                                            </Button>
+                                        )}
+                                        <Button 
+                                            variant={initialChoice === 'jobs' ? "default" : "outline"} 
+                                            onClick={handleLogin} 
+                                            className={`w-full rounded-xl h-12 text-sm font-bold hover:-translate-y-0.5 transition-all ${
+                                                initialChoice === 'jobs' 
+                                                ? 'bg-gray-900 hover:bg-black text-white shadow-xl' 
+                                                : 'border-2 border-gray-200 text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-900 hover:text-gray-900'
+                                            }`}
+                                        >
+                                            <LogIn className="mr-2 w-4 h-4" /> {initialChoice === 'jobs' ? 'Login to View Jobs' : 'Login'}
                                         </Button>
                                     </div>
                                     
-                                    <button onClick={() => { setStep(0); setAnswers({}); }} className="mt-8 text-xs font-bold text-gray-400 hover:text-gray-900 uppercase tracking-widest transition-colors flex items-center justify-center gap-2">
-                                        <Cog size={14}/> Retake Diagnostic
-                                    </button>
+                                    {initialChoice !== 'jobs' && (
+                                        <button onClick={() => { setStep(0); setAnswers({}); setInitialChoice(null); setShowOverlay(true); }} className="mt-8 text-xs font-bold text-gray-400 hover:text-gray-900 uppercase tracking-widest transition-colors flex items-center justify-center gap-2">
+                                            <Cog size={14}/> Retake Diagnostic
+                                        </button>
+                                    )}
                                 </motion.div>
                             )}
 
