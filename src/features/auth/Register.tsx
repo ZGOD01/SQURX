@@ -132,7 +132,7 @@ export function Register() {
                 // Add quiz answers fallback to satisfy potential backend requirements
                 try {
                     const answersStr = localStorage.getItem('squrx_quiz_answers');
-                    let quizAnswersList = [];
+                    let quizAnswersList: { quizId: string; choiceId: string }[] = [];
                     if (answersStr) {
                         const rawAnswers = JSON.parse(answersStr);
                         quizAnswersList = Object.keys(rawAnswers).map(key => {

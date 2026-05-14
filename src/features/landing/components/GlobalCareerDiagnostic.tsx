@@ -537,7 +537,7 @@ export function GlobalCareerDiagnostic() {
                                             </Button>
                                         )}
                                         <Button 
-                                            variant={initialChoice === 'jobs' ? "default" : "outline"} 
+                                            variant={initialChoice === 'jobs' ? "primary" : "outline"} 
                                             onClick={handleLogin} 
                                             className={`w-full rounded-xl h-12 text-sm font-bold hover:-translate-y-0.5 transition-all ${
                                                 initialChoice === 'jobs' 

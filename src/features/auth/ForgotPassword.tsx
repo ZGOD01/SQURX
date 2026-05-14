@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useForgotPasswordMutation, useResetPasswordMutation } from "@/lib/store/authApi";
 import { Button, Input, Toast } from "@/components/ui";
 import { PageTransition } from "@/components/motion";
-import { Loader2, ArrowRight, ArrowLeft, KeyRound, ShieldCheck, Mail, Lock } from "lucide-react";
+import { Loader2, ArrowLeft, Mail, Lock } from "lucide-react";
 
 export function ForgotPassword() {
     const [isLoading, setIsLoading] = useState(false);

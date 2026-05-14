@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUpRight, GraduationCap, Building2, Sparkles, X } from 'lucide-react';
-import { Modal } from '@/components/ui';
+
 
 const ROLES = [
     {
