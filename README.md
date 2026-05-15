@@ -62,3 +62,4 @@ Visit the displayed local URL (typically `http://localhost:5173/`) in your brows
 ```bash
 npm run build
 ```
+# squrx-frontend
