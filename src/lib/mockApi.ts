@@ -3,6 +3,20 @@ import type { User, StudentProfile, CompanyProfile, JobVacancy, JobApplication, 
 
 const delay = (ms = 800) => new Promise(resolve => setTimeout(resolve, ms));
 
+const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: number } = {}) => {
+  const { timeout = 2500, ...rest } = options;
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(url, { ...rest, signal: controller.signal });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
+};
+
 export const mockApi = {
   // Auth
   login: async (email: string): Promise<User | null> => {
@@ -37,8 +51,9 @@ export const mockApi = {
     try {
         const token = localStorage.getItem('token');
         if (token && profile) {
-            const res = await fetch('https://squrx-backend.onrender.com/api/v1/user/me', {
-                headers: { 'Authorization': `Bearer ${token}` }
+            const res = await fetchWithTimeout('https://squrx-backend.onrender.com/api/v1/user/me', {
+                headers: { 'Authorization': `Bearer ${token}` },
+                timeout: 2000
             });
             if (res.ok) {
                 const { data } = await res.json();
@@ -68,13 +83,14 @@ export const mockApi = {
         const token = localStorage.getItem('token');
         if (token && data.careerGoal) {
             // we don't have domain ID here, just the name, so we use customDomain field
-            await fetch('https://squrx-backend.onrender.com/api/v1/user/me', {
+            await fetchWithTimeout('https://squrx-backend.onrender.com/api/v1/user/me', {
                 method: 'PUT',
                 headers: { 
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ customDomain: data.careerGoal })
+                body: JSON.stringify({ customDomain: data.careerGoal }),
+                timeout: 2000
             });
         }
     } catch(e) {

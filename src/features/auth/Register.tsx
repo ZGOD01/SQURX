@@ -9,11 +9,11 @@ import { useNotificationStore } from "@/lib/store/notifications";
 import { Button, Input, Toast } from "@/components/ui";
 import { PageTransition } from "@/components/motion";
 import { registerSchema, type RegisterFormValues } from "@/lib/validators/auth";
+import { setGdprConsent } from "@/lib/utils";
 import {
     Loader2,
     ArrowRight,
     ArrowLeft,
-    UploadCloud,
     ShieldCheck,
     CheckCircle2,
     Building2,
@@ -23,6 +23,7 @@ import {
 export function Register() {
     const [isLoading, setIsLoading] = useState(false);
     const [toast, setToast] = useState<{ open: boolean; type: 'success'|'error'|'info'; title: string; message: string }>({ open: false, type: 'success', title: '', message: '' });
+    const [isConsentAccepted, setIsConsentAccepted] = useState(false);
 
     const showToast = (type: 'success'|'error'|'info', title: string, message: string) => {
         setToast({ open: true, type, title, message });
@@ -99,20 +100,12 @@ export function Register() {
             if (!isValid) return;
         }
         setDirection(1);
-        if (selectedRole === "RECRUITER" && step === 1) {
-            setStep(3); // Skip documents for recruiter
-        } else {
-            setStep((prev) => prev + 1);
-        }
+        setStep((prev) => prev + 1);
     };
 
     const prevStep = () => {
         setDirection(-1);
-        if (selectedRole === "RECRUITER" && step === 3) {
-            setStep(1);
-        } else {
-            setStep((prev) => prev - 1);
-        }
+        setStep((prev) => prev - 1);
     };
 
     const onSubmit = async (data: RegisterFormValues) => {
@@ -179,6 +172,9 @@ export function Register() {
             const verifyRes = await verifyOtpMutation({ userId, otp }).unwrap();
             
             if(verifyRes.success && verifyRes.data?.token) {
+                const uId = verifyRes.data.user._id || verifyRes.data.user.id;
+                localStorage.setItem(`squrx_new_user_${uId}`, 'true');
+                setGdprConsent(uId, true);
                 setAuth(verifyRes.data.user, verifyRes.data.token);
                 showToast('success', 'Welcome to Squrx!', 'Your account has been verified. Redirecting...');
 
@@ -241,70 +237,11 @@ export function Register() {
         }),
     };
 
-    const FileUploadArea = ({
-        label,
-        id,
-        description,
-    }: {
-        label: string;
-        id: string;
-        description: string;
-    }) => {
-        const hasFile = watch(id as any);
-        return (
-            <motion.div
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className={`relative overflow-hidden border-2 border-dashed transition-all duration-500 rounded-2xl p-6 text-center cursor-pointer flex flex-col items-center justify-center min-h-[140px]
-                    ${hasFile ? "border-black bg-black/5" : "border-black/20 bg-white hover:border-black/50 hover:bg-black/[0.02]"} `}
-            >
-                {hasFile ? (
-                    <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        className="flex flex-col items-center gap-2"
-                    >
-                        <div className="w-12 h-12 bg-black text-white rounded-full flex items-center justify-center mb-1">
-                            <CheckCircle2 className="w-6 h-6" />
-                        </div>
-                        <h4 className="font-medium text-sm text-black">
-                            Document Attached
-                        </h4>
-                        <p className="text-xs text-black/60 truncate max-w-[200px]">
-                            {hasFile instanceof File ? hasFile.name : hasFile}
-                        </p>
-                    </motion.div>
-                ) : (
-                    <>
-                        <div className="w-12 h-12 bg-black/5 text-black rounded-full flex items-center justify-center mb-3 group-hover:bg-black group-hover:text-white transition-all duration-300">
-                            <UploadCloud className="w-5 h-5" />
-                        </div>
-                        <h4 className="font-medium text-sm text-black">{label}</h4>
-                        <p className="text-xs text-black/50 font-light mt-1">
-                            {description}
-                        </p>
-                    </>
-                )}
 
-                <input
-                    type="file"
-                    id={id}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
-                    onChange={(e) => {
-                        if (e.target.files?.[0]) {
-                            setValue(id as any, e.target.files[0], {
-                                shouldValidate: true,
-                            });
-                        }
-                    }}
-                />
-            </motion.div>
-        );
-    };
 
     // Calculate progress percentage
-    const maxProgSteps = selectedRole === "STUDENT" ? 5 : 4;
-    const currentProgStep = step >= 4 ? maxProgSteps : step + 1;
+    const maxProgSteps = 5;
+    const currentProgStep = step + 1;
     const progressPercentage = (currentProgStep / maxProgSteps) * 100;
 
     return (
@@ -490,7 +427,46 @@ export function Register() {
                                     )}
 
                                     {/* Frame 1: Personal Details */}
+                                    {/* Frame 1: GDPR Consent */}
                                     {step === 1 && (
+                                        <div className="flex-1 space-y-6 overflow-y-auto pr-1">
+                                            <div className="space-y-2">
+                                                <h2 className="text-3xl font-light tracking-tight flex items-center gap-2">
+                                                    <ShieldCheck className="w-8 h-8 text-black" /> GDPR Consent
+                                                </h2>
+                                                <p className="text-black/50 font-light text-sm">
+                                                    SQURX values your privacy. To provide tailored job opportunities and career matching, we need your consent to securely process your data.
+                                                </p>
+                                            </div>
+                                            
+                                            <div className="w-full p-4 bg-black/[0.02] rounded-2xl border border-black/5 text-left space-y-3">
+                                                <p className="text-[11px] text-black/60 font-semibold uppercase tracking-wider">
+                                                    By continuing, you consent to SQURX:
+                                                </p>
+                                                <ul className="text-xs text-black/75 space-y-2 list-disc list-inside font-light">
+                                                    <li>Storing and updating your personal profile attributes.</li>
+                                                    <li>Analyzing and processing your uploaded Curriculum Vitae (CV).</li>
+                                                    <li>Matching your skills and location preferences with vacancies.</li>
+                                                </ul>
+                                                <div className="h-px bg-black/10 w-full my-2" />
+                                                <div className="flex items-start gap-3">
+                                                    <input
+                                                        id="register-gdpr-consent"
+                                                        type="checkbox"
+                                                        checked={isConsentAccepted}
+                                                        onChange={(e) => setIsConsentAccepted(e.target.checked)}
+                                                        className="mt-1 h-4 w-4 rounded border-gray-300 text-black focus:ring-black cursor-pointer"
+                                                    />
+                                                    <label htmlFor="register-gdpr-consent" className="text-xs text-black/70 font-semibold leading-relaxed select-none cursor-pointer">
+                                                        I hereby consent to SQURX processing my profile, CV, and preferences for matching and recruitment purposes.
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Frame 2: Personal Details */}
+                                    {step === 2 && (
                                         <div className="flex-1 space-y-8">
                                             <div className="space-y-2">
                                                 <h2 className="text-3xl font-light tracking-tight">
@@ -545,26 +521,7 @@ export function Register() {
                                         </div>
                                     )}
 
-                                    {/* Frame 2: Documents (Student Only) */}
-                                    {step === 2 && selectedRole === "STUDENT" && (
-                                        <div className="flex-1 space-y-6">
-                                            <div className="space-y-2">
-                                                <h2 className="text-3xl font-light tracking-tight">
-                                                    Verification
-                                                </h2>
-                                                <p className="text-black/50 font-light">
-                                                    Upload necessary documents securely.
-                                                </p>
-                                            </div>
-                                            <div className="flex flex-col gap-4 mt-6">
-                                                <FileUploadArea
-                                                    id="resume"
-                                                    label="Latest Resume (CV)"
-                                                    description="PDF, DOCX format. Max 5MB."
-                                                />
-                                            </div>
-                                        </div>
-                                    )}
+
 
                                     {/* Frame 3: Security & Disclaimer */}
                                     {step === 3 && (
@@ -711,8 +668,9 @@ export function Register() {
                                         {step < 3 ? (
                                             <Button
                                                 type="button"
+                                                disabled={step === 1 && !isConsentAccepted}
                                                 onClick={() => {
-                                                    if (step === 1)
+                                                    if (step === 2)
                                                         nextStep([
                                                             "name",
                                                             "email",
@@ -722,7 +680,7 @@ export function Register() {
                                                         ]);
                                                     else nextStep();
                                                 }}
-                                                className="bg-black text-white hover:bg-black/90 rounded-full px-8 h-12 font-medium shadow-[0_8px_30px_rgba(0,0,0,0.15)] transition-all hover:scale-105 active:scale-95"
+                                                className="bg-black text-white hover:bg-black/90 rounded-full px-8 h-12 font-medium shadow-[0_8px_30px_rgba(0,0,0,0.15)] transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
                                             >
                                                 Continue <ArrowRight className="w-4 h-4 ml-2" />
                                             </Button>

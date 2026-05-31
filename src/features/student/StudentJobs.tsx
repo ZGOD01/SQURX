@@ -1,21 +1,53 @@
 import { useState, useEffect } from 'react';
 import { PageTransition, StaggerContainer, StaggerItem, HoverLift } from '@/components/motion';
-import { Card, Select, Button, Badge, Skeleton, Drawer, Toast } from '@/components/ui';
-import { Search, MapPin, Building2, Briefcase, Filter, ExternalLink, IndianRupee, Sparkles, GraduationCap, TrendingUp, Zap, Award, LayoutGrid, Globe2, Laptop, FileText, Clock, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Card, Select, Button, Badge, Skeleton, Modal, Toast } from '@/components/ui';
+import { 
+    Search, 
+    MapPin, 
+    Building2, 
+    Briefcase, 
+    Filter, 
+    ExternalLink, 
+    IndianRupee, 
+    Sparkles, 
+    GraduationCap, 
+    TrendingUp, 
+    Zap, 
+    Award, 
+    LayoutGrid, 
+    Globe2, 
+    Laptop, 
+    FileText, 
+    Clock, 
+    ArrowRight, 
+    CheckCircle2,
+    AlertTriangle
+} from 'lucide-react';
 import { mockApi } from '@/lib/mockApi';
 import type { JobVacancy } from '@/lib/mockDb/schema';
 import { useNotificationStore } from '@/lib/store/notifications';
+import { useStudentStore } from './store';
+import { calculateJobRelevance } from './jobRelevance';
+import { cn } from '@/lib/utils';
 
 export function StudentJobs() {
+    const { profile } = useStudentStore();
     const [jobs, setJobs] = useState<JobVacancy[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [filterType, setFilterType] = useState('All');
     const [experienceFilter, setExperienceFilter] = useState('All');
-    const [sortBy, setSortBy] = useState('Newest');
+    
+    // New Advanced Filters
+    const [locationFilter, setLocationFilter] = useState('All');
+    const [skillFilter, setSkillFilter] = useState('All');
+    const [minRelevance, setMinRelevance] = useState(0);
+    
+    // Default sorting is Relevance for a smart ranking layout
+    const [sortBy, setSortBy] = useState('Relevance');
     const { sendEmail } = useNotificationStore();
 
-    const [selectedJob, setSelectedJob] = useState<JobVacancy | null>(null);
+    const [selectedJob, setSelectedJob] = useState<(JobVacancy & { relevance?: number }) | null>(null);
     const [appliedJobs, setAppliedJobs] = useState<string[]>([]);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -50,15 +82,52 @@ export function StudentJobs() {
         setSelectedJob(null);
     };
 
-    const filteredJobs = jobs
-        .filter(j => j.title.toLowerCase().includes(search.toLowerCase()) || j.companyName?.toLowerCase().includes(search.toLowerCase()))
+    // Calculate unique locations and skills dynamically from active vacancies list
+    const uniqueLocations = Array.from(new Set(jobs.map(j => j.location).filter(Boolean))).sort();
+    const uniqueSkills = Array.from(new Set(jobs.flatMap(j => j.skills || []).filter(Boolean))).sort();
+
+    // Map jobs to include pre-computed relevance scores
+    const jobsWithRelevance = jobs.map(j => ({
+        ...j,
+        relevance: calculateJobRelevance(profile, j)
+    }));
+
+    // Filter and sort matching vacancies
+    const filteredJobs = jobsWithRelevance
+        .filter(j => {
+            const query = search.toLowerCase().trim();
+            if (!query) return true;
+            return (
+                j.title.toLowerCase().includes(query) ||
+                j.companyName?.toLowerCase().includes(query) ||
+                j.description.toLowerCase().includes(query) ||
+                j.skills?.some(s => s.toLowerCase().includes(query))
+            );
+        })
         .filter(j => filterType === 'All' || j.jobType.includes(filterType))
         .filter(j => experienceFilter === 'All' || j.experienceLevel === experienceFilter)
+        .filter(j => locationFilter === 'All' || j.location === locationFilter)
+        .filter(j => skillFilter === 'All' || j.skills?.includes(skillFilter))
+        .filter(j => j.relevance >= minRelevance)
         .sort((a, b) => {
-            // Mock sorting
-            if (sortBy === 'Newest') return a.id.localeCompare(b.id) * -1; // just reverse ID order
-            return a.title.localeCompare(b.title); // Alphabetical fallback
+            if (sortBy === 'Relevance') {
+                return b.relevance - a.relevance;
+            }
+            if (sortBy === 'Newest') {
+                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            }
+            return a.title.localeCompare(b.title);
         });
+
+    const clearAllFilters = () => {
+        setSearch('');
+        setFilterType('All');
+        setExperienceFilter('All');
+        setLocationFilter('All');
+        setSkillFilter('All');
+        setMinRelevance(0);
+        setSortBy('Relevance');
+    };
 
     return (
         <PageTransition className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -170,6 +239,60 @@ export function StudentJobs() {
                             })}
                         </div>
                     </div>
+
+                    <div className="h-px w-full bg-border/40" />
+
+                    {/* New Core Filters: Location, Skills, and Relevancy Slider/Select */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                            <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Location
+                            </p>
+                            <Select
+                                value={locationFilter}
+                                onChange={(e) => setLocationFilter(e.target.value)}
+                                className="w-full h-11 text-sm rounded-xl border-border/60 bg-background hover:border-primary/50 transition-colors cursor-pointer"
+                            >
+                                <option value="All">All Locations</option>
+                                {uniqueLocations.map(loc => (
+                                    <option key={loc} value={loc}>{loc}</option>
+                                ))}
+                            </Select>
+                        </div>
+
+                        <div>
+                            <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Required Skill
+                            </p>
+                            <Select
+                                value={skillFilter}
+                                onChange={(e) => setSkillFilter(e.target.value)}
+                                className="w-full h-11 text-sm rounded-xl border-border/60 bg-background hover:border-primary/50 transition-colors cursor-pointer"
+                            >
+                                <option value="All">All Skills</option>
+                                {uniqueSkills.map(skill => (
+                                    <option key={skill} value={skill}>{skill}</option>
+                                ))}
+                            </Select>
+                        </div>
+
+                        <div>
+                            <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Min Relevance Score
+                            </p>
+                            <Select
+                                value={minRelevance.toString()}
+                                onChange={(e) => setMinRelevance(Number(e.target.value))}
+                                className="w-full h-11 text-sm rounded-xl border-border/60 bg-background hover:border-primary/50 transition-colors cursor-pointer"
+                            >
+                                <option value="0">All Scores</option>
+                                <option value="60">60% + Relevance</option>
+                                <option value="70">70% + Relevance</option>
+                                <option value="80">80% + Relevance</option>
+                                <option value="90">90% + Relevance</option>
+                            </Select>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -186,8 +309,9 @@ export function StudentJobs() {
                     <Select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value)}
-                        className="w-36 h-9 text-sm rounded-lg border-border/60 bg-card py-0 px-3 cursor-pointer"
+                        className="w-40 h-9 text-sm rounded-lg border-border/60 bg-card py-0 px-3 cursor-pointer font-semibold"
                     >
+                        <option value="Relevance">Highest Relevance</option>
                         <option value="Newest">Newest First</option>
                         <option value="Alphabetical">Alphabetical</option>
                     </Select>
@@ -220,7 +344,7 @@ export function StudentJobs() {
                         <Filter className="w-16 h-16 text-muted-foreground opacity-30 mb-6 drop-shadow-sm" />
                         <h3 className="text-2xl font-black mb-3 text-foreground">No roles match your filters</h3>
                         <p className="text-muted-foreground max-w-sm mb-8 text-lg">We couldn't find any opportunities matching your current criteria. Try adjusting the filters or search term to discover more.</p>
-                        <Button variant="primary" size="lg" className="rounded-full font-bold px-8 shadow-md" onClick={() => { setSearch(''); setFilterType('All'); setExperienceFilter('All'); }}>Clear All Filters</Button>
+                        <Button variant="primary" size="lg" className="rounded-full font-bold px-8 shadow-md" onClick={clearAllFilters}>Clear All Filters</Button>
                     </div>
                 ) : (
                     <>
@@ -246,22 +370,20 @@ export function StudentJobs() {
                                 </div>
                             </div>
 
-                            {/* Devops team API Sync  */}
-                            {/* <div className="shrink-0 relative z-10">
-                                <div className="bg-blue-900/5 dark:bg-blue-100/10 p-4 rounded-xl border border-blue-500/20 backdrop-blur-sm shadow-sm md:max-w-xs w-full text-center md:text-left">
-                                    <span className="font-bold uppercase tracking-wider text-[10px] bg-blue-500 text-white px-2 py-1 inline-block rounded-md mb-2 shadow-sm">
-                                        DevOps Task
-                                    </span>
-                                    <p className="text-xs text-foreground/70 font-medium">
-                                        Implement the backend data pipeline and map the external API response arrays continuously to the `jobs` state tree.
-                                    </p>
-                                </div>
-                            </div> */}
+                            {/* TODO: DevOps Pipeline Integration
+                                For future scaling, replace mock external adapters with live webhook sync.
+                                Endpoints to integrate:
+                                - fantastic.jobs: /api/v1/sync/fantastic
+                                - coresignal.com: /api/v1/sync/coresignal
+                                - jobspikr.com: /api/v1/sync/jobspikr
+                                - linkedin.com (OAuth): /api/v1/sync/linkedin
+                            */}
                         </div>
+                        
                         <StaggerContainer className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {filteredJobs.map((job) => {
                                 const applied = appliedJobs.includes(job.id);
-                                // For demonstration, let's artificially tag some jobs as coming from external sources
+                                // Artificially tag some jobs as coming from external sources
                                 const isExternal = parseInt(job.id.replace(/\D/g, '') || '0') % 3 === 0;
                                 const sourceName = ['fantastic.jobs', 'jobspikr.com', 'coresignal.com'][parseInt(job.id.replace(/\D/g, '') || '0') % 3];
 
@@ -297,10 +419,25 @@ export function StudentJobs() {
                                                             </Badge>
                                                         )}
                                                         {isExternal && (
-                                                            <Badge variant="outline" className="border-blue-500/30 text-blue-600 bg-blue-500/5 flex items-center gap-1 text-[10px] uppercase shadow-none">
+                                                            <Badge variant="outline" className="border-blue-500/30 text-blue-600 bg-blue-50/50 flex items-center gap-1 text-[10px] uppercase shadow-none">
                                                                 <ExternalLink size={10} /> {sourceName.split('.')[0]}
                                                             </Badge>
                                                         )}
+                                                        
+                                                        {/* Relevancy score badge */}
+                                                        <Badge 
+                                                            variant="outline" 
+                                                            className={cn(
+                                                                "flex items-center gap-1 text-[10px] font-extrabold uppercase shadow-none",
+                                                                job.relevance >= 80 
+                                                                    ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" 
+                                                                    : job.relevance >= 60 
+                                                                        ? "bg-amber-500/10 text-amber-600 border-amber-500/20" 
+                                                                        : "bg-rose-500/10 text-rose-600 border-rose-500/20"
+                                                            )}
+                                                        >
+                                                            <Sparkles size={10} /> {job.relevance}% Match
+                                                        </Badge>
                                                     </div>
                                                 </div>
 
@@ -345,23 +482,41 @@ export function StudentJobs() {
                 )}
             </div>
 
-            {/* Detail Drawer */}
-            <Drawer
+            {/* Central Job Detail Modal */}
+            <Modal
                 isOpen={!!selectedJob}
                 onClose={() => setSelectedJob(null)}
                 title="Role Overview"
+                className="max-w-2xl"
             >
                 {selectedJob && (
-                    <div className="space-y-6 pb-20">
-                        <div className="flex items-center gap-4 border-b border-border/50 pb-6">
-                            <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                                <Building2 size={32} />
+                    <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/50 pb-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                    <Building2 size={32} />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold leading-tight">{selectedJob.title}</h2>
+                                    <p className="text-muted-foreground font-medium flex items-center gap-1 mt-1">
+                                        {selectedJob.companyName} • <span className="text-xs">{new Date(selectedJob.createdAt).toLocaleDateString()}</span>
+                                    </p>
+                                </div>
                             </div>
-                            <div>
-                                <h2 className="text-xl font-bold leading-tight">{selectedJob.title}</h2>
-                                <p className="text-muted-foreground font-medium flex items-center gap-1 mt-1">
-                                    {selectedJob.companyName} • <span className="text-xs">{new Date(selectedJob.createdAt).toLocaleDateString()}</span>
-                                </p>
+
+                            {/* Relevance Score Display */}
+                            <div className="shrink-0">
+                                <div className={cn(
+                                    "inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl text-sm font-extrabold border shadow-sm",
+                                    (selectedJob.relevance ?? 0) >= 80 
+                                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" 
+                                        : (selectedJob.relevance ?? 0) >= 60 
+                                            ? "bg-amber-500/10 text-amber-600 border-amber-500/20" 
+                                            : "bg-rose-500/10 text-rose-600 border-rose-500/20"
+                                )}>
+                                    <Sparkles size={16} />
+                                    <span>{selectedJob.relevance ?? 0}% Match Score</span>
+                                </div>
                             </div>
                         </div>
 
@@ -386,6 +541,32 @@ export function StudentJobs() {
                             </div>
                         </div>
 
+                        {/* Skills Display in Detail Modal */}
+                        {selectedJob.skills && selectedJob.skills.length > 0 && (
+                            <div>
+                                <h3 className="font-bold mb-2 text-sm uppercase tracking-wider text-muted-foreground">Required Skills</h3>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {selectedJob.skills.map((skill, index) => {
+                                        const isStudentSkill = profile?.skills?.some(s => s.toLowerCase().trim() === skill.toLowerCase().trim());
+                                        return (
+                                            <Badge 
+                                                key={index}
+                                                variant="secondary"
+                                                className={cn(
+                                                    "px-2.5 py-1 rounded-lg text-xs font-semibold border",
+                                                    isStudentSkill 
+                                                        ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/20" 
+                                                        : "bg-muted text-muted-foreground border-border/60"
+                                                )}
+                                            >
+                                                {skill} {isStudentSkill && '✓'}
+                                            </Badge>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
                         <div>
                             <h3 className="font-bold mb-3 text-lg">About the Role</h3>
                             <p className="text-muted-foreground text-sm leading-relaxed whitespace-pre-wrap">
@@ -396,18 +577,34 @@ export function StudentJobs() {
                             </p>
                         </div>
 
-                        <div className="fixed bottom-0 left-0 right-0 p-4 bg-card/80 backdrop-blur-md border-t border-border z-10 flex gap-4 drawer-footer">
-                            {appliedJobs.includes(selectedJob.id) ? (
-                                <Button disabled className="flex-1 h-12">Application Submitted</Button>
+                        {/* Apply Action block enforcing 60% threshold */}
+                        <div className="pt-6 border-t border-border flex flex-col gap-4">
+                            {(selectedJob.relevance ?? 0) < 60 ? (
+                                <div className="space-y-4">
+                                    <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-700 text-sm font-semibold flex items-start gap-3">
+                                        <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-rose-600" />
+                                        <div>
+                                            <p className="font-bold text-rose-800">Not relevant enough</p>
+                                            <p className="text-rose-600 font-medium mt-0.5 leading-relaxed">
+                                                This role has a relevancy score of {selectedJob.relevance}%, which is below the required 60% threshold based on your profile career goals and skills. Update your profile to match these requirements to apply.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <Button disabled className="w-full h-12 bg-muted text-muted-foreground border border-border/50 cursor-not-allowed font-bold">
+                                        Apply Blocked (Under 60% Relevancy)
+                                    </Button>
+                                </div>
+                            ) : appliedJobs.includes(selectedJob.id) ? (
+                                <Button disabled className="w-full h-12 font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">Application Submitted</Button>
                             ) : (
-                                <Button className="flex-1 h-12 gap-2" onClick={() => handleApply(selectedJob)}>
+                                <Button className="w-full h-12 gap-2 font-bold" onClick={() => handleApply(selectedJob)}>
                                     Apply Externally <ExternalLink size={16} />
                                 </Button>
                             )}
                         </div>
                     </div>
                 )}
-            </Drawer>
+            </Modal>
 
             {toastMessage && (
                 <div className="fixed bottom-4 right-4 z-[100]">

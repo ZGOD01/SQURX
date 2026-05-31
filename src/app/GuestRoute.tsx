@@ -3,7 +3,10 @@ import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/features/auth/store';
 
 export function GuestRoute({ children }: { children: ReactNode }) {
-    const { user } = useAuthStore();
+    const { user, _hasHydrated } = useAuthStore();
+
+    // Don't make any routing decisions until the persisted auth store has rehydrated
+    if (!_hasHydrated) return null;
 
     if (user) {
         const role = String(user.role).toUpperCase();
@@ -21,3 +24,4 @@ export function GuestRoute({ children }: { children: ReactNode }) {
 
     return <>{children}</>;
 }
+

@@ -63,7 +63,7 @@ const QUESTIONS = [
     {
         id: "65f000000000000000000500",
         title: "What is your biggest unknown?",
-        description: "We'll eliminate this uncertainty directly in your blueprint.",
+        description: "We'll help you resolve this uncertainty directly.",
         options: [
             { id: '65f000000000000000000501', text: "Securing a Job", icon: HelpCircle },
             { id: '65f000000000000000000502', text: "Managing Finances", icon: Calculator },
@@ -105,28 +105,28 @@ export function GlobalCareerDiagnostic() {
     const [showOverlay, setShowOverlay] = useState(true);
     const [initialChoice, setInitialChoice] = useState<'jobs' | 'consultation' | null>(null);
 
-    const [questions, setQuestions] = useState<any[]>(QUESTIONS);
+    const [questions] = useState<any[]>(QUESTIONS);
 
     useEffect(() => {
-        // Fetch real quizzes
-        fetch('https://squrx-backend.onrender.com/api/v1/quizzes')
-            .then(res => res.json())
-            .then(res => {
-                if (res.success && res.data && res.data.length > 0) {
-                    const mapped = res.data.map((q: any) => ({
-                        id: q._id,
-                        title: q.title,
-                        description: q.description,
-                        options: q.options.map((o: any) => ({
-                            id: o._id,
-                            text: o.text,
-                            icon: o.icon || '✨'
-                        }))
-                    }));
-                    setQuestions(mapped);
-                }
-            })
-            .catch(console.error);
+        // Backend returns incorrect quizzes and is unresponsive, so we rely on the hardcoded QUESTIONS constant.
+        // fetch('https://squrx-backend.onrender.com/api/v1/quizzes')
+        //     .then(res => res.json())
+        //     .then(res => {
+        //         if (res.success && res.data && res.data.length > 0) {
+        //             const mapped = res.data.map((q: any) => ({
+        //                 id: q._id,
+        //                 title: q.title,
+        //                 description: q.description,
+        //                 options: q.options.map((o: any) => ({
+        //                     id: o._id,
+        //                     text: o.text,
+        //                     icon: o.icon || '✨'
+        //                 }))
+        //             }));
+        //             setQuestions(mapped);
+        //         }
+        //     })
+        //     .catch(console.error);
 
         consultationApi.getTimeSlots().then(res => {
             if(res.success && res.data) {
@@ -220,18 +220,22 @@ export function GlobalCareerDiagnostic() {
         setIsBookingMode(true);
     };
 
-    const handleLogin = () => navigate('/student/consultation');
+    const handleLogin = () => navigate('/student');
 
     const handleInitialChoice = (choice: 'jobs' | 'consultation') => {
         setInitialChoice(choice);
         if (choice === 'jobs') {
-            setStep(questions.length);
-            setIsLeadFormSubmitted(true);
-            setIsLeadFormMode(false);
+            navigate('/auth/login');
         } else {
             setStep(0);
+            setAnswers({});
+            setIsLeadFormSubmitted(false);
+            setIsLeadFormMode(false);
+                                         setIsBookingMode(true);
+            setIsBookingMode(false);
+            setIsBookingConfirmed(false);
+            setShowOverlay(false);
         }
-        setShowOverlay(false);
     };
 
     const progressPercentage = (step / questions.length) * 100;
@@ -292,7 +296,7 @@ export function GlobalCareerDiagnostic() {
                                         
                                         <h4 className="text-2xl font-black text-gray-900 mb-3 tracking-tight group-hover:text-blue-600 transition-colors">Book Consultation</h4>
                                         <p className="text-gray-500 font-medium leading-relaxed mb-8 flex-1">
-                                            Get a detailed diagnostic and 1-on-1 strategy session with global career architects.
+                                            Schedule a quick chat with our advisors to find the best career options and job search strategies for you.
                                         </p>
                                         
                                         <div className="flex items-center gap-2 text-blue-600 font-black text-xs uppercase tracking-widest group-hover:gap-4 transition-all">
@@ -354,7 +358,7 @@ export function GlobalCareerDiagnostic() {
                                     <p className="text-base text-gray-500 font-medium leading-relaxed">
                                         {step < questions.length 
                                             ? questions[step].description 
-                                            : "Your asymmetrical variables have been compiled into a personalized roadmap."}
+                                            : "Your variables have been compiled for your appointment booking."}
                                     </p>
                                 </motion.div>
                             </AnimatePresence>
@@ -388,8 +392,8 @@ export function GlobalCareerDiagnostic() {
                                     className="absolute inset-0 flex flex-col items-center justify-center text-center px-8 bg-white z-10"
                                 >
                                     <div className="w-16 h-16 border-[3px] border-blue-100 border-t-blue-500 rounded-full animate-spin mb-6" />
-                                    <h3 className="text-2xl font-black tracking-tight text-gray-900 mb-2">Synthesizing Blueprint...</h3>
-                                    <p className="text-gray-500 font-medium text-sm">Cross-referencing your profile against successful global cohorts.</p>
+                                    <h3 className="text-2xl font-black tracking-tight text-gray-900 mb-2">Processing details...</h3>
+                                    <p className="text-gray-500 font-medium text-sm">Preparing your appointment details.</p>
                                 </motion.div>
                             )}
 
@@ -461,9 +465,9 @@ export function GlobalCareerDiagnostic() {
                                     className="flex flex-col justify-center w-full relative z-20"
                                 >
                                     <div className="absolute -top-10 left-12 w-40 h-40 bg-blue-400/20 rounded-full blur-[50px] pointer-events-none"></div>
-                                    <h3 className="text-2xl md:text-3xl font-black text-gray-900 mb-2 tracking-tight">Unlock Your Roadmap</h3>
+                                    <h3 className="text-2xl md:text-3xl font-black text-gray-900 mb-2 tracking-tight">Connect with an Advisor</h3>
                                     <p className="text-sm text-gray-500 mb-8 leading-relaxed font-medium">
-                                        Your personalized consultation profile has been successfully generated. Enter your details to view the results.
+                                        Enter your details below to schedule your 1-on-1 career consultation slot.
                                     </p>
 
                                     <form onSubmit={(e) => { 
@@ -507,13 +511,13 @@ export function GlobalCareerDiagnostic() {
                                         </div>
 
                                         <Button type="submit" className="w-full rounded-2xl h-14 text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-[0_8px_30px_rgba(37,99,235,0.3)] mt-6 transition-all hover:scale-[1.02] hover:-translate-y-0.5 active:scale-95 group flex items-center justify-center">
-                                            Reveal My Blueprint <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                                            Book an Appointment <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
                                         </Button>
                                     </form>
                                 </motion.div>
                             )}
 
-                            {step === questions.length && !isAnalyzing && !isBookingMode && !isBookingConfirmed && isLeadFormSubmitted && (
+                            {false && (
                                 <motion.div
                                     key="results"
                                     initial={{ opacity: 0, scale: 0.95 }}
@@ -626,7 +630,14 @@ export function GlobalCareerDiagnostic() {
 
                                     {/* Action Buttons */}
                                     <div className="flex gap-3">
-                                        <Button variant="outline" className="flex-1 rounded-xl h-12 text-sm font-bold" onClick={() => setIsBookingMode(false)}>
+                                        <Button variant="outline" className="flex-1 rounded-xl h-12 text-sm font-bold" onClick={() => {
+                                             setIsBookingMode(false);
+                                             setStep(0);
+                                             setAnswers({});
+                                             setInitialChoice(null);
+                                             setShowOverlay(true);
+                                             setIsLeadFormSubmitted(false);
+                                         }}>
                                             Cancel
                                         </Button>
                                         <Button 

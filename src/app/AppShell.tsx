@@ -1,25 +1,30 @@
-import { useEffect } from 'react';
-import { Outlet, NavLink } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/features/auth/store';
 import { useStudentStore } from '@/features/student/store';
 import { useRecruiterStore } from '@/features/recruiter/store';
-import { LogOut, LayoutDashboard, UserSquare, Briefcase, Settings, Users, FileBarChart, CalendarDays, Loader2 } from 'lucide-react';
+import { LogOut, LayoutDashboard, UserSquare, Briefcase, Settings, Users, FileBarChart, Loader2, Home, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui';
 import { useNotificationStore } from '@/lib/store/notifications';
 
 export function AppShell() {
     const { user, logout } = useAuthStore();
-    const { fetchDashboardData: fetchStudent, isLoading: isStudentLoading } = useStudentStore();
-    const { fetchDashboardData: fetchRecruiter, isLoading: isRecruiterLoading } = useRecruiterStore();
+    const navigate = useNavigate();
+    const { fetchDashboardData: fetchStudent, isLoading: isStudentLoading, profile: studentProfile } = useStudentStore();
+    const { fetchDashboardData: fetchRecruiter, isLoading: isRecruiterLoading, company: recruiterCompany } = useRecruiterStore();
+    const fetchedRef = useRef(false);
 
     const { sendEmail } = useNotificationStore();
 
     useEffect(() => {
-        if (user?.role === 'STUDENT') {
-            fetchStudent(user.id);
-        } else if (user?.role === 'RECRUITER') {
-            fetchRecruiter(user.id);
+        if (user && !fetchedRef.current) {
+            fetchedRef.current = true;
+            if (user.role === 'STUDENT' && !studentProfile) {
+                fetchStudent(user.id).catch(console.error);
+            } else if (user.role === 'RECRUITER' && !recruiterCompany) {
+                fetchRecruiter(user.id).catch(console.error);
+            }
         }
 
         // Simulate sending a "We missed you!" email if the user has been inactive for > 10 days
@@ -49,7 +54,6 @@ export function AppShell() {
                     { to: '/student', label: 'Dashboard', icon: LayoutDashboard },
                     { to: '/student/profile', label: 'Profile', icon: UserSquare },
                     { to: '/student/jobs', label: 'Jobs', icon: Briefcase },
-                    { to: '/student/consultation', label: 'Consultation', icon: CalendarDays },
                     { to: '/student/preferences', label: 'Preferences', icon: Settings },
                 ];
             case 'RECRUITER':
@@ -130,8 +134,30 @@ export function AppShell() {
                 <header className="flex h-16 items-center justify-between border-b border-border bg-card px-6">
                     <div className="md:hidden flex items-center gap-2">
                         <img src="/squrx01.png" alt="SQURX Logo" className="w-6 h-6 object-contain drop-shadow-sm" />
-                        <span className="text-lg font-black tracking-tight bg-gradient-to-r from-[#8711c1] to-[#ff007f] text-transparent bg-clip-text font-sans mt-0.5">SQURX</span>
+                        <span className="text-lg font-black tracking-tight bg-gradient-to-r from-[#8711c1] to-[#ff007f] text-transparent bg-clip-text font-sans mt-0.5 mr-4">SQURX</span>
                     </div>
+
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => window.history.back()}
+                            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground h-9 px-3 rounded-lg"
+                        >
+                            <ArrowLeft size={16} />
+                            <span className="hidden sm:inline font-bold">Back</span>
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate('/')}
+                            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground h-9 px-3 rounded-lg"
+                        >
+                            <Home size={16} />
+                            <span className="hidden sm:inline font-bold">Home</span>
+                        </Button>
+                    </div>
+
                     <div className="flex-1" />
                     <nav className="flex items-center gap-4">
                     </nav>

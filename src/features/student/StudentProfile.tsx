@@ -274,7 +274,7 @@ export function StudentProfile() {
             <Modal isOpen={isDeleteModalOpen} onClose={() => !isDeleting && setIsDeleteModalOpen(false)} title="Delete Profile?">
                 <div className="space-y-5 mt-2">
                     <p className="text-muted-foreground text-[15px] leading-relaxed">
-                        Are you absolutely sure you want to completely delete your profile data? All of your uploaded certificates, CVs, applications, and consultation bookings will be permanently erased. 
+                        Are you absolutely sure you want to completely delete your profile data? All of your uploaded certificates, CVs, and applications will be permanently erased. 
                         <br/><br/>
                         <strong className="text-foreground font-semibold">This action cannot be undone.</strong>
                     </p>

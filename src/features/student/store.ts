@@ -201,15 +201,6 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
         };
     }
 
-    if (!state.consultation && state.dismissedReminderId !== 'no-booking') {
-         return {
-             id: 'no-booking',
-             title: 'Book Your Consultation',
-             desc: 'Claim your free 45-minute career guidance session with our experts.',
-             href: '/student/consultation'
-         };
-    }
-
     return null;
   }
 }));

@@ -9,6 +9,7 @@ import { Button, Input, Toast } from '@/components/ui';
 import { PageTransition } from '@/components/motion';
 import { loginSchema, type LoginFormValues } from '@/lib/validators/auth';
 import { Loader2, ArrowRight, KeyRound } from 'lucide-react';
+import { setGdprConsent } from '@/lib/utils';
 
 export function Login() {
     const [toast, setToast] = useState<{ open: boolean; type: 'success'|'error'|'info'; title: string; message: string }>({ open: false, type: 'success', title: '', message: '' });
@@ -34,6 +35,8 @@ export function Login() {
             const result = await loginMutation(data).unwrap();
             
             if (result.success && result.data?.token) {
+                const userId = result.data.user._id || result.data.user.id;
+                setGdprConsent(userId, true);
                 setAuth(result.data.user, result.data.token);
                 showToast('success', 'Welcome Back', 'Logged in safely. Redirecting...');
                 
@@ -44,10 +47,10 @@ export function Login() {
                         navigate(from);
                     } else {
                         switch (role) {
-                            case 'STUDENT': navigate('/auth/onboarding'); break;
+                            case 'STUDENT': navigate('/student/jobs'); break;
                             case 'RECRUITER': navigate('/recruiter'); break;
                             case 'ADMIN': navigate('/admin'); break;
-                            default: navigate('/auth/onboarding'); break;
+                            default: navigate('/student/jobs'); break;
                         }
                     }
                 }, 1200);
