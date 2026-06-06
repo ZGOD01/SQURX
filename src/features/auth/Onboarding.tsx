@@ -6,6 +6,7 @@ import { useStudentStore } from '../student/store';
 import { Button, Input } from '@/components/ui';
 import { PageTransition } from '@/components/motion';
 import { ArrowRight, Loader2, Check, UploadCloud } from 'lucide-react';
+import { consultationApi } from '@/lib/consultationApi';
 
 const ALL_DOMAINS = [
     'Software Engineering', 'Data Science & AI', 'Product Management', 'UI/UX Design',
@@ -155,13 +156,13 @@ export function Onboarding() {
 
         setIsUploadingCV(true);
         try {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            const mockUrl = URL.createObjectURL(file);
-            await updateProfile(user.id, { cvUrl: mockUrl });
+            // Upload to real backend: PUT /api/v1/students/{userId} with multipart/form-data cv field
+            const cvUrl = await consultationApi.uploadCv(user.id, file);
+            await updateProfile(user.id, { cvUrl: cvUrl || file.name });
             setCvName(file.name);
             localStorage.setItem('squrx_cv_name', file.name);
         } catch (err) {
-            console.error(err);
+            console.error('CV upload error:', err);
         } finally {
             setIsUploadingCV(false);
         }

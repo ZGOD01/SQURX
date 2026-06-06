@@ -105,28 +105,42 @@ export function GlobalCareerDiagnostic() {
     const [showOverlay, setShowOverlay] = useState(true);
     const [initialChoice, setInitialChoice] = useState<'jobs' | 'consultation' | null>(null);
 
-    const [questions] = useState<any[]>(QUESTIONS);
+    const [questions, setQuestions] = useState<any[]>(QUESTIONS);
 
     useEffect(() => {
-        // Backend returns incorrect quizzes and is unresponsive, so we rely on the hardcoded QUESTIONS constant.
-        // fetch('https://squrx-backend.onrender.com/api/v1/quizzes')
-        //     .then(res => res.json())
-        //     .then(res => {
-        //         if (res.success && res.data && res.data.length > 0) {
-        //             const mapped = res.data.map((q: any) => ({
-        //                 id: q._id,
-        //                 title: q.title,
-        //                 description: q.description,
-        //                 options: q.options.map((o: any) => ({
-        //                     id: o._id,
-        //                     text: o.text,
-        //                     icon: o.icon || '✨'
-        //                 }))
-        //             }));
-        //             setQuestions(mapped);
-        //         }
-        //     })
-        //     .catch(console.error);
+        // Fetch real quiz questions from the API and merge their database IDs
+        fetch('https://squrx-backend.onrender.com/api/v1/quizzes')
+            .then(res => res.json())
+            .then(res => {
+                if (res.success && res.data && res.data.length > 0) {
+                    const mergedQuestions = QUESTIONS.map((localQ) => {
+                        const backendQ = res.data.find((bq: any) => 
+                            bq.title.toLowerCase().trim() === localQ.title.toLowerCase().trim()
+                        );
+                        
+                        if (backendQ) {
+                            return {
+                                ...localQ,
+                                id: backendQ._id,
+                                options: localQ.options.map((localOpt) => {
+                                    const backendOpt = backendQ.options.find((bo: any) => 
+                                        bo.text.toLowerCase().trim() === localOpt.text.toLowerCase().trim()
+                                    );
+                                    return {
+                                        ...localOpt,
+                                        id: backendOpt ? backendOpt._id : localOpt.id
+                                    };
+                                })
+                            };
+                        }
+                        return localQ;
+                    });
+                    setQuestions(mergedQuestions);
+                }
+            })
+            .catch(err => {
+                console.error("Failed to load quizzes from backend:", err);
+            });
 
         consultationApi.getTimeSlots().then(res => {
             if(res.success && res.data) {

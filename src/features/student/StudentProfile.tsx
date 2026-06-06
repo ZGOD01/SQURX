@@ -10,6 +10,7 @@ import { useNotificationStore } from '@/lib/store/notifications';
 import { studentProfileSchema, type StudentProfileValues } from '@/lib/validators/student';
 import { Loader2, UploadCloud, FileText, Trash2, ShieldCheck } from 'lucide-react';
 import { getGdprConsent, setGdprConsent } from '@/lib/utils';
+import { consultationApi } from '@/lib/consultationApi';
 
 export function StudentProfile() {
     const { user, logout } = useAuthStore();
@@ -100,15 +101,22 @@ export function StudentProfile() {
         const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
         if (!validTypes.includes(file.type)) { alert("Invalid format. PDF/DOC/DOCX only."); return; }
 
+        if (!user) return;
         setIsUploadingCV(true);
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        if (user) {
-            await updateProfile(user.id, { cvUrl: URL.createObjectURL(file) });
+        try {
+            // Upload to real backend: PUT /api/v1/students/{userId} with multipart/form-data cv field
+            const cvUrl = await consultationApi.uploadCv(user.id, file);
+            // Persist the returned URL (or file name as fallback) locally
+            await updateProfile(user.id, { cvUrl: cvUrl || file.name });
             sendEmail('CV Upload Received', `Your new Curriculum Vitae (${file.name}) was successfully processed and mapped to your applicant profile.`);
+            setToastMessage('CV uploaded successfully.');
+        } catch (err: any) {
+            console.error('CV upload error:', err);
+            setToastMessage(err.message || 'CV upload failed. Please try again.');
+        } finally {
+            setIsUploadingCV(false);
+            if (cvInputRef.current) cvInputRef.current.value = '';
         }
-        setIsUploadingCV(false);
-        setToastMessage('CV uploaded successfully.');
-        if (cvInputRef.current) cvInputRef.current.value = '';
     };
     const removeCV = async () => {
         if (user) {

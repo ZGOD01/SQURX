@@ -66,5 +66,34 @@ export const consultationApi = {
     });
     if (!res.ok) throw new Error('Failed to fetch appointments');
     return res.json();
+  },
+
+  uploadCv: async (userId: string, file: File): Promise<string> => {
+    const token = getAuthToken();
+    const formData = new FormData();
+    formData.append('cv', file);
+
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    // Note: Do NOT set Content-Type manually — browser sets it with the correct boundary for multipart/form-data
+
+    const res = await fetchWithTimeout(`${BASE_URL}/students/${userId}`, {
+      method: 'PUT',
+      headers,
+      body: formData,
+      timeout: 30000,  // 30s — file uploads can be slow
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'CV upload failed');
+    }
+
+    const result = await res.json();
+    // Backend returns the updated student object; extract the cvUrl from it
+    const cvUrl = result?.data?.cvUrl || result?.data?.student?.cvUrl || '';
+    return cvUrl;
   }
 };
