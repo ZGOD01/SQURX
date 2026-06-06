@@ -12,7 +12,6 @@ export default defineConfig({
     },
   },
   server: {
-    historyApiFallback: true,
     hmr: {
       overlay: false,
     }
