@@ -44,13 +44,13 @@ export function Login() {
                 
                 setTimeout(() => {
                     if (from && from !== '/' && from !== '/auth/login') {
-                        navigate(from);
+                        navigate(from, { replace: true });
                     } else {
                         switch (role) {
-                            case 'STUDENT': navigate('/student/jobs'); break;
-                            case 'RECRUITER': navigate('/recruiter'); break;
-                            case 'ADMIN': navigate('/admin'); break;
-                            default: navigate('/student/jobs'); break;
+                            case 'STUDENT': navigate('/student/jobs', { replace: true }); break;
+                            case 'RECRUITER': navigate('/recruiter', { replace: true }); break;
+                            case 'ADMIN': navigate('/admin', { replace: true }); break;
+                            default: navigate('/student/jobs', { replace: true }); break;
                         }
                     }
                 }, 1200);

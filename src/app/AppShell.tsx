@@ -11,6 +11,28 @@ import { useNotificationStore } from '@/lib/store/notifications';
 export function AppShell() {
     const { user, logout } = useAuthStore();
     const navigate = useNavigate();
+    
+    const handleLogout = () => {
+        navigate('/', { replace: true });
+        setTimeout(() => {
+            logout();
+        }, 0);
+    };
+
+    const handleHomeClick = () => {
+        if (!user) {
+            navigate('/');
+            return;
+        }
+        const role = String(user.role).toUpperCase();
+        switch (role) {
+            case 'STUDENT': navigate('/student'); break;
+            case 'RECRUITER': navigate('/recruiter'); break;
+            case 'ADMIN': navigate('/admin'); break;
+            default: navigate('/student'); break;
+        }
+    };
+
     const { fetchDashboardData: fetchStudent, isLoading: isStudentLoading, profile: studentProfile } = useStudentStore();
     const { fetchDashboardData: fetchRecruiter, isLoading: isRecruiterLoading, company: recruiterCompany } = useRecruiterStore();
     const fetchedRef = useRef(false);
@@ -120,7 +142,7 @@ export function AppShell() {
                             <p className="text-xs text-muted-foreground truncate">{user?.role}</p>
                         </div>
                     </div>
-                    <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={logout}>
+                    <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={handleLogout}>
                         <LogOut size={18} className="mr-3" />
                         Logout
                     </Button>
@@ -150,7 +172,7 @@ export function AppShell() {
                         <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => navigate('/')}
+                            onClick={handleHomeClick}
                             className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground h-9 px-3 rounded-lg"
                         >
                             <Home size={16} />

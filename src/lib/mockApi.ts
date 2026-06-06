@@ -1,5 +1,6 @@
 import { MockDB } from './mockDb';
 import type { User, StudentProfile, CompanyProfile, JobVacancy, JobApplication, ConsultationBooking, SystemActivity } from './mockDb/schema';
+import { useAuthStore } from '@/features/auth/store';
 
 const delay = (ms = 800) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -66,6 +67,8 @@ export const mockApi = {
                     } else if (data.customDomain) {
                         profile.careerGoal = data.customDomain;
                     }
+                    // Sync backend user attributes with frontend useAuthStore
+                    useAuthStore.getState().setAuth(data, token);
                 }
             }
         }

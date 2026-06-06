@@ -5,8 +5,7 @@ import { useAuthStore } from './store';
 import { useStudentStore } from '../student/store';
 import { Button, Input } from '@/components/ui';
 import { PageTransition } from '@/components/motion';
-import { ArrowRight, Loader2, Check, ShieldCheck, UploadCloud } from 'lucide-react';
-import { getGdprConsent, setGdprConsent } from '@/lib/utils';
+import { ArrowRight, Loader2, Check, UploadCloud } from 'lucide-react';
 
 const ALL_DOMAINS = [
     'Software Engineering', 'Data Science & AI', 'Product Management', 'UI/UX Design',
@@ -22,9 +21,8 @@ export function Onboarding() {
     const { user } = useAuthStore();
     const { updateProfile, profile, fetchDashboardData } = useStudentStore();
 
-    // Onboarding step tracking: 0 = GDPR, 1 = Profile Creation, 2 = CV Upload
+    // Onboarding step tracking: 0 = Profile Creation, 1 = CV Upload
     const [onboardingStep, setOnboardingStep] = useState<number>(0);
-    const [isConsentAccepted, setIsConsentAccepted] = useState(false);
     const [domainsList, setDomainsList] = useState<string[]>(ALL_DOMAINS);
 
     // Profile state values
@@ -55,15 +53,12 @@ export function Onboarding() {
     useEffect(() => {
         if (!profile) return;
 
-        const hasGdpr = getGdprConsent(user?.id);
         const hasProfile = !!(profile.careerGoal && profile.location && profile.jobType);
         const hasCv = !!profile.cvUrl;
 
-        if (hasGdpr && hasProfile && hasCv) {
-            navigate('/student/jobs');
-        } else if (hasGdpr && hasProfile) {
-            setOnboardingStep(2);
-        } else if (hasGdpr) {
+        if (hasProfile && hasCv) {
+            navigate('/student/jobs', { replace: true });
+        } else if (hasProfile) {
             setOnboardingStep(1);
         } else {
             setOnboardingStep(0);
@@ -136,7 +131,7 @@ export function Onboarding() {
                 locations: [location],
                 jobTypes: [jobType]
             });
-            setOnboardingStep(2);
+            setOnboardingStep(1);
         } catch (err) {
             console.error(err);
         } finally {
@@ -176,7 +171,7 @@ export function Onboarding() {
         if (user) {
             localStorage.removeItem(`squrx_new_user_${user.id}`);
         }
-        navigate('/student/jobs');
+        navigate('/student/jobs', { replace: true });
     };
 
     if (!profile) {
@@ -188,7 +183,6 @@ export function Onboarding() {
     }
 
     const steps = [
-        { title: 'Consent', desc: 'GDPR Processing Data' },
         { title: 'Profile', desc: 'Personal & Preference Details' },
         { title: 'CV Upload', desc: 'Professional Resume' }
     ];
@@ -239,64 +233,8 @@ export function Onboarding() {
                 </div>
 
                 <AnimatePresence mode="wait">
-                    {/* GDPR Consent Step */}
-                    {onboardingStep === 0 && (
-                        <motion.div
-                            key="gdpr"
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            className="w-full max-w-xl bg-white border border-gray-200/80 p-8 rounded-3xl shadow-xl flex flex-col items-center text-center space-y-6"
-                        >
-                            <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                                <ShieldCheck className="w-10 h-10" />
-                            </div>
-                            <div>
-                                <h2 className="text-2xl font-black text-gray-900 tracking-tight">GDPR Consent & Data Processing</h2>
-                                <p className="text-sm text-gray-500 mt-2 leading-relaxed">
-                                    SQURX values your privacy. To provide tailored job opportunities and career guidance, we need your consent to securely process your data.
-                                </p>
-                            </div>
-                            
-                            <div className="w-full p-5 bg-gray-50 rounded-2xl border border-gray-100 text-left space-y-4">
-                                <p className="text-xs text-gray-500 leading-relaxed">
-                                    By checking the box below, you consent to SQURX:
-                                </p>
-                                <ul className="text-xs text-gray-600 space-y-2 list-disc list-inside">
-                                    <li>Storing and updating your personal profile attributes.</li>
-                                    <li>Analyzing and processing your uploaded Curriculum Vitae (CV).</li>
-                                    <li>Matching your skills and location preferences with vacancies.</li>
-                                </ul>
-                                <div className="h-px bg-gray-200 w-full my-3" />
-                                <div className="flex items-start gap-3">
-                                    <input
-                                        id="gdpr-consent"
-                                        type="checkbox"
-                                        checked={isConsentAccepted}
-                                        onChange={(e) => setIsConsentAccepted(e.target.checked)}
-                                        className="mt-1 h-4 w-4 rounded border-gray-300 text-black focus:ring-black cursor-pointer"
-                                    />
-                                    <label htmlFor="gdpr-consent" className="text-xs text-gray-700 font-semibold leading-relaxed select-none cursor-pointer">
-                                        I hereby consent to SQURX processing my profile, CV, and preferences for matching and recruitment purposes.
-                                    </label>
-                                </div>
-                            </div>
-
-                            <Button
-                                onClick={() => {
-                                    setGdprConsent(user?.id, true);
-                                    setOnboardingStep(1);
-                                }}
-                                disabled={!isConsentAccepted}
-                                className="w-full h-14 bg-black text-white hover:bg-black/90 font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 transition-all hover:scale-[1.01] active:scale-95"
-                            >
-                                Accept & Continue <ArrowRight className="w-5 h-5" />
-                            </Button>
-                        </motion.div>
-                    )}
-
                     {/* Profile Step */}
-                    {onboardingStep === 1 && (
+                    {onboardingStep === 0 && (
                         <motion.div
                             key="profile"
                             initial={{ opacity: 0, y: 10 }}
@@ -311,7 +249,7 @@ export function Onboarding() {
                                 </p>
                             </div>
 
-                            <form onSubmit={handleProfileSubmit} className="space-y-6">
+                             <form onSubmit={handleProfileSubmit} className="space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                     {/* Full Name */}
                                     <div className="space-y-1.5">
@@ -456,7 +394,7 @@ export function Onboarding() {
                     )}
 
                     {/* CV Upload Step */}
-                    {onboardingStep === 2 && (
+                    {onboardingStep === 1 && (
                         <motion.div
                             key="cv"
                             initial={{ opacity: 0, y: 10 }}

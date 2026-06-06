@@ -597,9 +597,14 @@ export function StudentJobs() {
                             ) : appliedJobs.includes(selectedJob.id) ? (
                                 <Button disabled className="w-full h-12 font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">Application Submitted</Button>
                             ) : (
-                                <Button className="w-full h-12 gap-2 font-bold" onClick={() => handleApply(selectedJob)}>
-                                    Apply Externally <ExternalLink size={16} />
-                                </Button>
+                                <div className="space-y-2">
+                                    <Button className="w-full h-12 gap-2 font-bold" onClick={() => handleApply(selectedJob)}>
+                                        Apply Externally <ExternalLink size={16} />
+                                    </Button>
+                                    <p className="text-[11px] text-center text-muted-foreground font-light leading-normal">
+                                        By clicking apply you might be redirected to third party site for application
+                                    </p>
+                                </div>
                             )}
                         </div>
                     </div>

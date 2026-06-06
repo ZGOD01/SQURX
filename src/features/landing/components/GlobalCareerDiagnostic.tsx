@@ -198,13 +198,42 @@ export function GlobalCareerDiagnostic() {
             const response = await consultationApi.bookConsultation(payload);
 
             if (response?.data?.token) {
-                const fakeUser = {
-                    _id: response.data.consultation?.user || "temp-id",
-                    name: payload.fullName,
-                    email: payload.email,
-                    role: "STUDENT"
-                };
-                useAuthStore.getState().setAuth(fakeUser, response.data.token);
+                try {
+                    const meRes = await fetch('https://squrx-backend.onrender.com/api/v1/user/me', {
+                        headers: { 'Authorization': `Bearer ${response.data.token}` }
+                    });
+                    if (meRes.ok) {
+                        const meJson = await meRes.json();
+                        if (meJson.success && meJson.data) {
+                            useAuthStore.getState().setAuth(meJson.data, response.data.token);
+                        } else {
+                            const fakeUser = {
+                                _id: response.data.consultation?.user || "temp-id",
+                                name: payload.fullName,
+                                email: payload.email,
+                                role: "STUDENT"
+                            };
+                            useAuthStore.getState().setAuth(fakeUser, response.data.token);
+                        }
+                    } else {
+                        const fakeUser = {
+                            _id: response.data.consultation?.user || "temp-id",
+                            name: payload.fullName,
+                            email: payload.email,
+                            role: "STUDENT"
+                        };
+                        useAuthStore.getState().setAuth(fakeUser, response.data.token);
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch real user after booking:", err);
+                    const fakeUser = {
+                        _id: response.data.consultation?.user || "temp-id",
+                        name: payload.fullName,
+                        email: payload.email,
+                        role: "STUDENT"
+                    };
+                    useAuthStore.getState().setAuth(fakeUser, response.data.token);
+                }
             }
 
             setIsConfirmingBooking(false);
@@ -220,7 +249,8 @@ export function GlobalCareerDiagnostic() {
         setIsBookingMode(true);
     };
 
-    const handleLogin = () => navigate('/student');
+    const handleLogin = () => navigate('/student', { replace: true });
+
 
     const handleInitialChoice = (choice: 'jobs' | 'consultation') => {
         setInitialChoice(choice);
@@ -486,6 +516,7 @@ export function GlobalCareerDiagnostic() {
 
                                         setIsLeadFormSubmitted(true); 
                                         setIsLeadFormMode(false); 
+                                        setIsBookingMode(true);
                                     }} className="space-y-5 w-full relative z-10">
                                         
                                         <div className="space-y-1.5 group">

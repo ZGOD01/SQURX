@@ -3,7 +3,6 @@ import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/features/auth/store';
 import { useStudentStore } from '@/features/student/store';
 import { Loader2 } from 'lucide-react';
-import { getGdprConsent } from '@/lib/utils';
 
 export function StudentOnboardingGuard({ children }: { children: React.ReactNode }) {
     const { user } = useAuthStore();
@@ -32,11 +31,10 @@ export function StudentOnboardingGuard({ children }: { children: React.ReactNode
     const isNewUser = localStorage.getItem(`squrx_new_user_${user?.id}`) === 'true';
 
     if (isNewUser) {
-        const hasGdpr = getGdprConsent(user?.id);
         const hasProfile = !!(profile && profile.careerGoal && profile.location && profile.jobType);
         const hasCv = !!(profile && profile.cvUrl);
 
-        if (!hasGdpr || !hasProfile || !hasCv) {
+        if (!hasProfile || !hasCv) {
             return <Navigate to="/auth/onboarding" replace />;
         }
     }
