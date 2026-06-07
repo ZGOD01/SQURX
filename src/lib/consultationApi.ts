@@ -68,22 +68,24 @@ export const consultationApi = {
     return res.json();
   },
 
-  uploadCv: async (userId: string, file: File): Promise<string> => {
+  // POST /user/me/resume — upload CV/resume (PDF only, max 5MB)
+  // Backend derives the user from the JWT token; no userId in URL needed.
+  uploadCv: async (file: File): Promise<string> => {
     const token = getAuthToken();
+    if (!token) throw new Error('Authentication required to upload CV.');
+
     const formData = new FormData();
-    formData.append('cv', file);
+    // Backend expects the field to be named 'resume'
+    formData.append('resume', file);
 
-    const headers: Record<string, string> = {};
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    // Note: Do NOT set Content-Type manually — browser sets it with the correct boundary for multipart/form-data
-
-    const res = await fetchWithTimeout(`${BASE_URL}/students/${userId}`, {
-      method: 'PUT',
-      headers,
+    // Do NOT set Content-Type manually — browser sets it with the correct multipart boundary
+    const res = await fetchWithTimeout(`${BASE_URL}/user/me/resume`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
       body: formData,
-      timeout: 30000,  // 30s — file uploads can be slow
+      timeout: 30000, // 30s — file uploads can be slow on cold servers
     });
 
     if (!res.ok) {
@@ -92,8 +94,7 @@ export const consultationApi = {
     }
 
     const result = await res.json();
-    // Backend returns the updated student object; extract the cvUrl from it
-    const cvUrl = result?.data?.cvUrl || result?.data?.student?.cvUrl || '';
-    return cvUrl;
+    // Backend returns the updated UserProfile; the resume URL lives at data.resume
+    return result?.data?.resume || '';
   }
 };

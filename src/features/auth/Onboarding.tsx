@@ -25,6 +25,10 @@ export function Onboarding() {
     // Onboarding step tracking: 0 = Profile Creation, 1 = CV Upload
     const [onboardingStep, setOnboardingStep] = useState<number>(0);
     const [domainsList, setDomainsList] = useState<string[]>(ALL_DOMAINS);
+    // Full domain objects from backend (includes _id for proper API linking)
+    const [domainsData, setDomainsData] = useState<{ id: string; name: string }[]>([]);
+    // Tracks the _id of the domain selected from the dropdown (null = free-text / no match)
+    const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
 
     // Profile state values
     const [fullName, setFullName] = useState('');
@@ -84,14 +88,17 @@ export function Onboarding() {
         }
     }, [user, profile, isInitialized]);
 
-    // Fetch available career domains
+    // Fetch available career domains (preserving IDs for proper PUT /user/me linking)
     useEffect(() => {
         fetch('https://squrx-backend.onrender.com/api/v1/domains')
             .then(res => res.json())
             .then(res => {
                 if (res.success && res.data) {
-                    const fetchedDomains = res.data.map((d: any) => d.name);
-                    const merged = Array.from(new Set([...ALL_DOMAINS, ...fetchedDomains])).sort();
+                    // Store full objects so we can match name -> id on selection
+                    const fetched: { id: string; name: string }[] = res.data.map((d: any) => ({ id: d._id, name: d.name }));
+                    setDomainsData(fetched);
+                    const fetchedNames = fetched.map(d => d.name);
+                    const merged = Array.from(new Set([...ALL_DOMAINS, ...fetchedNames])).sort();
                     setDomainsList(merged);
                 }
             })
@@ -122,6 +129,14 @@ export function Onboarding() {
                 expectedSalary
             };
             localStorage.setItem('squrx_onboarding_profile', JSON.stringify(onboardingProfile));
+
+            // Cache domain ID so mockApi can send { domain: id } to PUT /user/me
+            // Falls back to customDomain text if the selection has no matching backend ID
+            if (selectedDomainId) {
+                localStorage.setItem('squrx_selected_domain_id', selectedDomainId);
+            } else {
+                localStorage.removeItem('squrx_selected_domain_id');
+            }
 
             const parsedSkills = skills.split(',').map(s => s.trim()).filter(Boolean);
             await updateProfile(user.id, {
@@ -156,8 +171,9 @@ export function Onboarding() {
 
         setIsUploadingCV(true);
         try {
-            // Upload to real backend: PUT /api/v1/students/{userId} with multipart/form-data cv field
-            const cvUrl = await consultationApi.uploadCv(user.id, file);
+            // Upload to real backend: POST /api/v1/user/me/resume with multipart field 'resume'
+            // User identity is derived from the JWT token — no userId in URL needed.
+            const cvUrl = await consultationApi.uploadCv(file);
             await updateProfile(user.id, { cvUrl: cvUrl || file.name });
             setCvName(file.name);
             localStorage.setItem('squrx_cv_name', file.name);
@@ -333,7 +349,13 @@ export function Onboarding() {
                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Preferred Job Role (Domain)</label>
                                         <select
                                             value={careerGoal}
-                                            onChange={(e) => setCareerGoal(e.target.value)}
+                                            onChange={(e) => {
+                                                const name = e.target.value;
+                                                setCareerGoal(name);
+                                                // Resolve domain ID for the PUT /user/me payload
+                                                const match = domainsData.find(d => d.name === name);
+                                                setSelectedDomainId(match?.id ?? null);
+                                            }}
                                             className="w-full h-12 bg-gray-50/50 border border-gray-200 rounded-xl px-4 text-sm font-semibold text-gray-900 transition-all outline-none focus:border-black focus:ring-1 focus:ring-black cursor-pointer"
                                         >
                                             <option value="" disabled>Select Preferred Domain</option>

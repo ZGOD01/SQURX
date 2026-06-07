@@ -68,6 +68,9 @@ export function StudentProfile() {
         setIsSaving(true);
         await new Promise(resolve => setTimeout(resolve, 800)); // mock delay
         if (user) {
+            // Clear cached domain ID: this is a free-text career goal, not a domain selection.
+            // mockApi will use { customDomain: value } instead of { domain: id }.
+            localStorage.removeItem('squrx_selected_domain_id');
             await updateProfile(user.id, data);
             sendEmail('Profile Updated Successfully', `Your profile data has been updated on Squrx. Keeping your profile fresh increases your visibility!`);
         }
@@ -104,9 +107,10 @@ export function StudentProfile() {
         if (!user) return;
         setIsUploadingCV(true);
         try {
-            // Upload to real backend: PUT /api/v1/students/{userId} with multipart/form-data cv field
-            const cvUrl = await consultationApi.uploadCv(user.id, file);
-            // Persist the returned URL (or file name as fallback) locally
+            // Upload to real backend: POST /api/v1/user/me/resume with multipart field 'resume'
+            // User identity is derived from the JWT token — no userId in URL needed.
+            const cvUrl = await consultationApi.uploadCv(file);
+            // Persist the returned S3 URL (or fallback to filename) locally
             await updateProfile(user.id, { cvUrl: cvUrl || file.name });
             sendEmail('CV Upload Received', `Your new Curriculum Vitae (${file.name}) was successfully processed and mapped to your applicant profile.`);
             setToastMessage('CV uploaded successfully.');

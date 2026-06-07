@@ -51,6 +51,8 @@ const ROLES = [
 export function RoleCards() {
     const [articles, setArticles] = useState<any[]>([]);
     const [selectedRole, setSelectedRole] = useState<any | null>(null);
+    const [articleDetail, setArticleDetail] = useState<any | null>(null);
+    const [isLoadingDetail, setIsLoadingDetail] = useState(false);
 
     useEffect(() => {
         fetch('https://squrx-backend.onrender.com/api/v1/articles')
@@ -89,6 +91,22 @@ export function RoleCards() {
             }
             document.body.style.overflow = 'unset';
         };
+    }, [selectedRole]);
+
+    // GET /articles/{id} — fetch full article detail when modal opens with a backend article
+    useEffect(() => {
+        if (!selectedRole?.article?._id) {
+            setArticleDetail(null);
+            return;
+        }
+        setIsLoadingDetail(true);
+        fetch(`https://squrx-backend.onrender.com/api/v1/articles/${selectedRole.article._id}`)
+            .then(res => res.json())
+            .then(res => {
+                if (res.success && res.data) setArticleDetail(res.data);
+            })
+            .catch(console.error)
+            .finally(() => setIsLoadingDetail(false));
     }, [selectedRole]);
 
     return (
@@ -263,13 +281,21 @@ export function RoleCards() {
                                 </div>
                                 
                                 <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-4 tracking-tight leading-[1.1]" style={{ fontFamily: "'Outfit', sans-serif" }}>
-                                    {selectedRole?.article?.title || selectedRole.title}
+                                    {articleDetail?.title || selectedRole?.article?.title || selectedRole.title}
                                 </h2>
                                 
                                 <div className="prose prose-base md:prose-lg max-w-none">
-                                    {selectedRole?.article?.content ? (
+                                    {isLoadingDetail ? (
+                                        <div className="flex items-center gap-3 py-8 text-gray-400">
+                                            <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                                            </svg>
+                                            <span className="text-sm font-medium">Loading full article...</span>
+                                        </div>
+                                    ) : (articleDetail?.content || selectedRole?.article?.content) ? (
                                         <p className="text-lg md:text-xl leading-relaxed text-gray-600 font-medium">
-                                            {selectedRole.article.content}
+                                            {articleDetail?.content || selectedRole.article.content}
                                         </p>
                                     ) : (
                                         <div className="space-y-4 md:space-y-6">
@@ -283,7 +309,7 @@ export function RoleCards() {
                                     )}
                                 </div>
 
-                                {selectedRole?.article && (
+                                {(articleDetail || selectedRole?.article) && (
                                     <div className="mt-8 p-4 md:p-5 bg-blue-50/50 rounded-2xl border border-blue-100/50 flex items-start gap-3">
                                         <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
                                             <Sparkles className="w-5 h-5 text-blue-600" />

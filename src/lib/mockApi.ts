@@ -61,11 +61,17 @@ export const mockApi = {
                 if (data) {
                     profile.cvUrl = data.resume || profile.cvUrl;
                     profile.documentUrl = data.schoolLeavingCertificate || profile.documentUrl;
-                    // Sync the real domain/career goal
+                    // Sync the real domain/career goal and cache the domain ID for future updates
                     if (data.domain?.name) {
                         profile.careerGoal = data.domain.name;
+                        // Cache domain ID so PUT /user/me can send { domain: id } instead of customDomain
+                        if (data.domain._id) {
+                            localStorage.setItem('squrx_selected_domain_id', data.domain._id);
+                        }
                     } else if (data.customDomain) {
                         profile.careerGoal = data.customDomain;
+                        // No real domain ID — clear any stale cache
+                        localStorage.removeItem('squrx_selected_domain_id');
                     }
                     // Sync backend user attributes with frontend useAuthStore
                     useAuthStore.getState().setAuth(data, token);
@@ -81,19 +87,26 @@ export const mockApi = {
     await delay();
     MockDB.updateStudentProfile(userId, data);
     
-    // Attempt to sync with real backend
+    // Sync domain/career goal with real backend via PUT /api/v1/user/me
     try {
         const token = localStorage.getItem('token');
-        if (token && data.careerGoal) {
-            // we don't have domain ID here, just the name, so we use customDomain field
+        if (token && data.careerGoal !== undefined) {
+            // If a domain was selected from the dropdown, a domain ID will be cached.
+            // Prefer sending { domain: id } (proper DB reference) over { customDomain: text }.
+            const cachedDomainId = localStorage.getItem('squrx_selected_domain_id');
+
+            const payload: Record<string, string> = cachedDomainId
+                ? { domain: cachedDomainId }        // Proper backend domain reference
+                : { customDomain: data.careerGoal }; // Free-text fallback
+
             await fetchWithTimeout('https://squrx-backend.onrender.com/api/v1/user/me', {
                 method: 'PUT',
                 headers: { 
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ customDomain: data.careerGoal }),
-                timeout: 2000
+                body: JSON.stringify(payload),
+                timeout: 3000
             });
         }
     } catch(e) {

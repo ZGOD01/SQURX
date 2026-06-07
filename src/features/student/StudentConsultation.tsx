@@ -20,6 +20,8 @@ export function StudentConsultation() {
 
     const [slotsData, setSlotsData] = useState<any[]>([]);
     const [quizzesList, setQuizzesList] = useState<any[]>([]);
+    // Holds freshly-fetched detail for each quiz via GET /quizzes/{id}
+    const [quizzesDetail, setQuizzesDetail] = useState<any[]>([]);
 
     useEffect(() => {
         consultationApi.getTimeSlots().then(res => {
@@ -28,6 +30,7 @@ export function StudentConsultation() {
             }
         }).catch(console.error);
 
+        // GET /quizzes — fetch all quizzes for ID mapping
         fetch('https://squrx-backend.onrender.com/api/v1/quizzes')
             .then(res => res.json())
             .then(res => {
@@ -37,6 +40,20 @@ export function StudentConsultation() {
             })
             .catch(console.error);
     }, []);
+
+    // GET /quizzes/{id} — when date is selected, refresh each quiz individually
+    // This ensures up-to-date options are used for the quiz answer mapping
+    useEffect(() => {
+        if (!selectedDate || quizzesList.length === 0) return;
+        Promise.all(
+            quizzesList.map((q: any) =>
+                fetch(`https://squrx-backend.onrender.com/api/v1/quizzes/${q._id}`)
+                    .then(res => res.json())
+                    .then(res => (res.success && res.data ? res.data : q))
+                    .catch(() => q) // fall back to list data on error
+            )
+        ).then(setQuizzesDetail).catch(console.error);
+    }, [selectedDate, quizzesList]);
 
     const handleBooking = async () => {
         if (!selectedDate || !selectedTime) return;
@@ -63,8 +80,10 @@ export function StudentConsultation() {
                         };
                     }
 
-                    // Find match in backend quizzes
-                    const matchingQuiz = quizzesList.find((q: any) => 
+                    // Use freshly-fetched individual quiz details (GET /quizzes/{id}) for accurate mapping.
+                    // Fall back to the list data if detail fetch hasn't completed yet.
+                    const quizzesSource = quizzesDetail.length > 0 ? quizzesDetail : quizzesList;
+                    const matchingQuiz = quizzesSource.find((q: any) => 
                         q.options?.some((o: any) => o._id === choiceId)
                     );
 
