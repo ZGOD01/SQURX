@@ -37,6 +37,9 @@ export const useAuthStore = create<AuthStore>()(
       logout: () => {
         set({ user: null });
         localStorage.removeItem('token');
+        localStorage.removeItem('squrx_onboarding_profile');
+        localStorage.removeItem('squrx_cv_name');
+        localStorage.removeItem('squrx_selected_domain_id');
       },
 
       setHasHydrated: (val: boolean) => {

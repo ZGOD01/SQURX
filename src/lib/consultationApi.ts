@@ -3,7 +3,7 @@ export const BASE_URL = 'https://squrx-backend.onrender.com/api/v1';
 export const getAuthToken = () => localStorage.getItem('token');
 
 const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: number } = {}) => {
-  const { timeout = 2500, ...rest } = options;
+  const { timeout = 30000, ...rest } = options;
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
   try {
@@ -18,7 +18,7 @@ const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: 
 
 export const consultationApi = {
   getTimeSlots: async () => {
-    const res = await fetchWithTimeout(`${BASE_URL}/time-slots`, { timeout: 2500 });
+    const res = await fetchWithTimeout(`${BASE_URL}/time-slots`, { timeout: 30000 });
     if (!res.ok) throw new Error('Failed to fetch time slots');
     return res.json();
   },
@@ -34,7 +34,7 @@ export const consultationApi = {
       method: 'POST',
       headers,
       body: JSON.stringify(data),
-      timeout: 4000
+      timeout: 30000
     });
     if (!res.ok) {
        const err = await res.json().catch(() => ({}));
@@ -62,7 +62,7 @@ export const consultationApi = {
       headers: {
         'Authorization': `Bearer ${token}`
       },
-      timeout: 2500
+      timeout: 30000
     });
     if (!res.ok) throw new Error('Failed to fetch appointments');
     return res.json();

@@ -73,7 +73,31 @@ export function Onboarding() {
     // Initialize local form state values once user profile data loads
     useEffect(() => {
         if ((user || profile) && !isInitialized) {
-            const savedProfile = JSON.parse(localStorage.getItem('squrx_onboarding_profile') || '{}');
+            const savedProfileRaw = localStorage.getItem('squrx_onboarding_profile');
+            let savedProfile: any = {};
+            
+            if (savedProfileRaw) {
+                try {
+                    const parsed = JSON.parse(savedProfileRaw);
+                    // Only use the saved profile if it belongs to the currently logged-in user
+                    if (parsed && parsed.email === user?.email) {
+                        savedProfile = parsed;
+                    } else {
+                        // Clear stale cache from a different user session
+                        localStorage.removeItem('squrx_onboarding_profile');
+                        localStorage.removeItem('squrx_cv_name');
+                        localStorage.removeItem('squrx_selected_domain_id');
+                        setCvName('');
+                    }
+                } catch (e) {
+                    console.error("Failed to parse onboarding profile:", e);
+                }
+            } else {
+                // No profile cache exists, make sure CV name state is also empty
+                localStorage.removeItem('squrx_cv_name');
+                setCvName('');
+            }
+
             setFullName(savedProfile.fullName || user?.name || user?.fullName || '');
             setEmail(savedProfile.email || user?.email || '');
             setPhone(savedProfile.phone || user?.mobile || '');

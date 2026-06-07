@@ -15,6 +15,15 @@ export const registerSchema = z.object({
   role: z.enum(['STUDENT', 'RECRUITER']),
   resume: z.any().optional(),
   document: z.any().optional(),
+}).refine((data) => {
+  if (data.role === 'STUDENT') {
+    const digitsOnly = data.mobile ? data.mobile.replace(/\D/g, '') : '';
+    return digitsOnly.length === 10;
+  }
+  return true;
+}, {
+  message: 'Mobile number must be exactly 10 digits',
+  path: ['mobile'],
 });
 
 export type RegisterFormValues = z.infer<typeof registerSchema>;

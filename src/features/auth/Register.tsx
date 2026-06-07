@@ -129,12 +129,15 @@ export function Register() {
     const onSubmit = async (data: RegisterFormValues) => {
         setIsLoading(true);
         try {
-            // Build a plain JSON payload — the backend expects application/json, not multipart/form-data
+            // Build a JSON payload
             const payload: Record<string, any> = {
                 fullName: data.name,
                 email: data.email,
                 password: data.password,
-                role: data.role, // Keep original casing (STUDENT / RECRUITER) as backend likely expects uppercase
+                role: data.role.toLowerCase(),
+                gdprConsent: true,
+                gdpr: true,
+                consent: true,
             };
 
             if (data.role === 'STUDENT') {
@@ -155,7 +158,22 @@ export function Register() {
                 throw new Error(res.message);
             }
         } catch (err: any) {
-            showToast('error', 'Registration Failed', err.data?.message || err.message || "Failed to register. Please try again.");
+            console.error("Signup validation error details:", err);
+            let errorMsg = "Failed to register. Please try again.";
+            if (err.data) {
+                if (err.data.message) {
+                    errorMsg = err.data.message;
+                    if (Array.isArray(err.data.errors) && err.data.errors.length > 0) {
+                        const subErrors = err.data.errors.map((e: any) => e.message || JSON.stringify(e)).join(", ");
+                        errorMsg += `: ${subErrors}`;
+                    }
+                } else if (typeof err.data.error === 'string') {
+                    errorMsg = err.data.error;
+                }
+            } else if (err.message) {
+                errorMsg = err.message;
+            }
+            showToast('error', 'Registration Failed', errorMsg);
         } finally {
             setIsLoading(false);
         }
