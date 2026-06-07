@@ -129,42 +129,22 @@ export function Register() {
     const onSubmit = async (data: RegisterFormValues) => {
         setIsLoading(true);
         try {
-            const formData = new FormData();
-            formData.append('fullName', data.name);
-            formData.append('email', data.email);
-            formData.append('password', data.password);
-            formData.append('role', data.role.toLowerCase());
-            
-            if (data.role === 'STUDENT') {
-                let sanitizedMobile = data.mobile ? data.mobile.replace(/\D/g, '') : "9999999999";
-                if (sanitizedMobile.length !== 10) sanitizedMobile = "9999999999";
-                formData.append('mobile', sanitizedMobile);
+            // Build a plain JSON payload — the backend expects application/json, not multipart/form-data
+            const payload: Record<string, any> = {
+                fullName: data.name,
+                email: data.email,
+                password: data.password,
+                role: data.role, // Keep original casing (STUDENT / RECRUITER) as backend likely expects uppercase
+            };
 
-                // Add quiz answers fallback to satisfy potential backend requirements
-                try {
-                    const answersStr = localStorage.getItem('squrx_quiz_answers');
-                    let quizAnswersList: { quizId: string; choiceId: string }[] = [];
-                    if (answersStr) {
-                        const rawAnswers = JSON.parse(answersStr);
-                        quizAnswersList = Object.keys(rawAnswers).map(key => {
-                            const rawChoice = rawAnswers[key];
-                            const isValidHex = /^[0-9a-fA-F]{24}$/.test(rawChoice);
-                            return {
-                                quizId: '65f000000000000000000000', // Dummy valid hex, backend just needs valid IDs
-                                choiceId: isValidHex ? rawChoice : '65f000000000000000000000'
-                            };
-                        });
-                    }
-                    if (quizAnswersList.length === 0) {
-                        quizAnswersList = [{ quizId: '65f000000000000000000000', choiceId: '65f000000000000000000000' }];
-                    }
-                    formData.append('quizAnswers', JSON.stringify(quizAnswersList));
-                } catch (e) {
-                    formData.append('quizAnswers', JSON.stringify([{ quizId: '65f000000000000000000000', choiceId: '65f000000000000000000000' }]));
+            if (data.role === 'STUDENT') {
+                let sanitizedMobile = data.mobile ? data.mobile.replace(/\D/g, '') : '';
+                if (sanitizedMobile.length === 10) {
+                    payload.mobile = sanitizedMobile;
                 }
             }
 
-            const res = await signupMutation(formData).unwrap();
+            const res = await signupMutation(payload).unwrap();
             
             if (res.success && res.data?.userId) {
                 setUserId(res.data.userId);
