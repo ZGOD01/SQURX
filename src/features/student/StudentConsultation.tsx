@@ -9,6 +9,8 @@ import { useNotificationStore } from '@/lib/store/notifications';
 
 
 
+import { API_BASE_URL } from '@/lib/config';
+
 export function StudentConsultation() {
     const { user } = useAuthStore();
     const { consultation, bookConsultation, cancelConsultation } = useStudentStore();
@@ -31,7 +33,7 @@ export function StudentConsultation() {
         }).catch(console.error);
 
         // GET /quizzes — fetch all quizzes for ID mapping
-        fetch('https://squrx-backend.onrender.com/api/v1/quizzes')
+        fetch(`${API_BASE_URL}/quizzes`)
             .then(res => res.json())
             .then(res => {
                 if (res.success && res.data) {
@@ -47,7 +49,7 @@ export function StudentConsultation() {
         if (!selectedDate || quizzesList.length === 0) return;
         Promise.all(
             quizzesList.map((q: any) =>
-                fetch(`https://squrx-backend.onrender.com/api/v1/quizzes/${q._id}`)
+                fetch(`${API_BASE_URL}/quizzes/${q._id}`)
                     .then(res => res.json())
                     .then(res => (res.success && res.data ? res.data : q))
                     .catch(() => q) // fall back to list data on error

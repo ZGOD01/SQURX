@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { API_BASE_URL } from '@/lib/config';
 
 type HealthStatus = 'checking' | 'operational' | 'degraded' | 'offline';
 
@@ -8,7 +9,7 @@ export function Footer() {
 
     // GET /health — poll server status once on mount
     useEffect(() => {
-        fetch('https://squrx-backend.onrender.com/api/v1/health', { signal: AbortSignal.timeout(5000) })
+        fetch(`${API_BASE_URL}/health`, { signal: AbortSignal.timeout(5000) })
             .then(res => res.json())
             .then(res => {
                 if (res.success && res.data?.database === 'connected') {

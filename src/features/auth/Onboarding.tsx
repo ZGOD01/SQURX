@@ -7,15 +7,16 @@ import { Button, Input } from '@/components/ui';
 import { PageTransition } from '@/components/motion';
 import { ArrowRight, Loader2, Check, UploadCloud } from 'lucide-react';
 import { consultationApi } from '@/lib/consultationApi';
+import {
+    useGetEducationsQuery,
+    useGetSkillsQuery,
+    useGetJobTypesQuery,
+    useGetExperienceLevelsQuery,
+    useGetLocationsQuery,
+    useGetDomainsQuery
+} from '@/lib/store/authApi';
 
-const ALL_DOMAINS = [
-    'Software Engineering', 'Data Science & AI', 'Product Management', 'UI/UX Design',
-    'Operations & Strategy', 'Quality Assurance', 'Marketing & Growth', 'Sales & BizDev',
-    'Finance & Accounting', 'Venture Capital', 'Management Consulting', 'Healthcare',
-    'Supply Chain & Logistics', 'Human Resources', 'Legal & Compliance', 'Cybersecurity',
-    'Cloud Architecture', 'Mechanical Engineering', 'Electrical Engineering', 'Media & Journalism',
-    'Education & EdTech', 'Real Estate', 'Game Development'
-].sort();
+
 
 export function Onboarding() {
     const navigate = useNavigate();
@@ -24,28 +25,111 @@ export function Onboarding() {
 
     // Onboarding step tracking: 0 = Profile Creation, 1 = CV Upload
     const [onboardingStep, setOnboardingStep] = useState<number>(0);
-    const [domainsList, setDomainsList] = useState<string[]>(ALL_DOMAINS);
-    // Full domain objects from backend (includes _id for proper API linking)
-    const [domainsData, setDomainsData] = useState<{ id: string; name: string }[]>([]);
-    // Tracks the _id of the domain selected from the dropdown (null = free-text / no match)
-    const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
+
 
     // Profile state values
     const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
     const [education, setEducation] = useState('');
+    const [educationQuery, setEducationQuery] = useState('');
+    const [showEduSuggestions, setShowEduSuggestions] = useState(false);
+
     const [skills, setSkills] = useState('');
+
     const [experienceLevel, setExperienceLevel] = useState('Fresher');
+    const [experienceLevelQuery, setExperienceLevelQuery] = useState('Fresher');
+    const [showExpSuggestions, setShowExpSuggestions] = useState(false);
+
     const [careerGoal, setCareerGoal] = useState('');
+    const [showDomainSuggestions, setShowDomainSuggestions] = useState(false);
+
     const [location, setLocation] = useState('');
+    const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
+
     const [jobType, setJobType] = useState('Full-Time');
+    const [jobTypeQuery, setJobTypeQuery] = useState('Full-Time');
+    const [showJobTypeSuggestions, setShowJobTypeSuggestions] = useState(false);
+
     const [expectedSalary, setExpectedSalary] = useState('');
+    const [currentSalary, setCurrentSalary] = useState('');
 
     const [isProfileSaving, setIsProfileSaving] = useState(false);
     const [isUploadingCV, setIsUploadingCV] = useState(false);
     const [cvName, setCvName] = useState(localStorage.getItem('squrx_cv_name') || '');
     const [isInitialized, setIsInitialized] = useState(false);
+
+    const currentSkillsParts = skills.split(',');
+    const lastSkillPart = currentSkillsParts[currentSkillsParts.length - 1].trim();
+
+    const currentDomainParts = careerGoal.split(',');
+    const lastDomainPart = currentDomainParts[currentDomainParts.length - 1].trim();
+
+    const currentLocationParts = location.split(',');
+    const lastLocationPart = currentLocationParts[currentLocationParts.length - 1].trim();
+
+    const { data: educationsData } = useGetEducationsQuery({ search: educationQuery });
+    const { data: skillsData } = useGetSkillsQuery({ search: lastSkillPart });
+    const { data: jobTypesData } = useGetJobTypesQuery({ search: jobTypeQuery });
+    const { data: experienceLevelsData } = useGetExperienceLevelsQuery({ search: experienceLevelQuery });
+    const { data: locationsData } = useGetLocationsQuery({ search: lastLocationPart });
+    const { data: domainsData } = useGetDomainsQuery({ search: lastDomainPart });
+
+    const [showSkillSuggestions, setShowSkillSuggestions] = useState(false);
+
+    const getFilteredSkills = () => {
+        if (!skillsData?.data) return [];
+        const parts = skills.split(',');
+        const selectedSkillsSet = new Set(parts.slice(0, -1).map(s => s.trim().toLowerCase()));
+
+        return skillsData.data.filter((s: any) => {
+            const skillName = s.name.toLowerCase();
+            return !selectedSkillsSet.has(skillName);
+        }).slice(0, 15);
+    };
+
+    const handleAddSkill = (skillName: string) => {
+        const parts = skills.split(',');
+        parts[parts.length - 1] = ` ${skillName}`;
+        setSkills(parts.join(',').trim() + ', ');
+        setShowSkillSuggestions(false);
+    };
+
+    const getFilteredDomains = () => {
+        if (!domainsData?.data) return [];
+        const parts = careerGoal.split(',');
+        const selectedDomainsSet = new Set(parts.slice(0, -1).map(d => d.trim().toLowerCase()));
+
+        return domainsData.data.filter((d: any) => {
+            const domainName = d.name.toLowerCase();
+            return !selectedDomainsSet.has(domainName);
+        }).slice(0, 15);
+    };
+
+    const handleAddDomain = (domainName: string) => {
+        const parts = careerGoal.split(',');
+        parts[parts.length - 1] = ` ${domainName}`;
+        setCareerGoal(parts.join(',').trim() + ', ');
+        setShowDomainSuggestions(false);
+    };
+
+    const getFilteredLocations = () => {
+        if (!locationsData?.data) return [];
+        const parts = location.split(',');
+        const selectedLocationsSet = new Set(parts.slice(0, -1).map(l => l.trim().toLowerCase()));
+
+        return locationsData.data.filter((l: any) => {
+            const locationName = l.name.toLowerCase();
+            return !selectedLocationsSet.has(locationName);
+        }).slice(0, 15);
+    };
+
+    const handleAddLocation = (locationName: string) => {
+        const parts = location.split(',');
+        parts[parts.length - 1] = ` ${locationName}`;
+        setLocation(parts.join(',').trim() + ', ');
+        setShowLocationSuggestions(false);
+    };
 
     // Fetch dashboard/profile data on mount
     useEffect(() => {
@@ -99,35 +183,36 @@ export function Onboarding() {
             }
 
             setFullName(savedProfile.fullName || user?.name || user?.fullName || '');
-            setEmail(savedProfile.email || user?.email || '');
-            setPhone(savedProfile.phone || user?.mobile || '');
-            setEducation(savedProfile.education || '');
+            setEmail(user?.email || '');
+            setPhone(user?.mobile || '');
+            const initialEducation = savedProfile.education || '';
+            setEducation(initialEducation);
+            setEducationQuery(initialEducation);
+
             setSkills(savedProfile.skills || (profile?.skills ? profile.skills.join(', ') : ''));
-            setExperienceLevel(savedProfile.experienceLevel || 'Fresher');
-            setCareerGoal(savedProfile.careerGoal || profile?.careerGoal || '');
-            setLocation(savedProfile.location || profile?.location || '');
-            setJobType(savedProfile.jobType || profile?.jobType || 'Full-Time');
+
+            const initialExp = savedProfile.experienceLevel || 'Fresher';
+            setExperienceLevel(initialExp);
+            // If experienceLevel is "1-3" or "3-5" or "5+", we append " Years" to look better
+            setExperienceLevelQuery(initialExp === 'Fresher' || initialExp.includes('Years') ? initialExp : `${initialExp} Years`);
+
+            const initialCareerGoal = savedProfile.careerGoal || profile?.careerGoal || '';
+            setCareerGoal(initialCareerGoal);
+
+            const initialLocation = savedProfile.location || profile?.location || '';
+            setLocation(initialLocation);
+
+            const initialJobType = savedProfile.jobType || profile?.jobType || 'Full-Time';
+            setJobType(initialJobType);
+            setJobTypeQuery(initialJobType);
+
             setExpectedSalary(savedProfile.expectedSalary || '');
+            setCurrentSalary(savedProfile.currentSalary || '');
             setIsInitialized(true);
         }
     }, [user, profile, isInitialized]);
 
-    // Fetch available career domains (preserving IDs for proper PUT /user/me linking)
-    useEffect(() => {
-        fetch('https://squrx-backend.onrender.com/api/v1/domains')
-            .then(res => res.json())
-            .then(res => {
-                if (res.success && res.data) {
-                    // Store full objects so we can match name -> id on selection
-                    const fetched: { id: string; name: string }[] = res.data.map((d: any) => ({ id: d._id, name: d.name }));
-                    setDomainsData(fetched);
-                    const fetchedNames = fetched.map(d => d.name);
-                    const merged = Array.from(new Set([...ALL_DOMAINS, ...fetchedNames])).sort();
-                    setDomainsList(merged);
-                }
-            })
-            .catch(console.error);
-    }, []);
+
 
     const handleProfileSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -138,36 +223,80 @@ export function Onboarding() {
             return;
         }
 
+        if (experienceLevel !== 'Fresher' && !currentSalary) {
+            alert("Current salary is required for experienced candidates.");
+            return;
+        }
+
         setIsProfileSaving(true);
         try {
             const onboardingProfile = {
                 fullName,
-                email,
-                phone,
                 education,
                 skills,
                 experienceLevel,
                 careerGoal,
                 location,
                 jobType,
-                expectedSalary
+                expectedSalary,
+                currentSalary: experienceLevel === 'Fresher' ? '' : currentSalary
             };
             localStorage.setItem('squrx_onboarding_profile', JSON.stringify(onboardingProfile));
 
-            // Cache domain ID so mockApi can send { domain: id } to PUT /user/me
-            // Falls back to customDomain text if the selection has no matching backend ID
-            if (selectedDomainId) {
-                localStorage.setItem('squrx_selected_domain_id', selectedDomainId);
+            // Resolve and cache lookup IDs for the backend update request
+            const parsedDomains = careerGoal.split(',').map(d => d.trim()).filter(Boolean);
+            const domainIds = parsedDomains
+                .map(d => domainsData?.data?.find((dd: any) => dd.name.toLowerCase() === d.toLowerCase())?._id)
+                .filter(Boolean);
+            localStorage.setItem('squrx_selected_domain_ids', JSON.stringify(domainIds));
+
+            const eduMatch = educationsData?.data?.find((e: any) => e.name === education);
+            if (eduMatch) {
+                localStorage.setItem('squrx_selected_education_id', eduMatch._id);
             } else {
-                localStorage.removeItem('squrx_selected_domain_id');
+                localStorage.removeItem('squrx_selected_education_id');
             }
 
+            const expMatch = experienceLevelsData?.data?.find((e: any) => e.name === experienceLevel);
+            if (expMatch) {
+                localStorage.setItem('squrx_selected_experience_level_id', expMatch._id);
+            } else {
+                localStorage.removeItem('squrx_selected_experience_level_id');
+            }
+
+            const jobTypeMatch = jobTypesData?.data?.find((j: any) => j.name === jobType);
+            if (jobTypeMatch) {
+                localStorage.setItem('squrx_selected_job_type_ids', JSON.stringify([jobTypeMatch._id]));
+            } else {
+                localStorage.removeItem('squrx_selected_job_type_ids');
+            }
+
+            const parsedLocations = location.split(',').map(l => l.trim()).filter(Boolean);
+            const locationIds = parsedLocations
+                .map(l => locationsData?.data?.find((ld: any) => ld.name.toLowerCase() === l.toLowerCase())?._id)
+                .filter(Boolean);
+            localStorage.setItem('squrx_selected_location_ids', JSON.stringify(locationIds));
+
             const parsedSkills = skills.split(',').map(s => s.trim()).filter(Boolean);
+            const skillIds = parsedSkills
+                .map(s => skillsData?.data?.find((sd: any) => sd.name.toLowerCase() === s.toLowerCase())?._id)
+                .filter(Boolean);
+            localStorage.setItem('squrx_selected_skill_ids', JSON.stringify(skillIds));
+
             await updateProfile(user.id, {
+                fullName,
+                education: eduMatch?._id || education,
+                experienceLevel: expMatch?._id || experienceLevel,
+                currentSalary: experienceLevel === 'Fresher' ? null : currentSalary,
+                expectedSalary,
+                preferredDomains: domainIds,
+                skills: skillIds,
+                preferredLocations: locationIds,
+                preferredJobTypes: jobTypeMatch?._id ? [jobTypeMatch._id] : [],
+                // Local state compatibility
                 careerGoal,
                 location,
                 jobType,
-                skills: parsedSkills,
                 locations: [location],
                 jobTypes: [jobType]
             });
@@ -308,52 +437,102 @@ export function Onboarding() {
                                     <div className="space-y-1.5">
                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Email Address</label>
                                         <Input
-                                            required
+                                            disabled
                                             type="email"
                                             placeholder="e.g. jane.doe@example.com"
                                             value={email}
-                                            onChange={(e) => setEmail(e.target.value)}
-                                            className="h-12 rounded-xl"
+                                            className="h-12 rounded-xl bg-gray-100 cursor-not-allowed opacity-75"
                                         />
                                     </div>
 
                                     {/* Phone */}
                                     <div className="space-y-1.5">
                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Phone Number</label>
-                                        <Input
-                                            required
-                                            placeholder="e.g. +1 555-0199"
-                                            value={phone}
-                                            onChange={(e) => setPhone(e.target.value)}
-                                            className="h-12 rounded-xl"
-                                        />
+                                        <div className="flex gap-2 items-center">
+                                            {user?.country?.code && (
+                                                <div className="flex items-center gap-1.5 h-12 px-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 select-none">
+                                                    <img src={`https://flagcdn.com/w40/${user.country.code.toLowerCase()}.png`} alt={`${user.country.name || ''} flag`} className="w-6 h-4 object-cover rounded" />
+                                                    <span>{user.country.phoneCode}</span>
+                                                </div>
+                                            )}
+                                            <Input
+                                                disabled
+                                                placeholder="e.g. 555-0199"
+                                                value={phone}
+                                                className="h-12 rounded-xl flex-1 bg-gray-100 cursor-not-allowed opacity-75"
+                                            />
+                                        </div>
                                     </div>
 
                                     {/* Education */}
-                                    <div className="space-y-1.5">
+                                    <div className="space-y-1.5 relative">
                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Education / Degree</label>
                                         <Input
                                             required
-                                            placeholder="e.g. B.S. in Computer Science"
-                                            value={education}
-                                            onChange={(e) => setEducation(e.target.value)}
+                                            placeholder="Search & select education..."
+                                            value={educationQuery}
+                                            onChange={(e) => {
+                                                setEducationQuery(e.target.value);
+                                                setShowEduSuggestions(true);
+                                            }}
+                                            onFocus={() => setShowEduSuggestions(true)}
+                                            onBlur={() => setTimeout(() => setShowEduSuggestions(false), 250)}
                                             className="h-12 rounded-xl"
                                         />
+                                        {showEduSuggestions && educationsData?.data && educationsData.data.length > 0 && (
+                                            <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto p-1.5 flex flex-col gap-0.5">
+                                                {educationsData.data.map((edu: any) => (
+                                                    <button
+                                                        key={edu._id || edu.name}
+                                                        type="button"
+                                                        onMouseDown={() => {
+                                                            setEducation(edu.name);
+                                                            setEducationQuery(edu.name);
+                                                            setShowEduSuggestions(false);
+                                                        }}
+                                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded-lg transition-colors cursor-pointer text-black"
+                                                    >
+                                                        {edu.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Experience Level */}
-                                    <div className="space-y-1.5">
+                                    <div className="space-y-1.5 relative">
                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Experience Level</label>
-                                        <select
-                                            value={experienceLevel}
-                                            onChange={(e) => setExperienceLevel(e.target.value)}
-                                            className="w-full h-12 bg-gray-50/50 border border-gray-200 rounded-xl px-4 text-sm font-semibold text-gray-900 transition-all outline-none focus:border-black focus:ring-1 focus:ring-black cursor-pointer"
-                                        >
-                                            <option value="Fresher">Fresher</option>
-                                            <option value="1-3 Years">1-3 Years</option>
-                                            <option value="3-5 Years">3-5 Years</option>
-                                            <option value="5+ Years">5+ Years</option>
-                                        </select>
+                                        <Input
+                                            required
+                                            placeholder="Search & select experience..."
+                                            value={experienceLevelQuery}
+                                            onChange={(e) => {
+                                                setExperienceLevelQuery(e.target.value);
+                                                setShowExpSuggestions(true);
+                                            }}
+                                            onFocus={() => setShowExpSuggestions(true)}
+                                            onBlur={() => setTimeout(() => setShowExpSuggestions(false), 250)}
+                                            className="h-12 rounded-xl"
+                                        />
+                                        {showExpSuggestions && experienceLevelsData?.data && experienceLevelsData.data.length > 0 && (
+                                            <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto p-1.5 flex flex-col gap-0.5">
+                                                {experienceLevelsData.data.map((el: any) => (
+                                                    <button
+                                                        key={el._id || el.name}
+                                                        type="button"
+                                                        onMouseDown={() => {
+                                                            const displayName = el.name === 'Fresher' ? 'Fresher' : `${el.name} Years`;
+                                                            setExperienceLevel(el.name);
+                                                            setExperienceLevelQuery(displayName);
+                                                            setShowExpSuggestions(false);
+                                                        }}
+                                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded-lg transition-colors cursor-pointer text-black"
+                                                    >
+                                                        {el.name === 'Fresher' ? 'Fresher' : `${el.name} Years`}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Expected Salary */}
@@ -368,64 +547,144 @@ export function Onboarding() {
                                         />
                                     </div>
 
-                                    {/* Preferred Job Role */}
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Preferred Job Role (Domain)</label>
-                                        <select
+                                    {/* Current Salary */}
+                                    {experienceLevel !== 'Fresher' && (
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Current Salary (Annual)</label>
+                                            <Input
+                                                required
+                                                placeholder="e.g. $70,000"
+                                                value={currentSalary}
+                                                onChange={(e) => setCurrentSalary(e.target.value)}
+                                                className="h-12 rounded-xl"
+                                            />
+                                        </div>
+                                    )}                                    {/* Preferred Job Role */}
+                                    <div className="space-y-1.5 relative">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Preferred Job Role (Domain) (comma-separated)</label>
+                                        <Input
+                                            required
+                                            placeholder="e.g. Software Engineering, UI/UX Design"
                                             value={careerGoal}
                                             onChange={(e) => {
-                                                const name = e.target.value;
-                                                setCareerGoal(name);
-                                                // Resolve domain ID for the PUT /user/me payload
-                                                const match = domainsData.find(d => d.name === name);
-                                                setSelectedDomainId(match?.id ?? null);
+                                                setCareerGoal(e.target.value);
+                                                setShowDomainSuggestions(true);
                                             }}
-                                            className="w-full h-12 bg-gray-50/50 border border-gray-200 rounded-xl px-4 text-sm font-semibold text-gray-900 transition-all outline-none focus:border-black focus:ring-1 focus:ring-black cursor-pointer"
-                                        >
-                                            <option value="" disabled>Select Preferred Domain</option>
-                                            {domainsList.map(d => (
-                                                <option key={d} value={d}>{d}</option>
-                                            ))}
-                                        </select>
+                                            onFocus={() => setShowDomainSuggestions(true)}
+                                            onBlur={() => setTimeout(() => setShowDomainSuggestions(false), 250)}
+                                            className="h-12 rounded-xl"
+                                        />
+                                        {showDomainSuggestions && getFilteredDomains().length > 0 && (
+                                            <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto p-2 flex flex-wrap gap-1.5">
+                                                {getFilteredDomains().map((d: any) => (
+                                                    <button
+                                                        key={d._id || d.name}
+                                                        type="button"
+                                                        onMouseDown={() => handleAddDomain(d.name)}
+                                                        className="px-3 py-1.5 text-xs font-semibold bg-gray-100 hover:bg-black hover:text-white rounded-lg transition-colors cursor-pointer text-black"
+                                                    >
+                                                        + {d.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Preferred Location */}
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Preferred Location</label>
+                                    <div className="space-y-1.5 relative">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Preferred Location (comma-separated)</label>
                                         <Input
                                             required
                                             placeholder="e.g. Remote, New York, San Francisco"
                                             value={location}
-                                            onChange={(e) => setLocation(e.target.value)}
+                                            onChange={(e) => {
+                                                setLocation(e.target.value);
+                                                setShowLocationSuggestions(true);
+                                            }}
+                                            onFocus={() => setShowLocationSuggestions(true)}
+                                            onBlur={() => setTimeout(() => setShowLocationSuggestions(false), 250)}
                                             className="h-12 rounded-xl"
                                         />
+                                        {showLocationSuggestions && getFilteredLocations().length > 0 && (
+                                            <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto p-2 flex flex-wrap gap-1.5">
+                                                {getFilteredLocations().map((l: any) => (
+                                                    <button
+                                                        key={l._id || l.name}
+                                                        type="button"
+                                                        onMouseDown={() => handleAddLocation(l.name)}
+                                                        className="px-3 py-1.5 text-xs font-semibold bg-gray-100 hover:bg-black hover:text-white rounded-lg transition-colors cursor-pointer text-black"
+                                                    >
+                                                        + {l.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Job Type */}
-                                    <div className="space-y-1.5 md:col-span-2">
+                                    <div className="space-y-1.5 md:col-span-2 relative">
                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Preferred Job Type</label>
-                                        <select
-                                            value={jobType}
-                                            onChange={(e) => setJobType(e.target.value)}
-                                            className="w-full h-12 bg-gray-50/50 border border-gray-200 rounded-xl px-4 text-sm font-semibold text-gray-900 transition-all outline-none focus:border-black focus:ring-1 focus:ring-black cursor-pointer"
-                                        >
-                                            <option value="Full-Time">Full-Time</option>
-                                            <option value="Remote">Remote</option>
-                                            <option value="Hybrid">Hybrid</option>
-                                            <option value="Contract">Contract</option>
-                                        </select>
+                                        <Input
+                                            required
+                                            placeholder="Search & select job type..."
+                                            value={jobTypeQuery}
+                                            onChange={(e) => {
+                                                setJobTypeQuery(e.target.value);
+                                                setShowJobTypeSuggestions(true);
+                                            }}
+                                            onFocus={() => setShowJobTypeSuggestions(true)}
+                                            onBlur={() => setTimeout(() => setShowJobTypeSuggestions(false), 250)}
+                                            className="h-12 rounded-xl"
+                                        />
+                                        {showJobTypeSuggestions && jobTypesData?.data && jobTypesData.data.length > 0 && (
+                                            <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto p-1.5 flex flex-col gap-0.5">
+                                                {jobTypesData.data.map((jt: any) => (
+                                                    <button
+                                                        key={jt._id || jt.name}
+                                                        type="button"
+                                                        onMouseDown={() => {
+                                                            setJobType(jt.name);
+                                                            setJobTypeQuery(jt.name);
+                                                            setShowJobTypeSuggestions(false);
+                                                        }}
+                                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded-lg transition-colors cursor-pointer text-black"
+                                                    >
+                                                        {jt.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Skills */}
-                                    <div className="space-y-1.5 md:col-span-2">
+                                    <div className="space-y-1.5 md:col-span-2 relative">
                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Skills (comma-separated)</label>
                                         <Input
                                             required
                                             placeholder="e.g. React, TypeScript, Python, Tailwind"
                                             value={skills}
-                                            onChange={(e) => setSkills(e.target.value)}
+                                            onChange={(e) => {
+                                                setSkills(e.target.value);
+                                                setShowSkillSuggestions(true);
+                                            }}
+                                            onFocus={() => setShowSkillSuggestions(true)}
+                                            onBlur={() => setTimeout(() => setShowSkillSuggestions(false), 250)}
                                             className="h-12 rounded-xl"
                                         />
+                                        {showSkillSuggestions && getFilteredSkills().length > 0 && (
+                                            <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto p-2 flex flex-wrap gap-1.5">
+                                                {getFilteredSkills().map((s: any) => (
+                                                    <button
+                                                        key={s._id || s.name}
+                                                        type="button"
+                                                        onMouseDown={() => handleAddSkill(s.name)}
+                                                        className="px-3 py-1.5 text-xs font-semibold bg-gray-100 hover:bg-black hover:text-white rounded-lg transition-colors cursor-pointer text-black"
+                                                    >
+                                                        + {s.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 

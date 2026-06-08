@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { API_BASE_URL } from '@/lib/config';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUpRight, GraduationCap, Building2, Sparkles, X } from 'lucide-react';
 
@@ -55,7 +56,7 @@ export function RoleCards() {
     const [isLoadingDetail, setIsLoadingDetail] = useState(false);
 
     useEffect(() => {
-        fetch('https://squrx-backend.onrender.com/api/v1/articles')
+        fetch(`${API_BASE_URL}/articles`)
             .then(res => res.json())
             .then(res => {
                 if (res.success && res.data) {
@@ -100,7 +101,7 @@ export function RoleCards() {
             return;
         }
         setIsLoadingDetail(true);
-        fetch(`https://squrx-backend.onrender.com/api/v1/articles/${selectedRole.article._id}`)
+        fetch(`${API_BASE_URL}/articles/${selectedRole.article._id}`)
             .then(res => res.json())
             .then(res => {
                 if (res.success && res.data) setArticleDetail(res.data);

@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/features/auth/store';
+import { API_BASE_URL } from '@/lib/config';
 
 const QUESTIONS = [
     {
@@ -109,7 +110,7 @@ export function GlobalCareerDiagnostic() {
 
     useEffect(() => {
         // Fetch real quiz questions from the API and merge their database IDs
-        fetch('https://squrx-backend.onrender.com/api/v1/quizzes')
+        fetch(`${API_BASE_URL}/quizzes`)
             .then(res => res.json())
             .then(res => {
                 if (res.success && res.data && res.data.length > 0) {
@@ -213,7 +214,7 @@ export function GlobalCareerDiagnostic() {
 
             if (response?.data?.token) {
                 try {
-                    const meRes = await fetch('https://squrx-backend.onrender.com/api/v1/user/me', {
+                    const meRes = await fetch(`${API_BASE_URL}/user/me`, {
                         headers: { 'Authorization': `Bearer ${response.data.token}` }
                     });
                     if (meRes.ok) {
