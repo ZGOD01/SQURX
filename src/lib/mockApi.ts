@@ -1,7 +1,23 @@
 import { MockDB } from './mockDb';
 import type { User, StudentProfile, CompanyProfile, JobVacancy, JobApplication, ConsultationBooking, SystemActivity } from './mockDb/schema';
+import { useAuthStore } from '@/features/auth/store';
+import { API_BASE_URL } from './config';
 
 const delay = (ms = 800) => new Promise(resolve => setTimeout(resolve, ms));
+
+const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: number } = {}) => {
+  const { timeout = 2500, ...rest } = options;
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(url, { ...rest, signal: controller.signal });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
+};
 
 export const mockApi = {
   // Auth
@@ -37,20 +53,29 @@ export const mockApi = {
     try {
         const token = localStorage.getItem('token');
         if (token && profile) {
-            const res = await fetch('https://squrx-backend.onrender.com/api/v1/user/me', {
-                headers: { 'Authorization': `Bearer ${token}` }
+            const res = await fetchWithTimeout(`${API_BASE_URL}/user/me`, {
+                headers: { 'Authorization': `Bearer ${token}` },
+                timeout: 2000
             });
             if (res.ok) {
                 const { data } = await res.json();
                 if (data) {
                     profile.cvUrl = data.resume || profile.cvUrl;
                     profile.documentUrl = data.schoolLeavingCertificate || profile.documentUrl;
-                    // Sync the real domain/career goal
+                    // Sync the real domain/career goal and cache the domain ID for future updates
                     if (data.domain?.name) {
                         profile.careerGoal = data.domain.name;
+                        // Cache domain ID so PUT /user/me can send { domain: id } instead of customDomain
+                        if (data.domain._id) {
+                            localStorage.setItem('squrx_selected_domain_id', data.domain._id);
+                        }
                     } else if (data.customDomain) {
                         profile.careerGoal = data.customDomain;
+                        // No real domain ID — clear any stale cache
+                        localStorage.removeItem('squrx_selected_domain_id');
                     }
+                    // Sync backend user attributes with frontend useAuthStore
+                    useAuthStore.getState().setAuth(data, token);
                 }
             }
         }
@@ -59,22 +84,119 @@ export const mockApi = {
     }
     return profile;
   },
-  updateStudentProfile: async (userId: string, data: Partial<StudentProfile>): Promise<void> => {
+  updateStudentProfile: async (userId: string, data: Partial<StudentProfile> & Record<string, any>): Promise<void> => {
     await delay();
     MockDB.updateStudentProfile(userId, data);
     
-    // Attempt to sync with real backend
+    // Sync domain/career goal and other fields with real backend via PUT /api/v1/user/me
     try {
         const token = localStorage.getItem('token');
-        if (token && data.careerGoal) {
-            // we don't have domain ID here, just the name, so we use customDomain field
-            await fetch('https://squrx-backend.onrender.com/api/v1/user/me', {
+        if (token) {
+            const cachedDomainIds = localStorage.getItem('squrx_selected_domain_ids');
+            const cachedEducationId = localStorage.getItem('squrx_selected_education_id');
+            const cachedExperienceLevelId = localStorage.getItem('squrx_selected_experience_level_id');
+            const cachedJobTypeIds = localStorage.getItem('squrx_selected_job_type_ids');
+            const cachedSkillIds = localStorage.getItem('squrx_selected_skill_ids');
+            const cachedLocationIds = localStorage.getItem('squrx_selected_location_ids');
+            
+            const savedProfileRaw = localStorage.getItem('squrx_onboarding_profile');
+            let savedProfile: any = {};
+            if (savedProfileRaw) {
+                try {
+                    savedProfile = JSON.parse(savedProfileRaw);
+                } catch(e) {}
+            }
+
+            const payload: Record<string, any> = {};
+            
+            // Map fullName
+            if (data.fullName !== undefined) {
+                payload.fullName = data.fullName;
+            } else if (savedProfile.fullName) {
+                payload.fullName = savedProfile.fullName;
+            }
+
+            // Map mobile
+            if (data.mobile !== undefined) {
+                payload.mobile = data.mobile;
+            } else if (data.phone !== undefined) {
+                payload.mobile = data.phone;
+            } else if (savedProfile.phone) {
+                payload.mobile = savedProfile.phone;
+            }
+
+            // Map expectedSalary
+            if (data.expectedSalary !== undefined) {
+                payload.expectedSalary = data.expectedSalary;
+            } else if (savedProfile.expectedSalary) {
+                payload.expectedSalary = savedProfile.expectedSalary;
+            }
+
+            // Map currentSalary
+            if (data.currentSalary !== undefined) {
+                payload.currentSalary = data.currentSalary;
+            } else if (savedProfile.currentSalary !== undefined) {
+                payload.currentSalary = savedProfile.currentSalary;
+            }
+
+            // Map preferredDomains
+            if (data.preferredDomains !== undefined) {
+                payload.preferredDomains = data.preferredDomains;
+            } else if (cachedDomainIds) {
+                try {
+                    payload.preferredDomains = JSON.parse(cachedDomainIds);
+                } catch(e) {}
+            }
+
+            // Map education
+            if (data.education !== undefined) {
+                payload.education = data.education;
+            } else if (cachedEducationId) {
+                payload.education = cachedEducationId;
+            }
+
+            // Map experienceLevel
+            if (data.experienceLevel !== undefined) {
+                payload.experienceLevel = data.experienceLevel;
+            } else if (cachedExperienceLevelId) {
+                payload.experienceLevel = cachedExperienceLevelId;
+            }
+            
+            // Map preferredJobTypes
+            if (data.preferredJobTypes !== undefined) {
+                payload.preferredJobTypes = data.preferredJobTypes;
+            } else if (cachedJobTypeIds) {
+                try {
+                    payload.preferredJobTypes = JSON.parse(cachedJobTypeIds);
+                } catch(e) {}
+            }
+
+            // Map skills
+            if (data.skills !== undefined) {
+                payload.skills = data.skills;
+            } else if (cachedSkillIds) {
+                try {
+                    payload.skills = JSON.parse(cachedSkillIds);
+                } catch(e) {}
+            }
+
+            // Map preferredLocations
+            if (data.preferredLocations !== undefined) {
+                payload.preferredLocations = data.preferredLocations;
+            } else if (cachedLocationIds) {
+                try {
+                    payload.preferredLocations = JSON.parse(cachedLocationIds);
+                } catch(e) {}
+            }
+
+            await fetchWithTimeout(`${API_BASE_URL}/user/me`, {
                 method: 'PUT',
                 headers: { 
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ customDomain: data.careerGoal })
+                body: JSON.stringify(payload),
+                timeout: 3000
             });
         }
     } catch(e) {

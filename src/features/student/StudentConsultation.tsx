@@ -9,6 +9,8 @@ import { useNotificationStore } from '@/lib/store/notifications';
 
 
 
+import { API_BASE_URL } from '@/lib/config';
+
 export function StudentConsultation() {
     const { user } = useAuthStore();
     const { consultation, bookConsultation, cancelConsultation } = useStudentStore();
@@ -19,6 +21,9 @@ export function StudentConsultation() {
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
     const [slotsData, setSlotsData] = useState<any[]>([]);
+    const [quizzesList, setQuizzesList] = useState<any[]>([]);
+    // Holds freshly-fetched detail for each quiz via GET /quizzes/{id}
+    const [quizzesDetail, setQuizzesDetail] = useState<any[]>([]);
 
     useEffect(() => {
         consultationApi.getTimeSlots().then(res => {
@@ -26,19 +31,84 @@ export function StudentConsultation() {
                setSlotsData(res.data);
             }
         }).catch(console.error);
+
+        // GET /quizzes — fetch all quizzes for ID mapping
+        fetch(`${API_BASE_URL}/quizzes`)
+            .then(res => res.json())
+            .then(res => {
+                if (res.success && res.data) {
+                    setQuizzesList(res.data);
+                }
+            })
+            .catch(console.error);
     }, []);
+
+    // GET /quizzes/{id} — when date is selected, refresh each quiz individually
+    // This ensures up-to-date options are used for the quiz answer mapping
+    useEffect(() => {
+        if (!selectedDate || quizzesList.length === 0) return;
+        Promise.all(
+            quizzesList.map((q: any) =>
+                fetch(`${API_BASE_URL}/quizzes/${q._id}`)
+                    .then(res => res.json())
+                    .then(res => (res.success && res.data ? res.data : q))
+                    .catch(() => q) // fall back to list data on error
+            )
+        ).then(setQuizzesDetail).catch(console.error);
+    }, [selectedDate, quizzesList]);
 
     const handleBooking = async () => {
         if (!selectedDate || !selectedTime) return;
         setIsLoading(true);
+
+        let quizAnswersList = [
+            { quizId: '65f000000000000000000000', choiceId: '65f000000000000000000000' }
+        ];
+
+        try {
+            const answersStr = localStorage.getItem('squrx_quiz_answers');
+            if (answersStr) {
+                const rawAnswers = JSON.parse(answersStr);
+                const mappedAnswers = Object.keys(rawAnswers).map(key => {
+                    const choiceId = rawAnswers[key];
+                    const isValidHex = /^[0-9a-fA-F]{24}$/.test(choiceId);
+                    if (!isValidHex) return null;
+
+                    // Fallback for the mock 5th question
+                    if (choiceId.startsWith('65f0000000000000000005')) {
+                        return {
+                            quizId: '65f000000000000000000500',
+                            choiceId: choiceId
+                        };
+                    }
+
+                    // Use freshly-fetched individual quiz details (GET /quizzes/{id}) for accurate mapping.
+                    // Fall back to the list data if detail fetch hasn't completed yet.
+                    const quizzesSource = quizzesDetail.length > 0 ? quizzesDetail : quizzesList;
+                    const matchingQuiz = quizzesSource.find((q: any) => 
+                        q.options?.some((o: any) => o._id === choiceId)
+                    );
+
+                    return {
+                        quizId: matchingQuiz ? matchingQuiz._id : '65f000000000000000000000',
+                        choiceId: choiceId
+                    };
+                }).filter(Boolean) as any[];
+
+                if (mappedAnswers.length > 0) {
+                    quizAnswersList = mappedAnswers;
+                }
+            }
+        } catch (e) {
+            console.error("Failed to parse local storage quiz answers:", e);
+        }
+
         if (user) {
             await bookConsultation(user.id, {
                 fullName: user.name || "Student",
                 email: user.email || "",
                 mobile: "9999999999",
-                quizAnswers: [
-                    { quizId: '65f000000000000000000000', choiceId: '65f000000000000000000000' }
-                ],
+                quizAnswers: quizAnswersList,
                 appointment: { dateId: selectedDate, timeId: selectedTime }
             });
         }

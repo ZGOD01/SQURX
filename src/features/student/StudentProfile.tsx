@@ -2,13 +2,15 @@ import { useState, useRef, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useStudentStore } from './store';
-import { Card, CardHeader, CardTitle, CardContent, Button, Input, Textarea, Toast, Modal } from '@/components/ui';
+import { Card, CardHeader, CardTitle, CardContent, Button, Input, Textarea, Toast, Modal, Badge } from '@/components/ui';
 import { PageTransition } from '@/components/motion';
 import { useAuthStore } from '../auth/store';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useNotificationStore } from '@/lib/store/notifications';
 import { studentProfileSchema, type StudentProfileValues } from '@/lib/validators/student';
-import { Loader2, UploadCloud, FileText, Trash2 } from 'lucide-react';
+import { Loader2, UploadCloud, FileText, Trash2, ShieldCheck } from 'lucide-react';
+import { getGdprConsent, setGdprConsent } from '@/lib/utils';
+import { consultationApi } from '@/lib/consultationApi';
 
 export function StudentProfile() {
     const { user, logout } = useAuthStore();
@@ -21,6 +23,34 @@ export function StudentProfile() {
     const [isDeleting, setIsDeleting] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
+    const [isConsentEnabled, setIsConsentEnabled] = useState(false);
+
+    useEffect(() => {
+        if (user) {
+            setIsConsentEnabled(getGdprConsent(user.id));
+        }
+    }, [user]);
+
+    const handleConsentToggle = async (checked: boolean) => {
+        if (!user) return;
+        setIsConsentEnabled(checked);
+        setGdprConsent(user.id, checked);
+        
+        // Log withdraw/re-consent
+        const log = {
+            userId: user.id,
+            email: user.email,
+            timestamp: new Date().toISOString(),
+            status: checked ? "GRANTED" : "WITHDRAWN"
+        };
+        localStorage.setItem(`squrx_gdpr_withdraw_log_${user.id}`, JSON.stringify(log));
+
+        if (checked) {
+            setToastMessage("Data processing consent restored successfully.");
+        } else {
+            setToastMessage("Consent withdrawn. Some personalization and job matching may be limited.");
+        }
+    };
 
     const cvInputRef = useRef<HTMLInputElement>(null);
     const fetchedRef = useRef(false);
@@ -38,6 +68,9 @@ export function StudentProfile() {
         setIsSaving(true);
         await new Promise(resolve => setTimeout(resolve, 800)); // mock delay
         if (user) {
+            // Clear cached domain ID: this is a free-text career goal, not a domain selection.
+            // mockApi will use { customDomain: value } instead of { domain: id }.
+            localStorage.removeItem('squrx_selected_domain_id');
             await updateProfile(user.id, data);
             sendEmail('Profile Updated Successfully', `Your profile data has been updated on Squrx. Keeping your profile fresh increases your visibility!`);
         }
@@ -51,8 +84,10 @@ export function StudentProfile() {
         setIsDeleting(true);
         try {
             await deleteAccount(user.id);
-            logout();       // Clear Auth state
-            navigate('/'); // Redirect to landing page immediately
+            navigate('/', { replace: true });
+            setTimeout(() => {
+                logout();       // Clear Auth state
+            }, 0);
         } catch (err) {
             console.error(err);
             setIsDeleting(false);
@@ -69,15 +104,23 @@ export function StudentProfile() {
         const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
         if (!validTypes.includes(file.type)) { alert("Invalid format. PDF/DOC/DOCX only."); return; }
 
+        if (!user) return;
         setIsUploadingCV(true);
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        if (user) {
-            await updateProfile(user.id, { cvUrl: URL.createObjectURL(file) });
+        try {
+            // Upload to real backend: POST /api/v1/user/me/resume with multipart field 'resume'
+            // User identity is derived from the JWT token — no userId in URL needed.
+            const cvUrl = await consultationApi.uploadCv(file);
+            // Persist the returned S3 URL (or fallback to filename) locally
+            await updateProfile(user.id, { cvUrl: cvUrl || file.name });
             sendEmail('CV Upload Received', `Your new Curriculum Vitae (${file.name}) was successfully processed and mapped to your applicant profile.`);
+            setToastMessage('CV uploaded successfully.');
+        } catch (err: any) {
+            console.error('CV upload error:', err);
+            setToastMessage(err.message || 'CV upload failed. Please try again.');
+        } finally {
+            setIsUploadingCV(false);
+            if (cvInputRef.current) cvInputRef.current.value = '';
         }
-        setIsUploadingCV(false);
-        setToastMessage('CV uploaded successfully.');
-        if (cvInputRef.current) cvInputRef.current.value = '';
     };
     const removeCV = async () => {
         if (user) {
@@ -151,6 +194,38 @@ export function StudentProfile() {
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+                            <div className="space-y-1.5 opacity-80">
+                                <label className="text-sm font-semibold flex items-center gap-1.5 text-muted-foreground">
+                                    Full Name <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-normal text-muted-foreground">Synced</span>
+                                </label>
+                                <Input
+                                    value={user?.name || user?.fullName || ''}
+                                    disabled
+                                    className="bg-muted/50 cursor-not-allowed border-border/40 text-muted-foreground font-medium"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5 opacity-80">
+                                <label className="text-sm font-semibold flex items-center gap-1.5 text-muted-foreground">
+                                    Email Address <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-normal text-muted-foreground">Synced</span>
+                                </label>
+                                <Input
+                                    value={user?.email || ''}
+                                    disabled
+                                    className="bg-muted/50 cursor-not-allowed border-border/40 text-muted-foreground font-medium"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5 opacity-80">
+                                <label className="text-sm font-semibold flex items-center gap-1.5 text-muted-foreground">
+                                    Mobile Number <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-normal text-muted-foreground">Synced</span>
+                                </label>
+                                <Input
+                                    value={user?.mobile || ''}
+                                    disabled
+                                    className="bg-muted/50 cursor-not-allowed border-border/40 text-muted-foreground font-medium"
+                                />
+                            </div>
                             <div className="space-y-1.5">
                                 <label className="text-sm font-semibold">Location <span className="text-destructive">*</span></label>
                                 <Input
@@ -257,6 +332,72 @@ export function StudentProfile() {
                             )}
                         </CardContent>
                     </Card>
+
+                    <Card className="border-border/60 shadow-sm bg-card">
+                        <CardHeader>
+                            <CardTitle className="text-base font-bold flex items-center justify-between">
+                                Core Skills
+                                <Link to="/student/preferences" className="text-xs text-primary hover:underline font-normal">Edit Preferences</Link>
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            {profile.skills && profile.skills.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                    {profile.skills.map((skill, index) => (
+                                        <Badge key={index} variant="secondary" className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-secondary/80 text-secondary-foreground">
+                                            {skill}
+                                        </Badge>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-sm text-muted-foreground italic">No skills added yet. Add core skills in preferences to get job alerts.</p>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    <Card className="border-border/60 shadow-sm bg-card">
+                        <CardHeader>
+                            <CardTitle className="text-base font-bold flex items-center gap-2">
+                                <ShieldCheck className="w-4 h-4 text-black" /> Privacy & Consent (DPDP / GDPR)
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-5">
+                            <div className="flex items-center justify-between p-4 border border-border/60 bg-muted/20 rounded-xl shadow-sm">
+                                <div className="space-y-0.5 max-w-[70%]">
+                                    <h4 className="font-semibold text-sm">Allow Data Processing</h4>
+                                    <p className="text-xs text-muted-foreground leading-normal">
+                                        Allow SQURX to process your profile, CV, and preferences to match you with job openings.
+                                    </p>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={isConsentEnabled} 
+                                        onChange={(e) => handleConsentToggle(e.target.checked)} 
+                                        className="sr-only peer" 
+                                    />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-black"></div>
+                                </label>
+                            </div>
+
+                            <div className="space-y-2">
+                                <h4 className="font-semibold text-sm">Your Control Rights</h4>
+                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                    In compliance with the Digital Personal Data Protection Act (DPDP) 2023, you have the right to withdraw consent, see what data we hold, or delete your account. For inquiries, email <a href="mailto:privacy@sqrex.com" className="text-primary hover:underline">privacy@sqrex.com</a>.
+                                </p>
+                            </div>
+
+                            <div className="pt-2">
+                                <Button 
+                                    variant="outline" 
+                                    onClick={() => setIsDeleteModalOpen(true)}
+                                    className="w-full border-red-200/60 bg-red-50/30 text-red-600 hover:bg-red-600 hover:text-white transition-colors duration-300 h-10 font-semibold"
+                                >
+                                    <Trash2 className="w-4 h-4 mr-2" /> Delete My Data
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
             </div>
 
@@ -267,14 +408,14 @@ export function StudentProfile() {
                     onClick={() => setIsDeleteModalOpen(true)}
                     className="border-red-200/50 bg-red-50/50 text-red-600 hover:bg-red-100 hover:text-red-700 hover:border-red-300 transition-all shadow-sm h-10 px-6 font-medium"
                 >
-                    <Trash2 className="w-4 h-4 mr-2" /> Delete Profile
+                    <Trash2 className="w-4 h-4 mr-2" /> Delete My Data
                 </Button>
             </div>
 
-            <Modal isOpen={isDeleteModalOpen} onClose={() => !isDeleting && setIsDeleteModalOpen(false)} title="Delete Profile?">
+            <Modal isOpen={isDeleteModalOpen} onClose={() => !isDeleting && setIsDeleteModalOpen(false)} title="Delete Data & Profile?">
                 <div className="space-y-5 mt-2">
                     <p className="text-muted-foreground text-[15px] leading-relaxed">
-                        Are you absolutely sure you want to completely delete your profile data? All of your uploaded certificates, CVs, applications, and consultation bookings will be permanently erased. 
+                        Are you absolutely sure you want to completely delete your profile data? All of your uploaded certificates, CVs, and applications will be permanently erased from our system in compliance with DPDP 2023 data fiduciary obligations. 
                         <br/><br/>
                         <strong className="text-foreground font-semibold">This action cannot be undone.</strong>
                     </p>

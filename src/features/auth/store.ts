@@ -5,9 +5,11 @@ interface AuthStore {
   user: any | null;
   isLoading: boolean;
   error: string | null;
+  _hasHydrated: boolean;
   
   setAuth: (user: any, token: string) => void;
   logout: () => void;
+  setHasHydrated: (val: boolean) => void;
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -16,6 +18,7 @@ export const useAuthStore = create<AuthStore>()(
       user: null,
       isLoading: false,
       error: null,
+      _hasHydrated: false,
 
       setAuth: (user: any, token: string) => {
         // Ensure role is uppercase to match frontend role checking
@@ -34,11 +37,22 @@ export const useAuthStore = create<AuthStore>()(
       logout: () => {
         set({ user: null });
         localStorage.removeItem('token');
+        localStorage.removeItem('squrx_onboarding_profile');
+        localStorage.removeItem('squrx_cv_name');
+        localStorage.removeItem('squrx_selected_domain_id');
+      },
+
+      setHasHydrated: (val: boolean) => {
+        set({ _hasHydrated: val });
       },
     }),
     {
       name: 'squrx-auth-session',
-      partialize: (state) => ({ user: state.user })
+      partialize: (state) => ({ user: state.user }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );
+

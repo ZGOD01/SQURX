@@ -4,16 +4,16 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "./store";
-import { useSignupMutation, useVerifyOtpMutation, useResendOtpMutation } from "@/lib/store/authApi";
+import { useSignupMutation, useVerifyOtpMutation, useResendOtpMutation, useGetCountriesQuery } from "@/lib/store/authApi";
 import { useNotificationStore } from "@/lib/store/notifications";
 import { Button, Input, Toast } from "@/components/ui";
 import { PageTransition } from "@/components/motion";
 import { registerSchema, type RegisterFormValues } from "@/lib/validators/auth";
+import { setGdprConsent } from "@/lib/utils";
 import {
     Loader2,
     ArrowRight,
     ArrowLeft,
-    UploadCloud,
     ShieldCheck,
     CheckCircle2,
     Building2,
@@ -23,6 +23,25 @@ import {
 export function Register() {
     const [isLoading, setIsLoading] = useState(false);
     const [toast, setToast] = useState<{ open: boolean; type: 'success'|'error'|'info'; title: string; message: string }>({ open: false, type: 'success', title: '', message: '' });
+    const [consentAge18, setConsentAge18] = useState(false);
+    const [consentReadUnderstood, setConsentReadUnderstood] = useState(false);
+    const [consentDataProcessing, setConsentDataProcessing] = useState(false);
+    const [consentResumeSharing, setConsentResumeSharing] = useState(false);
+    const [marketingOptIn, setMarketingOptIn] = useState<'yes' | 'no' | null>(null);
+    const [showGdprModal, setShowGdprModal] = useState(false);
+    const allConsentsGiven = consentAge18 && consentReadUnderstood && consentDataProcessing && consentResumeSharing;
+    const [userIp, setUserIp] = useState("127.0.0.1");
+
+    useEffect(() => {
+        fetch('https://api.ipify.org?format=json')
+            .then(res => res.json())
+            .then(data => {
+                if (data.ip) setUserIp(data.ip);
+            })
+            .catch(() => {
+                setUserIp("192.168.1.42");
+            });
+    }, []);
 
     const showToast = (type: 'success'|'error'|'info', title: string, message: string) => {
         setToast({ open: true, type, title, message });
@@ -35,6 +54,13 @@ export function Register() {
     const [verifyOtpMutation] = useVerifyOtpMutation();
     const [resendOtpMutation] = useResendOtpMutation();
     const { sendEmail } = useNotificationStore();
+
+    // Country selection state
+    const [showCountryDropdown, setShowCountryDropdown] = useState(false);
+    const [countrySearch, setCountrySearch] = useState("");
+    const { data: countriesRes, isLoading: isCountriesLoading } = useGetCountriesQuery(
+        countrySearch.trim() ? { search: countrySearch } : undefined
+    );
 
     // Step state
     const [step, setStep] = useState(0);
@@ -86,12 +112,24 @@ export function Register() {
             name: "",
             email: "",
             mobile: "",
+            countryCode: "+1",
+            country: "6a265f8178dc3c43b364e4dd",
             password: "",
             resume: undefined,
         },
     });
 
     const selectedRole = watch("role");
+    const selectedCountryCode = watch("countryCode");
+    const selectedCountryId = watch("country");
+
+    const countriesList = Array.isArray(countriesRes)
+        ? countriesRes
+        : (countriesRes?.data && Array.isArray(countriesRes.data))
+            ? countriesRes.data
+            : [];
+
+    const selectedCountry = countriesList.find((c: any) => c._id === selectedCountryId);
 
     const nextStep = async (fieldsToValidate?: (keyof RegisterFormValues)[]) => {
         if (fieldsToValidate) {
@@ -99,72 +137,64 @@ export function Register() {
             if (!isValid) return;
         }
         setDirection(1);
-        if (selectedRole === "RECRUITER" && step === 1) {
-            setStep(3); // Skip documents for recruiter
-        } else {
-            setStep((prev) => prev + 1);
-        }
+        setStep((prev) => prev + 1);
     };
 
     const prevStep = () => {
         setDirection(-1);
-        if (selectedRole === "RECRUITER" && step === 3) {
-            setStep(1);
-        } else {
-            setStep((prev) => prev - 1);
-        }
+        setStep((prev) => prev - 1);
     };
 
     const onSubmit = async (data: RegisterFormValues) => {
         setIsLoading(true);
         try {
-            const formData = new FormData();
-            formData.append('fullName', data.name);
-            formData.append('email', data.email);
-            formData.append('password', data.password);
-            formData.append('role', data.role.toLowerCase());
-            
-            if (data.role === 'STUDENT') {
-                let sanitizedMobile = data.mobile ? data.mobile.replace(/\D/g, '') : "9999999999";
-                if (sanitizedMobile.length !== 10) sanitizedMobile = "9999999999";
-                formData.append('mobile', sanitizedMobile);
+            // Build a JSON payload
+            const payload: Record<string, any> = {
+                fullName: data.name,
+                email: data.email,
+                password: data.password,
+                role: data.role.toLowerCase(),
+                gdprConsent: true,
+                gdpr: true,
+                consent: true,
+            };
 
-                // Add quiz answers fallback to satisfy potential backend requirements
-                try {
-                    const answersStr = localStorage.getItem('squrx_quiz_answers');
-                    let quizAnswersList: { quizId: string; choiceId: string }[] = [];
-                    if (answersStr) {
-                        const rawAnswers = JSON.parse(answersStr);
-                        quizAnswersList = Object.keys(rawAnswers).map(key => {
-                            const rawChoice = rawAnswers[key];
-                            const isValidHex = /^[0-9a-fA-F]{24}$/.test(rawChoice);
-                            return {
-                                quizId: '65f000000000000000000000', // Dummy valid hex, backend just needs valid IDs
-                                choiceId: isValidHex ? rawChoice : '65f000000000000000000000'
-                            };
-                        });
-                    }
-                    if (quizAnswersList.length === 0) {
-                        quizAnswersList = [{ quizId: '65f000000000000000000000', choiceId: '65f000000000000000000000' }];
-                    }
-                    formData.append('quizAnswers', JSON.stringify(quizAnswersList));
-                } catch (e) {
-                    formData.append('quizAnswers', JSON.stringify([{ quizId: '65f000000000000000000000', choiceId: '65f000000000000000000000' }]));
+            if (data.role === 'STUDENT') {
+                let sanitizedMobile = data.mobile ? data.mobile.replace(/\D/g, '') : '';
+                if (sanitizedMobile.length === 10) {
+                    payload.mobile = sanitizedMobile;
                 }
+                payload.countryCode = data.countryCode;
+                payload.country = data.country;
             }
 
-            const res = await signupMutation(formData).unwrap();
+            const res = await signupMutation(payload).unwrap();
             
             if (res.success && res.data?.userId) {
                 setUserId(res.data.userId);
                 setServerMessage(res.data.message || "OTP sent successfully.");
                 setDirection(1);
-                setStep(4);
+                setStep(3);
             } else {
                 throw new Error(res.message);
             }
         } catch (err: any) {
-            showToast('error', 'Registration Failed', err.data?.message || err.message || "Failed to register. Please try again.");
+            console.error("Signup validation error details:", err);
+            let errorMsg = "Failed to register. Please try again.";
+            if (err.data) {
+                if (err.data.message) {
+                    errorMsg = err.data.message;
+                    if (Array.isArray(err.data.errors) && err.data.errors.length > 0) {
+                        const subErrors = err.data.errors.map((e: any) => e.message || JSON.stringify(e)).join(", ");
+                        errorMsg += `: ${subErrors}`;
+                    }
+                } else if (typeof err.data.error === 'string') {
+                    errorMsg = err.data.error;
+                }
+            } else if (err.message) {
+                errorMsg = err.message;
+            }
+            showToast('error', 'Registration Failed', errorMsg);
         } finally {
             setIsLoading(false);
         }
@@ -179,6 +209,23 @@ export function Register() {
             const verifyRes = await verifyOtpMutation({ userId, otp }).unwrap();
             
             if(verifyRes.success && verifyRes.data?.token) {
+                const uId = verifyRes.data.user._id || verifyRes.data.user.id;
+                localStorage.setItem(`squrx_new_user_${uId}`, 'true');
+                setGdprConsent(uId, true);
+                const consentLog = {
+                    userId: uId,
+                    email: verifyRes.data.user.email,
+                    timestamp: new Date().toISOString(),
+                    ip: userIp,
+                    consents: {
+                        consentAge18,
+                        consentReadUnderstood,
+                        consentDataProcessing,
+                        consentResumeSharing,
+                        marketingOptIn
+                    }
+                };
+                localStorage.setItem(`squrx_gdpr_log_${uId}`, JSON.stringify(consentLog));
                 setAuth(verifyRes.data.user, verifyRes.data.token);
                 showToast('success', 'Welcome to Squrx!', 'Your account has been verified. Redirecting...');
 
@@ -194,13 +241,13 @@ export function Register() {
                     const role = String(verifyRes.data.user.role).toUpperCase();
                     switch (role) {
                         case "STUDENT":
-                            navigate("/auth/onboarding");
+                            navigate("/auth/onboarding", { replace: true });
                             break;
                         case "RECRUITER":
-                            navigate("/recruiter");
+                            navigate("/recruiter", { replace: true });
                             break;
                         default:
-                            navigate("/auth/onboarding");
+                            navigate("/auth/onboarding", { replace: true });
                             break;
                     }
                 }, 1200);
@@ -241,70 +288,11 @@ export function Register() {
         }),
     };
 
-    const FileUploadArea = ({
-        label,
-        id,
-        description,
-    }: {
-        label: string;
-        id: string;
-        description: string;
-    }) => {
-        const hasFile = watch(id as any);
-        return (
-            <motion.div
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className={`relative overflow-hidden border-2 border-dashed transition-all duration-500 rounded-2xl p-6 text-center cursor-pointer flex flex-col items-center justify-center min-h-[140px]
-                    ${hasFile ? "border-black bg-black/5" : "border-black/20 bg-white hover:border-black/50 hover:bg-black/[0.02]"} `}
-            >
-                {hasFile ? (
-                    <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        className="flex flex-col items-center gap-2"
-                    >
-                        <div className="w-12 h-12 bg-black text-white rounded-full flex items-center justify-center mb-1">
-                            <CheckCircle2 className="w-6 h-6" />
-                        </div>
-                        <h4 className="font-medium text-sm text-black">
-                            Document Attached
-                        </h4>
-                        <p className="text-xs text-black/60 truncate max-w-[200px]">
-                            {hasFile instanceof File ? hasFile.name : hasFile}
-                        </p>
-                    </motion.div>
-                ) : (
-                    <>
-                        <div className="w-12 h-12 bg-black/5 text-black rounded-full flex items-center justify-center mb-3 group-hover:bg-black group-hover:text-white transition-all duration-300">
-                            <UploadCloud className="w-5 h-5" />
-                        </div>
-                        <h4 className="font-medium text-sm text-black">{label}</h4>
-                        <p className="text-xs text-black/50 font-light mt-1">
-                            {description}
-                        </p>
-                    </>
-                )}
 
-                <input
-                    type="file"
-                    id={id}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
-                    onChange={(e) => {
-                        if (e.target.files?.[0]) {
-                            setValue(id as any, e.target.files[0], {
-                                shouldValidate: true,
-                            });
-                        }
-                    }}
-                />
-            </motion.div>
-        );
-    };
 
     // Calculate progress percentage
-    const maxProgSteps = selectedRole === "STUDENT" ? 5 : 4;
-    const currentProgStep = step >= 4 ? maxProgSteps : step + 1;
+    const maxProgSteps = 4;
+    const currentProgStep = step + 1;
     const progressPercentage = (currentProgStep / maxProgSteps) * 100;
 
     return (
@@ -385,8 +373,8 @@ export function Register() {
                                 <form
                                     onSubmit={(e) => {
                                         e.preventDefault();
-                                        if (step === 3) handleSubmit(onSubmit)(e);
-                                        else if (step === 4) handleOtpSubmit(e);
+                                        if (step === 2) handleSubmit(onSubmit)(e);
+                                        else if (step === 3) handleOtpSubmit(e);
                                     }}
                                     className="flex flex-col h-full"
                                 >
@@ -528,47 +516,135 @@ export function Register() {
                                                 </div>
 
                                                 {selectedRole === "STUDENT" && (
-                                                    <div className="space-y-2 group">
+                                                    <div className="space-y-2 group relative">
                                                         <label className="text-xs font-semibold text-black/70 uppercase tracking-widest pl-1 group-focus-within:text-black transition-colors">
                                                             Mobile Number
                                                         </label>
-                                                        <Input
-                                                            id="mobile"
-                                                            type="tel"
-                                                            placeholder="9876543210"
-                                                            className={`w-full bg-white hover:bg-black/[0.02] border border-black/10 focus-visible:ring-1 focus-visible:ring-black focus-visible:border-black rounded-xl p-3 shadow-inner transition-all duration-300 font-medium ${errors.mobile ? "border-red-500 focus-visible:border-red-500" : ""} `}
-                                                            {...formRegister("mobile")}
-                                                        />
+
+                                                        {/* Hidden inputs to bind to React Hook Form */}
+                                                        <input type="hidden" {...formRegister("countryCode")} />
+                                                        <input type="hidden" {...formRegister("country")} />
+
+                                                        <div className="flex gap-2 relative">
+                                                            {/* Country Dropdown Trigger */}
+                                                            <div className="relative w-[110px] flex-shrink-0">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setShowCountryDropdown(!showCountryDropdown)}
+                                                                    className={`w-full bg-white hover:bg-black/[0.02] border border-black/10 focus:ring-1 focus:ring-black focus:border-black rounded-xl px-3 h-[46px] shadow-inner transition-all duration-300 font-medium text-left flex justify-between items-center text-sm ${
+                                                                        errors.countryCode || errors.country ? "border-red-500" : ""
+                                                                    }`}
+                                                                >
+                                                                    <div className="flex items-center gap-1.5 min-w-0">
+                                                                        {selectedCountry?.code && (
+                                                                            <img
+                                                                                src={`https://flagcdn.com/w40/${selectedCountry.code.toLowerCase()}.png`}
+                                                                                alt={selectedCountry.name}
+                                                                                className="w-4 h-3 object-cover rounded flex-shrink-0 shadow-sm"
+                                                                            />
+                                                                        )}
+                                                                        <span className="truncate">
+                                                                            {selectedCountryCode || "Code"}
+                                                                        </span>
+                                                                    </div>
+                                                                    <span className="text-[9px] text-black/40 flex-shrink-0 pl-1">▼</span>
+                                                                </button>
+
+                                                                {showCountryDropdown && (
+                                                                    <>
+                                                                        {/* Click-outside backdrop overlay */}
+                                                                        <div 
+                                                                            className="fixed inset-0 z-30" 
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setShowCountryDropdown(false);
+                                                                                setCountrySearch("");
+                                                                            }} 
+                                                                        />
+                                                                        {/* Dropdown Menu */}
+                                                                        <div className="absolute left-0 mt-1.5 w-[260px] bg-white border border-black/10 rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.12)] z-40 max-h-60 overflow-y-auto flex flex-col p-2">
+                                                                            {/* Search bar inside dropdown */}
+                                                                            <div className="px-1 py-1 sticky top-0 bg-white z-10">
+                                                                                <input
+                                                                                    type="text"
+                                                                                    placeholder="Search country..."
+                                                                                    value={countrySearch}
+                                                                                    onChange={(e) => setCountrySearch(e.target.value)}
+                                                                                    onClick={(e) => e.stopPropagation()}
+                                                                                    className="w-full border border-black/10 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-black transition-colors"
+                                                                                />
+                                                                            </div>
+                                                                            <div className="mt-1">
+                                                                                {isCountriesLoading && (
+                                                                                    <div className="text-xs text-black/40 p-3 text-center">Loading countries...</div>
+                                                                                )}
+                                                                                {!isCountriesLoading && countriesList.length === 0 && (
+                                                                                    <div className="text-xs text-black/40 p-3 text-center">No countries found</div>
+                                                                                )}
+                                                                                {countriesList.map((c: any) => (
+                                                                                    <button
+                                                                                        key={c._id}
+                                                                                        type="button"
+                                                                                        onClick={() => {
+                                                                                            setValue("countryCode", c.phoneCode, { shouldValidate: true });
+                                                                                            setValue("country", c._id, { shouldValidate: true });
+                                                                                            setShowCountryDropdown(false);
+                                                                                            setCountrySearch("");
+                                                                                        }}
+                                                                                        className={`w-full text-left text-xs px-2.5 py-2 hover:bg-black/5 rounded-lg transition-colors flex items-center justify-between gap-2 ${
+                                                                                            selectedCountryId === c._id ? "bg-black/[0.03]" : ""
+                                                                                        }`}
+                                                                                    >
+                                                                                        <div className="flex items-center gap-2 min-w-0">
+                                                                                            {c.code && (
+                                                                                                <img
+                                                                                                    src={`https://flagcdn.com/w40/${c.code.toLowerCase()}.png`}
+                                                                                                    alt={c.name}
+                                                                                                    className="w-4 h-3 object-cover rounded shadow-xs flex-shrink-0"
+                                                                                                />
+                                                                                            )}
+                                                                                            <span className="font-semibold truncate">{c.name}</span>
+                                                                                        </div>
+                                                                                        <span className="text-black/50 text-[11px] font-medium flex-shrink-0">{c.phoneCode}</span>
+                                                                                    </button>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    </>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Mobile input */}
+                                                            <div className="flex-1">
+                                                                <Input
+                                                                    id="mobile"
+                                                                    type="tel"
+                                                                    placeholder="9876543210"
+                                                                    className={`w-full bg-white hover:bg-black/[0.02] border border-black/10 focus-visible:ring-1 focus-visible:ring-black focus-visible:border-black rounded-xl p-3 h-[46px] shadow-inner transition-all duration-300 font-medium ${errors.mobile ? "border-red-500 focus-visible:border-red-500" : ""} `}
+                                                                    {...formRegister("mobile")}
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Error Display */}
+                                                        {errors.countryCode && (
+                                                            <p className="text-xs text-red-500 pl-1">{errors.countryCode.message}</p>
+                                                        )}
+                                                        {errors.country && !errors.countryCode && (
+                                                            <p className="text-xs text-red-500 pl-1">{errors.country.message}</p>
+                                                        )}
+                                                        {errors.mobile && (
+                                                            <p className="text-xs text-red-500 pl-1">{errors.mobile.message}</p>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
                                         </div>
                                     )}
 
-                                    {/* Frame 2: Documents (Student Only) */}
-                                    {step === 2 && selectedRole === "STUDENT" && (
-                                        <div className="flex-1 space-y-6">
-                                            <div className="space-y-2">
-                                                <h2 className="text-3xl font-light tracking-tight">
-                                                    Verification
-                                                </h2>
-                                                <p className="text-black/50 font-light">
-                                                    Upload necessary documents securely.
-                                                </p>
-                                            </div>
-                                            <div className="flex flex-col gap-4 mt-6">
-                                                <FileUploadArea
-                                                    id="resume"
-                                                    label="Latest Resume (CV)"
-                                                    description="PDF, DOCX format. Max 5MB."
-                                                />
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Frame 3: Security & Disclaimer */}
-                                    {step === 3 && (
-                                        <div className="flex-1 space-y-6">
+                                    {/* Frame 2: Security & Password */}
+                                    {step === 2 && (
+                                        <div className="flex-1 flex flex-col justify-center space-y-6">
                                             <div className="space-y-2">
                                                 <h2 className="text-3xl font-light tracking-tight">
                                                     Set Password
@@ -578,7 +654,7 @@ export function Register() {
                                                 </p>
                                             </div>
 
-                                            <div className="space-y-2 group mt-6">
+                                            <div className="space-y-2 group">
                                                 <label className="text-xs font-semibold text-black/70 uppercase tracking-widest pl-1 group-focus-within:text-black transition-colors">
                                                     Account Password
                                                 </label>
@@ -589,24 +665,58 @@ export function Register() {
                                                     className={`w-full bg-white hover:bg-black/[0.02] border border-black/10 focus-visible:ring-1 focus-visible:ring-black focus-visible:border-black rounded-xl p-3 shadow-inner transition-all duration-300 font-medium ${errors.password ? "border-red-500 focus-visible:border-red-500" : ""} `}
                                                     {...formRegister("password")}
                                                 />
+                                                {errors.password && (
+                                                    <p className="text-xs text-red-500 pl-1">{errors.password.message}</p>
+                                                )}
                                             </div>
 
-                                            <div className="mt-8 bg-black/[0.02] rounded-2xl p-6 border border-black/5">
+                                            {/* Registration Disclaimer */}
+                                            <div className="bg-black/[0.02] rounded-2xl p-4 border border-black/5">
                                                 <div className="flex items-start gap-3">
-                                                    <ShieldCheck className="w-5 h-5 text-black flex-shrink-0 mt-0.5" />
-                                                    <p className="text-xs leading-relaxed text-black/60 font-light">
-                                                        <strong className="text-black font-semibold uppercase tracking-wider block mb-1">
-                                                            Registration Disclaimer
-                                                        </strong>
-                                                        By clicking Start Setup, an OTP will be sent to confirm your identity. Make sure your provided details are accurate.
-                                                    </p>
+                                                    <ShieldCheck className="w-4 h-4 text-black flex-shrink-0 mt-0.5" />
+                                                    <div className="text-xs leading-relaxed text-black/60 font-light">
+                                                        <strong className="text-black font-semibold uppercase tracking-wider block mb-1">Registration Disclaimer</strong>
+                                                        By clicking I Agree and Continue, an OTP will be sent to confirm your identity.
+                                                    </div>
                                                 </div>
                                             </div>
+
+                                            {/* Privacy & Consent Button */}
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowGdprModal(true)}
+                                                className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all duration-300 group ${
+                                                    allConsentsGiven
+                                                        ? 'border-green-500/40 bg-green-50/50'
+                                                        : 'border-black/10 bg-white hover:border-black/30 hover:shadow-md'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
+                                                        allConsentsGiven ? 'bg-green-500' : 'bg-black/5 group-hover:bg-black/10'
+                                                    }`}>
+                                                        {allConsentsGiven ? (
+                                                            <CheckCircle2 className="w-5 h-5 text-white" />
+                                                        ) : (
+                                                            <ShieldCheck className="w-5 h-5 text-black/50" />
+                                                        )}
+                                                    </div>
+                                                    <div className="text-left">
+                                                        <p className={`text-sm font-semibold ${ allConsentsGiven ? 'text-green-700' : 'text-black' }`}>
+                                                            {allConsentsGiven ? 'Consent Given ✓' : 'Privacy & Consent'}
+                                                        </p>
+                                                        <p className="text-xs text-black/40 font-light">
+                                                            {allConsentsGiven ? 'You have agreed to all required terms' : 'Review & agree to data usage terms'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <ArrowRight className={`w-4 h-4 transition-colors ${ allConsentsGiven ? 'text-green-500' : 'text-black/30 group-hover:text-black' }`} />
+                                            </button>
                                         </div>
                                     )}
 
-                                    {/* Frame 4: OTP Step */}
-                                    {step === 4 && (
+                                    {/* Frame 3: OTP Step */}
+                                    {step === 3 && (
                                         <div className="flex-1 space-y-6">
                                             <div className="space-y-2">
                                                 <h2 className="text-3xl font-light tracking-tight">
@@ -702,13 +812,13 @@ export function Register() {
                                             type="button"
                                             variant="ghost"
                                             onClick={prevStep}
-                                            disabled={step === 4 || isLoading}
-                                            className={`text-black/60 hover:text-black hover:bg-black/5 transition-all outline-none rounded-xl px-4 py-2 font-medium ${step === 0 || step === 4 ? "opacity-0 pointer-events-none" : "opacity-100"} `}
+                                            disabled={step === 3 || isLoading}
+                                            className={`text-black/60 hover:text-black hover:bg-black/5 transition-all outline-none rounded-xl px-4 py-2 font-medium ${step === 0 || step === 3 ? "opacity-0 pointer-events-none" : "opacity-100"} `}
                                         >
                                             <ArrowLeft className="w-4 h-4 mr-2" /> Back
                                         </Button>
 
-                                        {step < 3 ? (
+                                        {step < 2 ? (
                                             <Button
                                                 type="button"
                                                 onClick={() => {
@@ -717,20 +827,20 @@ export function Register() {
                                                             "name",
                                                             "email",
                                                             ...(selectedRole === "STUDENT"
-                                                                ? ["mobile" as const]
+                                                                ? ["mobile" as const, "countryCode" as const, "country" as const]
                                                                 : []),
                                                         ]);
                                                     else nextStep();
                                                 }}
-                                                className="bg-black text-white hover:bg-black/90 rounded-full px-8 h-12 font-medium shadow-[0_8px_30px_rgba(0,0,0,0.15)] transition-all hover:scale-105 active:scale-95"
+                                                className="bg-black text-white hover:bg-black/90 rounded-full px-8 h-12 font-medium shadow-[0_8px_30px_rgba(0,0,0,0.15)] transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
                                             >
                                                 Continue <ArrowRight className="w-4 h-4 ml-2" />
                                             </Button>
-                                        ) : step === 3 ? (
+                                        ) : step === 2 ? (
                                             <Button
                                                 type="button"
                                                 onClick={handleSubmit(onSubmit)}
-                                                disabled={isLoading}
+                                                disabled={isLoading || !allConsentsGiven}
                                                 className="bg-black text-white hover:bg-black/90 rounded-full px-8 h-12 font-medium shadow-[0_8px_30px_rgba(0,0,0,0.15)] transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
                                             >
                                                 {isLoading ? (
@@ -739,7 +849,7 @@ export function Register() {
                                                         Sending OTP
                                                     </>
                                                 ) : (
-                                                    "Start Setup"
+                                                    "I Agree and Continue"
                                                 )}
                                             </Button>
                                         ) : (
@@ -762,7 +872,7 @@ export function Register() {
                         </AnimatePresence>
                     </div>
 
-                    {step < 4 && (
+                    {step < 3 && (
                         <div className="text-center text-sm text-black/50 font-light mt-10">
                             Already have an account?{" "}
                             <Link
@@ -776,7 +886,197 @@ export function Register() {
                 </div>
             </div>
 
-            <div className="fixed bottom-4 right-4 z-[100] flex flex-col pointer-events-none">
+            {/* ── GDPR Modal ─────────────────────────────────────────── */}
+            <AnimatePresence>
+                {showGdprModal && (
+                    <motion.div
+                        key="gdpr-overlay"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-6"
+                        style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', backgroundColor: 'rgba(0,0,0,0.45)' }}
+                        onClick={(e) => { if (e.target === e.currentTarget) setShowGdprModal(false); }}
+                    >
+                        <motion.div
+                            key="gdpr-panel"
+                            initial={{ y: 80, opacity: 0, scale: 0.96 }}
+                            animate={{ y: 0, opacity: 1, scale: 1 }}
+                            exit={{ y: 80, opacity: 0, scale: 0.96 }}
+                            transition={{ type: 'spring', stiffness: 280, damping: 28 }}
+                            className="relative w-full sm:max-w-lg bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-[0_32px_80px_rgba(0,0,0,0.25)] flex flex-col overflow-hidden"
+                            style={{ maxHeight: '90vh' }}
+                        >
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between px-7 pt-7 pb-4 border-b border-black/5 flex-shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-full bg-black flex items-center justify-center">
+                                        <ShieldCheck className="w-4 h-4 text-white" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-base font-bold tracking-tight text-black">Privacy &amp; Consent</h2>
+                                        <p className="text-[11px] text-black/40 font-light">DPDP Act 2023 — TICC / SQREX</p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowGdprModal(false)}
+                                    className="w-8 h-8 rounded-full bg-black/5 hover:bg-black/10 flex items-center justify-center transition-colors"
+                                    aria-label="Close"
+                                >
+                                    <span className="text-black/50 text-sm leading-none">✕</span>
+                                </button>
+                            </div>
+
+                            {/* Scrollable Content */}
+                            <div className="overflow-y-auto flex-1 px-7 py-5 space-y-5 text-[12px] leading-relaxed text-black/70 font-light">
+                                <p className="font-semibold text-black text-[13px]">TICC owner of SQREX will be registered as Data fiduciary under the Digital Personal Data Protection Act 2023, once the registration will be made open.</p>
+                                <p className="font-semibold text-black">Before you continue, here's how we'll use your information</p>
+
+                                <div className="bg-black/[0.025] rounded-2xl p-4 space-y-2">
+                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">What We Collect</p>
+                                    <p>When you upload your resume and create a profile, we collect:</p>
+                                    <ul className="list-disc list-inside pl-2 space-y-1">
+                                        <li>Your name, email, and phone number</li>
+                                        <li>Your resume (education, experience, skills and included details)</li>
+                                        <li>Your responses to our quiz and job preferences</li>
+                                    </ul>
+                                </div>
+
+                                <div className="bg-black/[0.025] rounded-2xl p-4 space-y-2">
+                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">How We Use It</p>
+                                    <p className="font-medium text-black/80">To help you get hired:</p>
+                                    <ul className="list-disc list-inside pl-2 space-y-1">
+                                        <li>Match you with relevant jobs and opportunities</li>
+                                        <li>Share your profile with employers looking for candidates like you</li>
+                                        <li>Send you job alerts that fit your goal</li>
+                                    </ul>
+                                    <p className="font-medium text-black/80 mt-2">To improve our service:</p>
+                                    <ul className="list-disc list-inside pl-2 space-y-1">
+                                        <li>Analyse skill gaps in your CV against global employer demands</li>
+                                        <li>Prepare your skill fitment reports</li>
+                                        <li>Understand what's working and make our platform better</li>
+                                        <li>Personalize counselling by mapping university &amp; course recommendations with job data</li>
+                                    </ul>
+                                    <p className="font-medium text-black/80 mt-2">To keep you informed:</p>
+                                    <ul className="list-disc list-inside pl-2 space-y-1">
+                                        <li>Job opportunities matching your profile</li>
+                                        <li>Updates about Sqrex features and services</li>
+                                        <li>Job market, study abroad programs and career tips</li>
+                                    </ul>
+                                </div>
+
+                                <p>We will only use your data for the purposes listed above. If we need to use it for anything else, we will ask for your consent again.</p>
+
+                                <div className="bg-black/[0.025] rounded-2xl p-4 space-y-2">
+                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">Where Your Data Goes</p>
+                                    <p><strong className="text-black">Storage:</strong> Securely stored on cloud servers within India (AWS) in compliance with Indian data protection laws.</p>
+                                    <p><strong className="text-black">Who sees it:</strong></p>
+                                    <ul className="list-disc list-inside pl-2 space-y-1">
+                                        <li>Employers and universities with relevant opportunities</li>
+                                        <li>Service providers who help us run the platform</li>
+                                    </ul>
+                                    <p>We will notify you if data is transferred to international employers outside India.</p>
+                                    <p><strong className="text-black">How long:</strong> Up to 3 years, or until you ask us to delete it.</p>
+                                </div>
+
+                                <div className="bg-black/[0.025] rounded-2xl p-4 space-y-2">
+                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">Your Rights</p>
+                                    <ul className="list-disc list-inside pl-2 space-y-1">
+                                        <li>See what data we have about you</li>
+                                        <li>Fix any incorrect information</li>
+                                        <li>Delete your account and data</li>
+                                        <li>Stop receiving emails anytime</li>
+                                        <li>Download your data</li>
+                                        <li>Object to automated decision making</li>
+                                        <li>Nominate someone to exercise your rights in case of death or incapacity</li>
+                                    </ul>
+                                    <p className="mt-1">Contact: <span className="text-black font-medium">privacy@sqrex.com</span></p>
+                                </div>
+
+                                <div className="bg-black/[0.025] rounded-2xl p-4 space-y-1">
+                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">Grievance Officer</p>
+                                    <p>For any complaint or concern about your data:</p>
+                                    <p>Email: <span className="text-black font-medium">grievance@sqrex.com</span></p>
+                                    <p>We will acknowledge your complaint within 24 working hours.</p>
+                                </div>
+
+                                <div className="bg-black/[0.025] rounded-2xl p-4 space-y-1">
+                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">Important to Know</p>
+                                    <ul className="list-disc list-inside pl-2 space-y-1">
+                                        <li>You can withdraw consent anytime through your account settings or by emailing us.</li>
+                                        <li>Withdrawing consent won't affect data already processed.</li>
+                                        <li>We use industry-standard security to protect your data.</li>
+                                        <li>We'll never sell your information.</li>
+                                    </ul>
+                                </div>
+
+                                <p className="text-[10px] text-black/40">Questions? privacy@sqrex.com &nbsp;|&nbsp; Office address: Official Address &nbsp;|&nbsp; WhatsApp only</p>
+                            </div>
+
+                            {/* Consent Checkboxes */}
+                            <div className="px-7 py-4 border-t border-black/5 space-y-3 flex-shrink-0 bg-white">
+                                <p className="text-[11px] font-bold text-black uppercase tracking-wider">Consent Checklist</p>
+                                {([
+                                    { id: 'modal-age-18', checked: consentAge18, setter: setConsentAge18, label: 'I am at least 18 years old or above' },
+                                    { id: 'modal-read-understood', checked: consentReadUnderstood, setter: setConsentReadUnderstood, label: 'I have read and understood this consent' },
+                                    { id: 'modal-data-processing', checked: consentDataProcessing, setter: setConsentDataProcessing, label: 'I consent to data processing as described' },
+                                    { id: 'modal-resume-sharing', checked: consentResumeSharing, setter: setConsentResumeSharing, label: 'I consent to resume sharing with employers' },
+                                ] as { id: string; checked: boolean; setter: (v: boolean) => void; label: string }[]).map(({ id, checked, setter, label }) => (
+                                    <label key={id} htmlFor={id} className="flex items-start gap-3 cursor-pointer group">
+                                        <div className={`mt-0.5 w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-all ${ checked ? 'bg-black border-black' : 'border-black/20 group-hover:border-black/40' }`}>
+                                            {checked && <CheckCircle2 className="w-3 h-3 text-white" />}
+                                            <input id={id} type="checkbox" checked={checked} onChange={(e) => setter(e.target.checked)} className="sr-only" />
+                                        </div>
+                                        <span className={`text-[12px] leading-relaxed transition-colors ${ checked ? 'text-black font-medium' : 'text-black/60' }`}>{label}</span>
+                                    </label>
+                                ))}
+
+                                {/* Marketing */}
+                                <div className="pt-2 border-t border-black/5 space-y-2">
+                                    <p className="text-[11px] font-bold text-black uppercase tracking-wider">Marketing (optional)</p>
+                                    <div className="flex gap-4">
+                                        {(['yes', 'no'] as const).map((val) => (
+                                            <label key={val} className="flex items-center gap-2 cursor-pointer">
+                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${ marketingOptIn === val ? 'border-black' : 'border-black/20' }`}>
+                                                    {marketingOptIn === val && <div className="w-2 h-2 rounded-full bg-black" />}
+                                                    <input type="radio" name="modal-marketing" value={val} checked={marketingOptIn === val} onChange={() => setMarketingOptIn(val)} className="sr-only" />
+                                                </div>
+                                                <span className="text-[12px] text-black/70">{val === 'yes' ? 'Yes, send me updates' : 'No, essential only'}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Modal Action Buttons */}
+                            <div className="flex gap-3 px-7 py-5 border-t border-black/5 flex-shrink-0 bg-white">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowGdprModal(false)}
+                                    className="flex-1 h-12 rounded-full border-2 border-black/10 text-black/70 text-sm font-medium hover:border-black/30 hover:text-black transition-all"
+                                >
+                                    Back
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={!allConsentsGiven}
+                                    onClick={() => {
+                                        if (allConsentsGiven) setShowGdprModal(false);
+                                    }}
+                                    className="flex-[2] h-12 rounded-full text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-black text-white hover:bg-black/80 shadow-[0_8px_24px_rgba(0,0,0,0.18)] hover:shadow-[0_12px_32px_rgba(0,0,0,0.22)] active:scale-[0.98]"
+                                >
+                                    {allConsentsGiven ? 'I Agree & Continue ✓' : `Agree to all ${[consentAge18, consentReadUnderstood, consentDataProcessing, consentResumeSharing].filter(Boolean).length}/4 items`}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Toast */}
+            <div className="fixed bottom-4 right-4 z-[300] flex flex-col pointer-events-none">
                 <AnimatePresence>
                     {toast.open && (
                         <motion.div

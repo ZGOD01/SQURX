@@ -4,6 +4,7 @@ import { AppShell } from '@/app/AppShell';
 import { ProtectedRoute } from '@/app/ProtectedRoute';
 import { GuestRoute } from '@/app/GuestRoute';
 import { RoleGuard } from '@/app/RoleGuard';
+import { StudentOnboardingGuard } from '@/app/StudentOnboardingGuard';
 import { EmailToaster } from '@/components/ui';
 
 import { Landing } from '@/features/landing/Landing';
@@ -12,7 +13,7 @@ import { Register } from '@/features/auth/Register';
 import { ForgotPassword } from '@/features/auth/ForgotPassword';
 import { Onboarding } from '@/features/auth/Onboarding';
 
-import { StudentDashboard, StudentProfile, StudentJobs, StudentPreferences, StudentConsultation } from '@/features/student/StudentViews';
+import { StudentDashboard, StudentProfile, StudentJobs, StudentPreferences } from '@/features/student/StudentViews';
 import { RecruiterDashboard, RecruiterCompany, RecruiterVacancies, RecruiterCandidates } from '@/features/recruiter/RecruiterViews';
 import { AdminDashboard, AdminUsers, AdminReports } from '@/features/admin/AdminViews';
 
@@ -48,7 +49,9 @@ function App() {
         <Route path="/student" element={
           <ProtectedRoute>
             <RoleGuard allowedRoles={['STUDENT']}>
-              <AppShell />
+              <StudentOnboardingGuard>
+                <AppShell />
+              </StudentOnboardingGuard>
             </RoleGuard>
           </ProtectedRoute>
         }>
@@ -56,7 +59,6 @@ function App() {
           <Route path="profile" element={<StudentProfile />} />
           <Route path="jobs" element={<StudentJobs />} />
           <Route path="preferences" element={<StudentPreferences />} />
-          <Route path="consultation" element={<StudentConsultation />} />
         </Route>
 
         {/* Recruiter Routes */}

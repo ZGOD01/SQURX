@@ -1,6 +1,34 @@
 import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { API_BASE_URL } from '@/lib/config';
+
+type HealthStatus = 'checking' | 'operational' | 'degraded' | 'offline';
 
 export function Footer() {
+    const [health, setHealth] = useState<HealthStatus>('checking');
+
+    // GET /health — poll server status once on mount
+    useEffect(() => {
+        fetch(`${API_BASE_URL}/health`, { signal: AbortSignal.timeout(5000) })
+            .then(res => res.json())
+            .then(res => {
+                if (res.success && res.data?.database === 'connected') {
+                    setHealth('operational');
+                } else {
+                    setHealth('degraded');
+                }
+            })
+            .catch(() => setHealth('offline'));
+    }, []);
+
+    const statusConfig: Record<HealthStatus, { color: string; pulse: string; label: string }> = {
+        checking:    { color: 'bg-gray-400',   pulse: 'animate-pulse', label: 'Checking...' },
+        operational: { color: 'bg-emerald-500', pulse: 'animate-pulse', label: 'All Systems Operational' },
+        degraded:    { color: 'bg-amber-400',   pulse: '',              label: 'Partially Degraded' },
+        offline:     { color: 'bg-red-500',     pulse: '',              label: 'Service Offline' },
+    };
+    const { color, pulse, label } = statusConfig[health];
+
     return (
         <footer className="relative bg-white pt-20 pb-10 border-t border-gray-100">
             <div className="max-w-7xl mx-auto px-6 md:px-12">
@@ -14,6 +42,11 @@ export function Footer() {
                         <p className="font-['Outfit'] font-light text-[#666] text-lg max-w-sm leading-relaxed">
                             The premier career strategy firm for individuals who refuse to leave their professional success to chance.
                         </p>
+                        {/* Live Server Status Badge — powered by GET /health */}
+                        <div className="mt-5 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-50 border border-gray-200">
+                            <span className={`w-2 h-2 rounded-full ${color} ${pulse}`} />
+                            <span className="text-[12px] font-semibold text-gray-600">{label}</span>
+                        </div>
                     </div>
 
                     <div>

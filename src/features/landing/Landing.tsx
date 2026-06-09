@@ -8,8 +8,26 @@ import { RoleCards } from './components/RoleCards';
 import { WhoWeAre } from './components/WhoWeAre';
 import { CtaBanner } from './components/CtaBanner';
 import { Footer } from './components/Footer';
+import { Navigate } from 'react-router-dom';
+import { useAuthStore } from '@/features/auth/store';
 
 export function Landing() {
+    const { user, _hasHydrated } = useAuthStore();
+
+    if (_hasHydrated && user) {
+        const role = String(user.role).toUpperCase();
+        switch (role) {
+            case 'STUDENT': 
+                return <Navigate to="/student" replace />;
+            case 'RECRUITER': 
+                return <Navigate to="/recruiter" replace />;
+            case 'ADMIN': 
+                return <Navigate to="/admin" replace />;
+            default: 
+                return <Navigate to="/student" replace />;
+        }
+    }
+
     return (
         <PageTransition className="min-h-screen bg-white font-sans selection:bg-gray-200 overflow-x-hidden relative">
 

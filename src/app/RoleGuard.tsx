@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/features/auth/store';
 import type { Role } from '@/features/auth/types';
+import { Loader2 } from 'lucide-react';
 
 interface RoleGuardProps {
     children: ReactNode;
@@ -10,13 +11,26 @@ interface RoleGuardProps {
 }
 
 export function RoleGuard({ children, allowedRoles, fallbackPath }: RoleGuardProps) {
-    const { user } = useAuthStore();
+    const { user, _hasHydrated } = useAuthStore();
+
+    // Wait for the persisted store to rehydrate before making any routing decision.
+    // Without this, refreshing /student shows 403 because user is null for a brief moment.
+    if (!_hasHydrated) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-background">
+                <Loader2 className="animate-spin text-primary w-8 h-8" />
+            </div>
+        );
+    }
 
     if (!user) {
         return <Navigate to="/auth/login" replace />;
     }
 
-    if (!allowedRoles.includes(user.role)) {
+    // Normalise role to uppercase for comparison (backend may return lowercase)
+    const userRoleUpper = String(user.role).toUpperCase() as Role;
+
+    if (!allowedRoles.includes(userRoleUpper)) {
         if (fallbackPath) {
             return <Navigate to={fallbackPath} replace />;
         }

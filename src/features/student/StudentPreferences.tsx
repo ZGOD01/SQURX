@@ -200,6 +200,9 @@ export function StudentPreferences() {
                                             </div>
                                         ))}
                                     </div>
+                                    <p className="text-[10px] text-muted-foreground mt-3 font-light text-center">
+                                        * By clicking apply you might be redirected to third party site for application
+                                    </p>
                                 </div>
                             )}
                         </CardContent>
