@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { consultationApi } from '@/lib/consultationApi';
+import { consultationApi, BASE_URL } from '@/lib/consultationApi';
 import { FadeInOnView } from '@/components/motion';
+import { useAuthStore } from '@/features/auth/store';
 import { useNavigate } from 'react-router-dom';
+import { setGdprConsent } from '@/lib/utils';
 import { 
     Compass, Landmark, Mail, ScrollText, PlaneTakeoff, 
     Cog, Briefcase, Palette, Dna, 
@@ -12,7 +14,6 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAuthStore } from '@/features/auth/store';
 
 const QUESTIONS = [
     {
@@ -86,6 +87,7 @@ const PALETTES = [
 
 export function GlobalCareerDiagnostic() {
     const navigate = useNavigate();
+    const { user, setAuth } = useAuthStore();
     const [step, setStep] = useState(0);
     const [answers, setAnswers] = useState<Record<number, string>>({});
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -96,16 +98,52 @@ export function GlobalCareerDiagnostic() {
     const [selectedTime, setSelectedTime] = useState<string>('');
     const [isConfirmingBooking, setIsConfirmingBooking] = useState(false);
     const [isBookingConfirmed, setIsBookingConfirmed] = useState(false);
+    const [bookingError, setBookingError] = useState<string | null>(null);
+    const [passwordRequired, setPasswordRequired] = useState(false);
+    const [customPassword, setCustomPassword] = useState('');
 
     // Lead Generation Form State
     const [isLeadFormMode, setIsLeadFormMode] = useState(false);
     const [isLeadFormSubmitted, setIsLeadFormSubmitted] = useState(false);
+    const [leadData, setLeadData] = useState<{ name: string; email: string; mobile: string }>({ name: '', email: '', mobile: '' });
 
     const [slotsData, setSlotsData] = useState<any[]>([]);
     const [showOverlay, setShowOverlay] = useState(true);
     const [initialChoice, setInitialChoice] = useState<'jobs' | 'consultation' | null>(null);
 
     const [questions, setQuestions] = useState<any[]>(QUESTIONS);
+
+    // GDPR Consent Modal States
+    const [showGdprModal, setShowGdprModal] = useState(false);
+    const [consentAge18, setConsentAge18] = useState(false);
+    const [consentReadUnderstood, setConsentReadUnderstood] = useState(false);
+    const [consentDataProcessing, setConsentDataProcessing] = useState(false);
+    const [consentResumeSharing, setConsentResumeSharing] = useState(false);
+    const [marketingOptIn, setMarketingOptIn] = useState<'yes' | 'no' | null>(null);
+    const allConsentsGiven = consentAge18 && consentReadUnderstood && consentDataProcessing && consentResumeSharing;
+
+    // Lock body scroll and hide navbar when GDPR modal is open
+    useEffect(() => {
+        const navbar = document.getElementById('main-navbar');
+        if (showGdprModal) {
+            document.body.style.overflow = 'hidden';
+            if (navbar) {
+                navbar.style.visibility = 'hidden';
+                navbar.style.pointerEvents = 'none';
+            }
+        } else {
+            document.body.style.overflow = '';
+            if (navbar) {
+                navbar.style.visibility = '';
+                navbar.style.pointerEvents = '';
+            }
+        }
+        return () => {
+            document.body.style.overflow = '';
+            const n = document.getElementById('main-navbar');
+            if (n) { n.style.visibility = ''; n.style.pointerEvents = ''; }
+        };
+    }, [showGdprModal]);
 
     useEffect(() => {
         // Fetch real quiz questions from the API and merge their database IDs
@@ -159,26 +197,38 @@ export function GlobalCareerDiagnostic() {
             setTimeout(() => {
                 setIsAnalyzing(false);
                 setStep(questions.length);
-                setIsLeadFormMode(true);
+                if (user) {
+                    setLeadData({
+                        name: user.name || user.fullName || 'Student',
+                        email: user.email || '',
+                        mobile: user.mobile || '9999999999'
+                    });
+                    setIsLeadFormSubmitted(true);
+                    setIsBookingMode(true);
+                } else {
+                    setIsLeadFormMode(true);
+                }
             }, 1800);
         }
     };
 
-    const handleFinalizeBooking = async () => {
+    // Called when Confirm Slot is clicked — opens GDPR modal first
+    const handleFinalizeBooking = () => {
         if (!selectedDate || !selectedTime) return;
+        setShowGdprModal(true);
+    };
+
+    // Called after user agrees to all GDPR consents
+    const handleGdprAgreeAndBook = async () => {
+        setShowGdprModal(false);
         setIsConfirmingBooking(true);
+        setBookingError(null);
         
         try {
-            const leadStr = localStorage.getItem('squrx_lead_data');
-            const answersStr = localStorage.getItem('squrx_quiz_answers');
-            
-            const leadData = leadStr ? JSON.parse(leadStr) : { name: "Guest User", email: "guest@example.com", mobile: "0000000000" };
-            const rawAnswers = answersStr ? JSON.parse(answersStr) : {};
-            
-            const quizAnswersList = Object.keys(rawAnswers).map(key => {
+            // Build quiz answers from component state (no localStorage)
+            const quizAnswersList = Object.keys(answers).map(key => {
                 const stepIndex = parseInt(key, 10);
-                const rawChoice = rawAnswers[key as any];
-                // Safely handle old cached 'opt1' values to prevent MongoDB Cast Error (which results in 422)
+                const rawChoice = answers[stepIndex];
                 const isValidHex = /^[0-9a-fA-F]{24}$/.test(rawChoice);
                 return {
                     quizId: questions[stepIndex]?.id || '65f000000000000000000000',
@@ -186,7 +236,6 @@ export function GlobalCareerDiagnostic() {
                 };
             });
 
-            // Failsafe to ensure validation doesn't throw 422 if answers are somehow cleared
             if (quizAnswersList.length === 0) {
                 quizAnswersList.push({
                     quizId: '65f000000000000000000000',
@@ -195,67 +244,163 @@ export function GlobalCareerDiagnostic() {
             }
 
             // Sanitize mobile to ensure it's exactly 10 digits
-            let sanitizedMobile = leadData.mobile ? leadData.mobile.replace(/\D/g, '') : "9999999999";
+            let sanitizedMobile = leadData.mobile ? leadData.mobile.replace(/\D/g, '') : '9999999999';
             if (sanitizedMobile.length !== 10) {
-                sanitizedMobile = "9999999999"; // Fallback to pass validation if still invalid
+                sanitizedMobile = '9999999999';
+            }
+
+            // Silent signup & login flow to ensure user document exists and has gdprConsent verified,
+            // and obtaining a valid token to authorize the subsequent book request.
+            let activeToken = localStorage.getItem('token') || '';
+            let authError: string | null = null;
+            let loggedInUser: any = null;
+            
+            if (activeToken) {
+                // User is already logged in, bypass silent signup/login
+                loggedInUser = user;
+            } else if (passwordRequired) {
+                if (!customPassword) {
+                    throw new Error("Password is required to book under this account.");
+                }
+                try {
+                    const loginRes = await fetch(`${BASE_URL}/auth/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email: leadData.email,
+                            password: customPassword
+                        })
+                    });
+                    const loginData = await loginRes.json().catch(() => ({}));
+                    if (loginRes.status === 200 && loginData.success && loginData.data?.token) {
+                        activeToken = loginData.data.token;
+                        loggedInUser = loginData.data.user;
+                        localStorage.setItem('token', activeToken);
+                        setPasswordRequired(false);
+                    } else if (loginRes.status === 401) {
+                        authError = "Incorrect password. Please verify your password and try again.";
+                    } else if (loginRes.status === 403) {
+                        authError = "This account is registered but unverified. Please Sign In normally to verify and book.";
+                    } else {
+                        authError = loginData.message || "Failed to authenticate with entered password.";
+                    }
+                } catch (e) {
+                    authError = "Failed to reach verification server. Please try again.";
+                }
+            } else {
+                const guestPassword = 'SqurxGuestPass123!';
+                try {
+                    // 1. Silent Signup
+                    const signupRes = await fetch(`${BASE_URL}/auth/signup`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            fullName: leadData.name || 'Guest User',
+                            email: leadData.email || 'guest@example.com',
+                            mobile: sanitizedMobile,
+                            password: guestPassword,
+                            role: 'student',
+                            gdprConsent: true,
+                            gdpr: true,
+                            consent: true
+                        })
+                    });
+                    
+                    if (signupRes.status === 201) {
+                        const signupData = await signupRes.json().catch(() => ({}));
+                        const userId = signupData?.data?.userId;
+                        if (userId) {
+                            // Deriving OTP: last 4 digits of mobile number
+                            const otp = sanitizedMobile.slice(-4);
+                            const verifyRes = await fetch(`${BASE_URL}/auth/verify-otp`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    userId,
+                                    otp
+                                })
+                            });
+                            const verifyData = await verifyRes.json().catch(() => ({}));
+                            if (verifyRes.status === 200 && verifyData.success && verifyData.data?.token) {
+                                activeToken = verifyData.data.token;
+                                loggedInUser = verifyData.data.user;
+                                localStorage.setItem('token', activeToken);
+                            } else {
+                                console.warn("Silent OTP verification failed:", verifyData);
+                            }
+                        }
+                    } else if (signupRes.status === 409) {
+                        // 2. Silent Login (if already exists)
+                        const loginRes = await fetch(`${BASE_URL}/auth/login`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                email: leadData.email || 'guest@example.com',
+                                password: guestPassword
+                            })
+                        });
+                        const loginData = await loginRes.json().catch(() => ({}));
+                        if (loginRes.status === 200 && loginData.success && loginData.data?.token) {
+                            activeToken = loginData.data.token;
+                            loggedInUser = loginData.data.user;
+                            localStorage.setItem('token', activeToken);
+                        } else if (loginRes.status === 401) {
+                            setPasswordRequired(true);
+                            authError = "This email/mobile is already registered. Please enter your password below to confirm booking.";
+                        } else if (loginRes.status === 403) {
+                            authError = "This account is registered but unverified. Please Sign In to verify and book, or use a new email/mobile.";
+                        } else {
+                            authError = loginData.message || "Authentication failed. Please Sign In or use another email/mobile.";
+                        }
+                    } else {
+                        const signupData = await signupRes.json().catch(() => ({}));
+                        authError = signupData.message || "Registration failed. Please try again.";
+                    }
+                } catch (e) {
+                    console.warn("Silent signup/login workaround check failed, falling back to direct book:", e);
+                }
+            }
+
+            if (authError) {
+                throw new Error(authError);
             }
 
             const payload = {
-                fullName: leadData.name || "Student",
-                email: leadData.email || "student@example.com",
+                fullName: leadData.name || 'Guest User',
+                email: leadData.email || 'guest@example.com',
                 mobile: sanitizedMobile,
                 quizAnswers: quizAnswersList,
-                appointment: { dateId: selectedDate, timeId: selectedTime }
+                appointment: { dateId: selectedDate, timeId: selectedTime },
+                gdprConsent: true,
+                gdpr: true,
+                consent: true
             };
-            console.log("PAYLOAD BEING SENT TO BACKEND:", JSON.stringify(payload, null, 2));
+            console.log('PAYLOAD BEING SENT TO BACKEND:', JSON.stringify(payload, null, 2));
 
-            const response = await consultationApi.bookConsultation(payload);
+            const result = await consultationApi.bookConsultation(payload);
 
-            if (response?.data?.token) {
-                try {
-                    const meRes = await fetch('https://squrx-backend.onrender.com/api/v1/user/me', {
-                        headers: { 'Authorization': `Bearer ${response.data.token}` }
-                    });
-                    if (meRes.ok) {
-                        const meJson = await meRes.json();
-                        if (meJson.success && meJson.data) {
-                            useAuthStore.getState().setAuth(meJson.data, response.data.token);
-                        } else {
-                            const fakeUser = {
-                                _id: response.data.consultation?.user || "temp-id",
-                                name: payload.fullName,
-                                email: payload.email,
-                                role: "STUDENT"
-                            };
-                            useAuthStore.getState().setAuth(fakeUser, response.data.token);
-                        }
-                    } else {
-                        const fakeUser = {
-                            _id: response.data.consultation?.user || "temp-id",
-                            name: payload.fullName,
-                            email: payload.email,
-                            role: "STUDENT"
-                        };
-                        useAuthStore.getState().setAuth(fakeUser, response.data.token);
-                    }
-                } catch (err) {
-                    console.error("Failed to fetch real user after booking:", err);
-                    const fakeUser = {
-                        _id: response.data.consultation?.user || "temp-id",
-                        name: payload.fullName,
-                        email: payload.email,
-                        role: "STUDENT"
-                    };
-                    useAuthStore.getState().setAuth(fakeUser, response.data.token);
+            // Save the token and log in the user so they can access their dashboard
+            const tokenToUse = result?.data?.token || activeToken;
+            if (tokenToUse) {
+                const userObj = loggedInUser || {
+                    _id: result?.data?.consultation?.user || '',
+                    fullName: leadData.name || 'Guest User',
+                    email: leadData.email || 'guest@example.com',
+                    mobile: sanitizedMobile,
+                    role: 'student'
+                };
+                setAuth(userObj, tokenToUse);
+                if (userObj._id || userObj.id) {
+                    setGdprConsent(userObj._id || userObj.id, true);
                 }
             }
 
             setIsConfirmingBooking(false);
             setIsBookingConfirmed(true);
-        } catch (error) {
-            console.error(error);
+        } catch (error: any) {
+            console.error('Booking failed:', error);
+            setBookingError(error.message || 'Failed to book consultation');
             setIsConfirmingBooking(false);
-            // Optionally handle error toast
         }
     };
 
@@ -285,6 +430,7 @@ export function GlobalCareerDiagnostic() {
     const progressPercentage = (step / questions.length) * 100;
 
     return (
+        <>
         <section className="relative py-16 md:py-20 w-full bg-white overflow-hidden font-sans border-t justify-center flex border-gray-100">
             <FadeInOnView className="max-w-[1000px] w-full mx-auto px-4 sm:px-6 relative">
                 
@@ -518,15 +664,17 @@ export function GlobalCareerDiagnostic() {
                                         e.preventDefault(); 
                                         
                                         const formData = new FormData(e.currentTarget);
-                                        const leadData = {
-                                            name: formData.get('name'),
-                                            email: formData.get('email'),
-                                            mobile: formData.get('mobile')
-                                        };
 
-                                        // Store Quiz option IDs and Lead info locally 
-                                        localStorage.setItem('squrx_quiz_answers', JSON.stringify(answers));
-                                        localStorage.setItem('squrx_lead_data', JSON.stringify(leadData));
+                                        // Store lead info in component state (no localStorage)
+                                        setLeadData({
+                                            name: String(formData.get('name') || ''),
+                                            email: String(formData.get('email') || ''),
+                                            mobile: String(formData.get('mobile') || '')
+                                        });
+
+                                        setPasswordRequired(false);
+                                        setCustomPassword('');
+                                        setBookingError(null);
 
                                         setIsLeadFormSubmitted(true); 
                                         setIsLeadFormMode(false); 
@@ -536,14 +684,14 @@ export function GlobalCareerDiagnostic() {
                                         <div className="space-y-1.5 group">
                                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1 group-focus-within:text-blue-600 transition-colors">Full Legal Name</label>
                                             <div className="relative">
-                                                <input name="name" required type="text" placeholder="e.g. Michael Chen" className="w-full h-14 bg-gray-50/50 border-2 border-gray-100 hover:border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-[1rem] px-4 text-sm font-bold text-gray-900 transition-all outline-none shadow-sm" />
+                                                <input name="name" required type="text" defaultValue={leadData.name} placeholder="e.g. Michael Chen" className="w-full h-14 bg-gray-50/50 border-2 border-gray-100 hover:border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-[1rem] px-4 text-sm font-bold text-gray-900 transition-all outline-none shadow-sm" />
                                             </div>
                                         </div>
                                         
                                         <div className="space-y-1.5 group">
                                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1 group-focus-within:text-blue-600 transition-colors">Personal Email Address</label>
                                             <div className="relative">
-                                                <input name="email" required type="email" placeholder="hello@company.com" className="w-full h-14 bg-gray-50/50 border-2 border-gray-100 hover:border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-[1rem] px-4 text-sm font-bold text-gray-900 transition-all outline-none shadow-sm" />
+                                                <input name="email" required type="email" defaultValue={leadData.email} placeholder="hello@company.com" className="w-full h-14 bg-gray-50/50 border-2 border-gray-100 hover:border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-[1rem] px-4 text-sm font-bold text-gray-900 transition-all outline-none shadow-sm" />
                                             </div>
                                         </div>
                                         
@@ -551,13 +699,28 @@ export function GlobalCareerDiagnostic() {
                                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1 group-focus-within:text-blue-600 transition-colors">Mobile Number</label>
                                             <div className="relative border-2 border-gray-100 hover:border-gray-200 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 rounded-[1rem] flex items-center bg-gray-50/50 focus-within:bg-white transition-all shadow-sm">
                                                 <span className="pl-4 pr-2 text-sm font-bold text-gray-500 border-r border-gray-200 py-1">+91</span>
-                                                <input name="mobile" required type="tel" pattern="[0-9]{10}" minLength={10} maxLength={10} title="Mobile number must be exactly 10 digits" placeholder="9876543210" className="w-full h-14 bg-transparent px-4 text-sm font-bold text-gray-900 outline-none" />
+                                                <input name="mobile" required type="tel" pattern="[0-9]{10}" minLength={10} maxLength={10} defaultValue={leadData.mobile} title="Mobile number must be exactly 10 digits" placeholder="9876543210" className="w-full h-14 bg-transparent px-4 text-sm font-bold text-gray-900 outline-none" />
                                             </div>
                                         </div>
 
-                                        <Button type="submit" className="w-full rounded-2xl h-14 text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-[0_8px_30px_rgba(37,99,235,0.3)] mt-6 transition-all hover:scale-[1.02] hover:-translate-y-0.5 active:scale-95 group flex items-center justify-center">
-                                            Book an Appointment <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                                        </Button>
+                                        <div className="flex gap-3 mt-6">
+                                            <Button type="button" variant="outline" className="flex-1 rounded-2xl h-14 text-sm font-bold" onClick={() => {
+                                                 setIsLeadFormMode(false);
+                                                 setStep(0);
+                                                 setAnswers({});
+                                                 setInitialChoice(null);
+                                                 setShowOverlay(true);
+                                                 setIsLeadFormSubmitted(false);
+                                                 setBookingError(null);
+                                                 setPasswordRequired(false);
+                                                 setCustomPassword('');
+                                            }}>
+                                                Cancel
+                                            </Button>
+                                            <Button type="submit" className="flex-[2] rounded-2xl h-14 text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-[0_8px_30px_rgba(37,99,235,0.3)] transition-all hover:scale-[1.02] hover:-translate-y-0.5 active:scale-95 group flex items-center justify-center">
+                                                Book Slot <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                                            </Button>
+                                        </div>
                                     </form>
                                 </motion.div>
                             )}
@@ -630,7 +793,7 @@ export function GlobalCareerDiagnostic() {
                                                 return (
                                                     <button
                                                         key={i}
-                                                        onClick={() => { setSelectedDate(dateStr); setSelectedTime(''); }}
+                                                        onClick={() => { setSelectedDate(dateStr); setSelectedTime(''); setBookingError(null); }}
                                                         className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all ${isSelected
                                                             ? 'bg-blue-600 text-white shadow-md scale-[1.05] border-blue-600 ring-2 ring-blue-600/20'
                                                             : 'bg-white hover:border-blue-400 border-gray-200 text-gray-500 hover:text-gray-900'
@@ -658,7 +821,7 @@ export function GlobalCareerDiagnostic() {
                                                     <button
                                                         key={slot._id}
                                                         disabled={!slot.isAvailable}
-                                                        onClick={() => setSelectedTime(slot._id)}
+                                                        onClick={() => { setSelectedTime(slot._id); setBookingError(null); }}
                                                         className={`flex items-center justify-center py-2.5 rounded-xl border transition-all text-sm font-bold ${isSelected
                                                             ? 'bg-blue-600 text-white shadow-sm border-blue-600'
                                                             : slot.isAvailable ? 'bg-white hover:border-blue-400 border-gray-200 text-gray-600 hover:text-gray-900' : 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-100'
@@ -673,17 +836,82 @@ export function GlobalCareerDiagnostic() {
                                         </div>
                                     </div>
 
+                                    {/* Error Message */}
+                                    {bookingError && (
+                                         <motion.div 
+                                             initial={{ opacity: 0, y: -8 }}
+                                             animate={{ opacity: 1, y: 0 }}
+                                             className={`mb-5 p-4 rounded-2xl border text-sm flex items-start gap-3 backdrop-blur-md shadow-lg transition-all duration-300 ${
+                                                 passwordRequired 
+                                                     ? 'bg-amber-50/75 border-amber-200 text-amber-950 shadow-amber-500/5' 
+                                                     : 'bg-rose-50/75 border-rose-200 text-rose-950 shadow-rose-500/5'
+                                             }`}
+                                         >
+                                             <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                                                 passwordRequired ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
+                                             }`}>
+                                                 <Star className="w-4 h-4 fill-current animate-pulse" />
+                                             </div>
+                                             <div className="flex-1 text-left">
+                                                 <span className="font-extrabold text-[11px] uppercase tracking-wider block mb-0.5">
+                                                     {passwordRequired ? 'Account Verification' : 'Booking Issue'}
+                                                 </span>
+                                                 <p className="text-xs font-semibold leading-relaxed">
+                                                     {bookingError}
+                                                 </p>
+                                             </div>
+                                         </motion.div>
+                                    )}
+
+                                    {/* Custom Password Input for Existing Users */}
+                                    {passwordRequired && (
+                                         <motion.div 
+                                             initial={{ opacity: 0, scale: 0.95 }}
+                                             animate={{ opacity: 1, scale: 1 }}
+                                             className="mb-5 p-5 rounded-2xl border border-gray-100 bg-gray-50/30 backdrop-blur-sm shadow-sm space-y-3.5 text-left"
+                                         >
+                                             <div className="flex items-center justify-between">
+                                                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">
+                                                     Confirm Your Password
+                                                 </label>
+                                             </div>
+                                             <div className="relative border-2 border-gray-100 hover:border-gray-200 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 rounded-[1.2rem] bg-white transition-all shadow-sm flex items-center">
+                                                 <input 
+                                                     type="password" 
+                                                     value={customPassword} 
+                                                     onChange={(e) => setCustomPassword(e.target.value)}
+                                                     placeholder="Enter account password" 
+                                                     className="w-full h-12 bg-transparent px-4 text-sm font-bold text-gray-900 outline-none" 
+                                                 />
+                                             </div>
+                                             <p className="text-[10px] text-gray-400 font-medium pl-1 leading-relaxed">
+                                                 Verification token will be generated upon confirmation to secure your consultation appointment.
+                                             </p>
+                                         </motion.div>
+                                    )}
+
                                     {/* Action Buttons */}
                                     <div className="flex gap-3">
                                         <Button variant="outline" className="flex-1 rounded-xl h-12 text-sm font-bold" onClick={() => {
-                                             setIsBookingMode(false);
-                                             setStep(0);
-                                             setAnswers({});
-                                             setInitialChoice(null);
-                                             setShowOverlay(true);
-                                             setIsLeadFormSubmitted(false);
+                                             if (user) {
+                                                  // Logged in: go back to restart the diagnostic quiz
+                                                  setIsBookingMode(false);
+                                                  setStep(0);
+                                                  setAnswers({});
+                                                  setInitialChoice(null);
+                                                  setShowOverlay(true);
+                                                  setIsLeadFormSubmitted(false);
+                                             } else {
+                                                  // Guest: go back to connect form
+                                                  setIsBookingMode(false);
+                                                  setIsLeadFormMode(true);
+                                                  setIsLeadFormSubmitted(false);
+                                             }
+                                             setBookingError(null);
+                                             setPasswordRequired(false);
+                                             setCustomPassword('');
                                          }}>
-                                            Cancel
+                                            Back
                                         </Button>
                                         <Button 
                                             className="flex-[2] rounded-xl h-12 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 transition-all" 
@@ -710,14 +938,26 @@ export function GlobalCareerDiagnostic() {
                                     </div>
                                     
                                     <h3 className="text-2xl font-black text-gray-900 mb-3 tracking-tight">
-                                        Slot Locked In!
+                                        Slot Confirmed!
                                     </h3>
                                     <p className="text-sm text-gray-500 max-w-sm mx-auto mb-8 font-medium">
-                                        Your session is confirmed. Login to your dashboard to access the meeting room link.
+                                        Your consultation session has been reserved. Our mentorship team will contact you shortly via email and phone.
                                     </p>
                                     
-                                    <Button onClick={handleLogin} size="lg" className="w-full max-w-xs mx-auto rounded-xl h-12 text-sm bg-gray-900 hover:bg-black text-white font-bold shadow-lg transition-all">
-                                        <LogIn className="mr-2 w-4 h-4" /> Go to Dashboard
+                                    <Button 
+                                        onClick={() => {
+                                            setShowOverlay(true);
+                                            setStep(0);
+                                            setAnswers({});
+                                            setIsBookingConfirmed(false);
+                                            setIsBookingMode(false);
+                                            setIsLeadFormSubmitted(false);
+                                            navigate('/student');
+                                        }} 
+                                        size="lg" 
+                                        className="w-full max-w-xs mx-auto rounded-xl h-12 text-sm bg-gray-900 hover:bg-black text-white font-bold shadow-lg transition-all"
+                                    >
+                                        Go to Dashboard
                                     </Button>
                                 </motion.div>
                             )}
@@ -727,5 +967,188 @@ export function GlobalCareerDiagnostic() {
                 </div>
             </FadeInOnView>
         </section>
+
+            {/* ── GDPR Modal (identical to Register.tsx) ───────────── */}
+            <AnimatePresence>
+                {showGdprModal && (
+                    <motion.div
+                        key="gdpr-overlay"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-6"
+                        style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', backgroundColor: 'rgba(0,0,0,0.45)' }}
+                        onClick={(e) => { if (e.target === e.currentTarget) setShowGdprModal(false); }}
+                    >
+                        <motion.div
+                            key="gdpr-panel"
+                            initial={{ y: 80, opacity: 0, scale: 0.96 }}
+                            animate={{ y: 0, opacity: 1, scale: 1 }}
+                            exit={{ y: 80, opacity: 0, scale: 0.96 }}
+                            transition={{ type: 'spring', stiffness: 280, damping: 28 }}
+                            className="relative w-full sm:max-w-lg bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-[0_32px_80px_rgba(0,0,0,0.25)] flex flex-col overflow-hidden"
+                            style={{ maxHeight: '90vh' }}
+                        >
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between px-7 pt-7 pb-4 border-b border-black/5 flex-shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-full bg-black flex items-center justify-center">
+                                        <ShieldCheck className="w-4 h-4 text-white" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-base font-bold tracking-tight text-black">Privacy &amp; Consent</h2>
+                                        <p className="text-[11px] text-black/40 font-light">DPDP Act 2023 — TICC / SQREX</p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowGdprModal(false)}
+                                    className="w-8 h-8 rounded-full bg-black/5 hover:bg-black/10 flex items-center justify-center transition-colors"
+                                    aria-label="Close"
+                                >
+                                    <span className="text-black/50 text-sm leading-none">✕</span>
+                                </button>
+                            </div>
+
+                            {/* Scrollable Content */}
+                            <div className="overflow-y-auto flex-1 px-7 py-5 space-y-5 text-[12px] leading-relaxed text-black/70 font-light">
+                                <p className="font-semibold text-black text-[13px]">TICC owner of SQREX will be registered as Data fiduciary under the Digital Personal Data Protection Act 2023, once the registration will be made open.</p>
+                                <p className="font-semibold text-black">Before you continue, here's how we'll use your information</p>
+
+                                <div className="bg-black/[0.025] rounded-2xl p-4 space-y-2">
+                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">What We Collect</p>
+                                    <p>When you book a consultation, we collect:</p>
+                                    <ul className="list-disc list-inside pl-2 space-y-1">
+                                        <li>Your name, email, and phone number</li>
+                                        <li>Your responses to our career quiz</li>
+                                        <li>Your preferred consultation date and time</li>
+                                    </ul>
+                                </div>
+
+                                <div className="bg-black/[0.025] rounded-2xl p-4 space-y-2">
+                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">How We Use It</p>
+                                    <p className="font-medium text-black/80">To deliver your consultation:</p>
+                                    <ul className="list-disc list-inside pl-2 space-y-1">
+                                        <li>Connect you with a career counselor</li>
+                                        <li>Share your quiz responses with the assigned counselor</li>
+                                        <li>Send you confirmation and reminder communications</li>
+                                    </ul>
+                                    <p className="font-medium text-black/80 mt-2">To improve our service:</p>
+                                    <ul className="list-disc list-inside pl-2 space-y-1">
+                                        <li>Analyse skill gaps against global employer demands</li>
+                                        <li>Personalize counselling and university recommendations</li>
+                                        <li>Understand what's working and make our platform better</li>
+                                    </ul>
+                                </div>
+
+                                <p>We will only use your data for the purposes listed above. If we need to use it for anything else, we will ask for your consent again.</p>
+
+                                <div className="bg-black/[0.025] rounded-2xl p-4 space-y-2">
+                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">Where Your Data Goes</p>
+                                    <p><strong className="text-black">Storage:</strong> Securely stored on cloud servers within India (AWS) in compliance with Indian data protection laws.</p>
+                                    <p><strong className="text-black">Who sees it:</strong></p>
+                                    <ul className="list-disc list-inside pl-2 space-y-1">
+                                        <li>Assigned career counselors for consultation purposes</li>
+                                        <li>Service providers who help us run the platform</li>
+                                    </ul>
+                                    <p><strong className="text-black">How long:</strong> Up to 3 years, or until you ask us to delete it.</p>
+                                </div>
+
+                                <div className="bg-black/[0.025] rounded-2xl p-4 space-y-2">
+                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">Your Rights</p>
+                                    <ul className="list-disc list-inside pl-2 space-y-1">
+                                        <li>See what data we have about you</li>
+                                        <li>Fix any incorrect information</li>
+                                        <li>Delete your data</li>
+                                        <li>Stop receiving emails anytime</li>
+                                        <li>Download your data</li>
+                                        <li>Object to automated decision making</li>
+                                        <li>Nominate someone to exercise your rights in case of death or incapacity</li>
+                                    </ul>
+                                    <p className="mt-1">Contact: <span className="text-black font-medium">privacy@sqrex.com</span></p>
+                                </div>
+
+                                <div className="bg-black/[0.025] rounded-2xl p-4 space-y-1">
+                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">Grievance Officer</p>
+                                    <p>For any complaint or concern about your data:</p>
+                                    <p>Email: <span className="text-black font-medium">grievance@sqrex.com</span></p>
+                                    <p>We will acknowledge your complaint within 24 working hours.</p>
+                                </div>
+
+                                <div className="bg-black/[0.025] rounded-2xl p-4 space-y-1">
+                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">Important to Know</p>
+                                    <ul className="list-disc list-inside pl-2 space-y-1">
+                                        <li>You can withdraw consent anytime through your account settings or by emailing us.</li>
+                                        <li>Withdrawing consent won't affect data already processed.</li>
+                                        <li>We use industry-standard security to protect your data.</li>
+                                        <li>We'll never sell your information.</li>
+                                    </ul>
+                                </div>
+
+                                <p className="text-[10px] text-black/40">Questions? privacy@sqrex.com &nbsp;|&nbsp; Office address: Official Address &nbsp;|&nbsp; WhatsApp only</p>
+                            </div>
+
+                            {/* Consent Checkboxes */}
+                            <div className="px-7 py-4 border-t border-black/5 space-y-3 flex-shrink-0 bg-white">
+                                <p className="text-[11px] font-bold text-black uppercase tracking-wider">Consent Checklist</p>
+                                {([
+                                    { id: 'consult-age-18', checked: consentAge18, setter: setConsentAge18, label: 'I am at least 18 years old or above' },
+                                    { id: 'consult-read-understood', checked: consentReadUnderstood, setter: setConsentReadUnderstood, label: 'I have read and understood this consent' },
+                                    { id: 'consult-data-processing', checked: consentDataProcessing, setter: setConsentDataProcessing, label: 'I consent to data processing as described' },
+                                    { id: 'consult-resume-sharing', checked: consentResumeSharing, setter: setConsentResumeSharing, label: 'I consent to my details being shared with career counselors' },
+                                ] as { id: string; checked: boolean; setter: (v: boolean) => void; label: string }[]).map(({ id, checked, setter, label }) => (
+                                    <label key={id} htmlFor={id} className="flex items-start gap-3 cursor-pointer group">
+                                        <div className={`mt-0.5 w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-all ${ checked ? 'bg-black border-black' : 'border-black/20 group-hover:border-black/40' }`}>
+                                            {checked && <CheckCircle2 className="w-3 h-3 text-white" />}
+                                            <input id={id} type="checkbox" checked={checked} onChange={(e) => setter(e.target.checked)} className="sr-only" />
+                                        </div>
+                                        <span className={`text-[12px] leading-relaxed transition-colors ${ checked ? 'text-black font-medium' : 'text-black/60' }`}>{label}</span>
+                                    </label>
+                                ))}
+
+                                {/* Marketing */}
+                                <div className="pt-2 border-t border-black/5 space-y-2">
+                                    <p className="text-[11px] font-bold text-black uppercase tracking-wider">Marketing (optional)</p>
+                                    <div className="flex gap-4">
+                                        {(['yes', 'no'] as const).map((val) => (
+                                            <label key={val} className="flex items-center gap-2 cursor-pointer">
+                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${ marketingOptIn === val ? 'border-black' : 'border-black/20' }`}>
+                                                    {marketingOptIn === val && <div className="w-2 h-2 rounded-full bg-black" />}
+                                                    <input type="radio" name="consult-marketing" value={val} checked={marketingOptIn === val} onChange={() => setMarketingOptIn(val)} className="sr-only" />
+                                                </div>
+                                                <span className="text-[12px] text-black/70">{val === 'yes' ? 'Yes, send me updates' : 'No, essential only'}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Modal Action Buttons */}
+                            <div className="flex gap-3 px-7 py-5 border-t border-black/5 flex-shrink-0 bg-white">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowGdprModal(false)}
+                                    className="flex-1 h-12 rounded-full border-2 border-black/10 text-black/70 text-sm font-medium hover:border-black/30 hover:text-black transition-all"
+                                >
+                                    Back
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={!allConsentsGiven}
+                                    onClick={() => {
+                                        if (allConsentsGiven) handleGdprAgreeAndBook();
+                                    }}
+                                    className="flex-[2] h-12 rounded-full text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-black text-white hover:bg-black/80 shadow-[0_8px_24px_rgba(0,0,0,0.18)] hover:shadow-[0_12px_32px_rgba(0,0,0,0.22)] active:scale-[0.98]"
+                                >
+                                    {allConsentsGiven ? 'I Agree & Confirm Slot ✓' : `Agree to all ${[consentAge18, consentReadUnderstood, consentDataProcessing, consentResumeSharing].filter(Boolean).length}/4 items`}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </>
     );
 }
+

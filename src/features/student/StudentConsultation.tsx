@@ -107,7 +107,8 @@ export function StudentConsultation() {
                 email: user.email || "",
                 mobile: "9999999999",
                 quizAnswers: quizAnswersList,
-                appointment: { dateId: selectedDate, timeId: selectedTime }
+                appointment: { dateId: selectedDate, timeId: selectedTime },
+                gdprConsent: true
             });
         }
         setIsLoading(false);

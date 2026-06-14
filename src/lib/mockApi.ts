@@ -11,6 +11,20 @@ const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: 
   try {
     const response = await fetch(url, { ...rest, signal: controller.signal });
     clearTimeout(id);
+    
+    if (response.status === 403) {
+      const clone = response.clone();
+      clone.json().then(body => {
+        if (body.message === 'Account not verified' || body.message?.toLowerCase().includes('verify') || body.message?.toLowerCase().includes('not verified')) {
+          window.dispatchEvent(new CustomEvent('squrx-unverified-account'));
+        }
+      }).catch(() => {
+        if (url.includes('/user/me') || url.includes('/consultations/')) {
+          window.dispatchEvent(new CustomEvent('squrx-unverified-account'));
+        }
+      });
+    }
+    
     return response;
   } catch (error) {
     clearTimeout(id);

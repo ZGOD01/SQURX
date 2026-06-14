@@ -1,3 +1,5 @@
+
+
 export const BASE_URL = 'https://squrx-backend.onrender.com/api/v1';
 
 export const getAuthToken = () => localStorage.getItem('token');
@@ -9,6 +11,20 @@ const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: 
   try {
     const response = await fetch(url, { ...rest, signal: controller.signal });
     clearTimeout(id);
+    
+    if (response.status === 403) {
+      const clone = response.clone();
+      clone.json().then(body => {
+        if (body.message === 'Account not verified' || body.message?.toLowerCase().includes('verify') || body.message?.toLowerCase().includes('not verified')) {
+          window.dispatchEvent(new CustomEvent('squrx-unverified-account'));
+        }
+      }).catch(() => {
+        if (url.includes('/user/me') || url.includes('/consultations/')) {
+          window.dispatchEvent(new CustomEvent('squrx-unverified-account'));
+        }
+      });
+    }
+    
     return response;
   } catch (error) {
     clearTimeout(id);
@@ -38,22 +54,17 @@ export const consultationApi = {
     });
     if (!res.ok) {
        const err = await res.json().catch(() => ({}));
-       console.error("Booking API Validation Error Details:", err);
+       console.error("Booking API Error:", err);
        
        let errorMessage = err.message || 'Failed to book consultation';
        if (err.errors && err.errors.length > 0) {
            errorMessage = `Validation Error: ${err.errors[0].message} (Field: ${err.errors[0].field})`;
-           alert(errorMessage);
-       } else {
-           alert(errorMessage);
        }
-       
+       // No alert — let the caller handle the error gracefully
        throw new Error(errorMessage);
      }
     const result = await res.json();
-    if (result.success && result.data && result.data.token) {
-        localStorage.setItem('token', result.data.token);
-    }
+    // Do not store tokens in localStorage for guest bookings
     return result;
   },
   getMyAppointments: async () => {

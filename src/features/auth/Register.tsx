@@ -86,7 +86,22 @@ export function Register() {
                 throw new Error(res.message);
             }
         } catch (err: any) {
-            showToast('error', 'Failed to resend', err.data?.message || err.message || "Failed to resend OTP.");
+            console.error("Resend OTP error:", err);
+            let errorMsg = "Failed to resend OTP. Please try again.";
+            let errorTitle = "Failed to resend";
+            
+            // Check for 429 Too Many Requests status or custom message
+            if (err.status === 429 || err.data?.status === 429 || err.data?.message?.toLowerCase().includes("too many requests") || err.data?.message?.toLowerCase().includes("rate limit")) {
+                errorTitle = "Too Many Requests";
+                errorMsg = "An OTP was already sent. Please wait for the cooldown timer to finish before requesting another code.";
+                setResendTimer(60); // Reset timer to 60 seconds to visual sync with rate limiter
+            } else if (err.data?.message) {
+                errorMsg = err.data.message;
+            } else if (err.message) {
+                errorMsg = err.message;
+            }
+            
+            showToast('error', errorTitle, errorMsg);
         } finally {
             setIsLoading(false);
         }
@@ -154,6 +169,7 @@ export function Register() {
                 setServerMessage(res.data.message || "OTP sent successfully.");
                 setDirection(1);
                 setStep(3);
+                setResendTimer(60); // Initialize resend timer to 60 seconds immediately
             } else {
                 throw new Error(res.message);
             }

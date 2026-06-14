@@ -148,16 +148,64 @@ export function ForgotPassword() {
 
                                     <div className="space-y-4">
                                         <div className="space-y-2 group">
-                                            <label className="text-xs font-semibold text-black/70 uppercase tracking-widest pl-1">4-Digit Code</label>
-                                            <Input
-                                                type="text"
-                                                required
-                                                maxLength={4}
-                                                value={otp}
-                                                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                                                placeholder="3210"
-                                                className="h-14 text-center text-2xl tracking-[0.5em] font-bold bg-black/[0.02] border-black/10 focus-visible:bg-white focus-visible:border-black rounded-xl"
-                                            />
+                                            <label className="text-xs font-semibold text-black/70 uppercase tracking-widest pl-1 text-center block">4-Digit Code</label>
+                                            <div className="flex justify-center gap-3 sm:gap-4 mt-2">
+                                                {[0, 1, 2, 3].map((index) => {
+                                                    const isActive = otp[index] && otp[index] !== " " && otp[index] !== "";
+                                                    return (
+                                                        <div key={index} className="relative">
+                                                            <motion.input
+                                                                id={`otp-input-${index}`}
+                                                                type="text"
+                                                                inputMode="numeric"
+                                                                maxLength={1}
+                                                                value={(otp[index] === " " ? "" : otp[index]) || ""}
+                                                                initial={{ y: 20, opacity: 0 }}
+                                                                animate={{ y: 0, opacity: 1 }}
+                                                                transition={{ delay: index * 0.05, type: "spring", stiffness: 350, damping: 25 }}
+                                                                whileFocus={{ scale: 1.05, y: -2 }}
+                                                                whileHover={{ scale: 1.02 }}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value.replace(/[^0-9]/g, "");
+                                                                    const currentOtp = otp.padEnd(4, " ");
+                                                                    const newOtp = currentOtp.split("");
+                                                                    newOtp[index] = val || " ";
+                                                                    const newOtpStr = newOtp.join("").trimEnd();
+                                                                    setOtp(newOtpStr);
+                                                                    if (val && index < 3) {
+                                                                        document.getElementById(`otp-input-${index + 1}`)?.focus();
+                                                                    }
+                                                                }}
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === 'Backspace' && (!otp[index] || otp[index] === " ") && index > 0) {
+                                                                        const currentOtp = otp.padEnd(4, " ");
+                                                                        const newOtp = currentOtp.split("");
+                                                                        newOtp[index - 1] = " ";
+                                                                        setOtp(newOtp.join("").trimEnd());
+                                                                        document.getElementById(`otp-input-${index - 1}`)?.focus();
+                                                                    }
+                                                                }}
+                                                                onPaste={(e) => {
+                                                                    e.preventDefault();
+                                                                    const pastedData = e.clipboardData.getData("text").replace(/[^0-9]/g, "").slice(0, 4);
+                                                                    if (pastedData) {
+                                                                        setOtp(pastedData);
+                                                                        const focusIndex = Math.min(3, pastedData.length);
+                                                                        document.getElementById(`otp-input-${focusIndex === 4 ? 3 : focusIndex}`)?.focus();
+                                                                    }
+                                                                }}
+                                                                className={`w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold rounded-xl outline-none transition-all duration-300 bg-black/[0.02]
+                                                                    ${isActive 
+                                                                        ? "border-2 border-black text-black shadow-[0_4px_12px_rgba(0,0,0,0.05)] relative z-20" 
+                                                                        : "border border-black/10 text-black/40 shadow-sm relative z-10"
+                                                                    } 
+                                                                    focus:border-2 focus:border-black focus:text-black focus:shadow-[0_4px_16px_rgba(0,0,0,0.08)] focus:ring-4 focus:ring-black/5 caret-black
+                                                                `}
+                                                            />
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
 
                                         <div className="space-y-2 group">
