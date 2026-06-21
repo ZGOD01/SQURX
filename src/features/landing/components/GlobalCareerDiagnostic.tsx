@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { consultationApi, BASE_URL } from '@/lib/consultationApi';
+import { consultationApi } from '@/lib/consultationApi';
 import { FadeInOnView } from '@/components/motion';
 import { useAuthStore } from '@/features/auth/store';
 import { useNavigate } from 'react-router-dom';
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
+import { API_BASE_URL } from '@/lib/config';
 
 const QUESTIONS = [
     {
@@ -84,7 +85,6 @@ const PALETTES = [
 ];
 
 
-
 export function GlobalCareerDiagnostic() {
     const navigate = useNavigate();
     const { user, setAuth } = useAuthStore();
@@ -98,6 +98,8 @@ export function GlobalCareerDiagnostic() {
     const [selectedTime, setSelectedTime] = useState<string>('');
     const [isConfirmingBooking, setIsConfirmingBooking] = useState(false);
     const [isBookingConfirmed, setIsBookingConfirmed] = useState(false);
+    const [isGuestAccount, setIsGuestAccount] = useState(false); // true when we silently created a new account during booking
+    const [copiedPassword, setCopiedPassword] = useState(false);
     const [bookingError, setBookingError] = useState<string | null>(null);
     const [passwordRequired, setPasswordRequired] = useState(false);
     const [customPassword, setCustomPassword] = useState('');
@@ -146,13 +148,16 @@ export function GlobalCareerDiagnostic() {
     }, [showGdprModal]);
 
     useEffect(() => {
-        // Fetch real quiz questions from the API and merge their database IDs
-        fetch('https://squrx-backend.onrender.com/api/v1/quizzes')
+        // Fetch real active quiz questions from the API and merge their database IDs
+        fetch(`${API_BASE_URL}/quizzes`)
             .then(res => res.json())
             .then(res => {
                 if (res.success && res.data && res.data.length > 0) {
+                    // Filter out inactive quizzes if backend returns them
+                    const activeQuizzes = res.data.filter((q: any) => q.isActive !== false);
+
                     const mergedQuestions = QUESTIONS.map((localQ) => {
-                        const backendQ = res.data.find((bq: any) => 
+                        const backendQ = activeQuizzes.find((bq: any) => 
                             bq.title.toLowerCase().trim() === localQ.title.toLowerCase().trim()
                         );
                         
@@ -161,7 +166,7 @@ export function GlobalCareerDiagnostic() {
                                 ...localQ,
                                 id: backendQ._id,
                                 options: localQ.options.map((localOpt) => {
-                                    const backendOpt = backendQ.options.find((bo: any) => 
+                                    const backendOpt = backendQ.options?.find((bo: any) => 
                                         bo.text.toLowerCase().trim() === localOpt.text.toLowerCase().trim()
                                     );
                                     return {
@@ -173,6 +178,7 @@ export function GlobalCareerDiagnostic() {
                         }
                         return localQ;
                     });
+                    
                     setQuestions(mergedQuestions);
                 }
             })
@@ -188,11 +194,14 @@ export function GlobalCareerDiagnostic() {
     }, []);
 
     const handleSelectOption = (index: number, optionId: string) => {
-        setAnswers(prev => ({ ...prev, [index]: optionId }));
-        
+        const nextAnswers = { ...answers, [index]: optionId };
+        setAnswers(nextAnswers);
+
         if (index < questions.length - 1) {
             setTimeout(() => setStep(index + 1), 250);
         } else {
+            // Write user answers to localStorage so that they are synced and readable across tabs
+            localStorage.setItem('squrx_quiz_answers', JSON.stringify(nextAnswers));
             setIsAnalyzing(true);
             setTimeout(() => {
                 setIsAnalyzing(false);
@@ -263,7 +272,7 @@ export function GlobalCareerDiagnostic() {
                     throw new Error("Password is required to book under this account.");
                 }
                 try {
-                    const loginRes = await fetch(`${BASE_URL}/auth/login`, {
+                    const loginRes = await fetch(`${API_BASE_URL}/auth/login`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -291,7 +300,7 @@ export function GlobalCareerDiagnostic() {
                 const guestPassword = 'SqurxGuestPass123!';
                 try {
                     // 1. Silent Signup
-                    const signupRes = await fetch(`${BASE_URL}/auth/signup`, {
+                    const signupRes = await fetch(`${API_BASE_URL}/auth/signup`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -312,7 +321,7 @@ export function GlobalCareerDiagnostic() {
                         if (userId) {
                             // Deriving OTP: last 4 digits of mobile number
                             const otp = sanitizedMobile.slice(-4);
-                            const verifyRes = await fetch(`${BASE_URL}/auth/verify-otp`, {
+                            const verifyRes = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -325,13 +334,14 @@ export function GlobalCareerDiagnostic() {
                                 activeToken = verifyData.data.token;
                                 loggedInUser = verifyData.data.user;
                                 localStorage.setItem('token', activeToken);
+                                setIsGuestAccount(true); // brand-new account — show temp password notice
                             } else {
                                 console.warn("Silent OTP verification failed:", verifyData);
                             }
                         }
                     } else if (signupRes.status === 409) {
                         // 2. Silent Login (if already exists)
-                        const loginRes = await fetch(`${BASE_URL}/auth/login`, {
+                        const loginRes = await fetch(`${API_BASE_URL}/auth/login`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -379,19 +389,50 @@ export function GlobalCareerDiagnostic() {
 
             const result = await consultationApi.bookConsultation(payload);
 
-            // Save the token and log in the user so they can access their dashboard
+            // Determine the best available token: booking response takes priority, then the
+            // token obtained during silent signup/login, then any pre-existing session token.
             const tokenToUse = result?.data?.token || activeToken;
+
             if (tokenToUse) {
-                const userObj = loggedInUser || {
-                    _id: result?.data?.consultation?.user || '',
-                    fullName: leadData.name || 'Guest User',
-                    email: leadData.email || 'guest@example.com',
-                    mobile: sanitizedMobile,
-                    role: 'student'
-                };
-                setAuth(userObj, tokenToUse);
-                if (userObj._id || userObj.id) {
-                    setGdprConsent(userObj._id || userObj.id, true);
+                // Attempt to fetch the authoritative user profile from /user/me.
+                // This ensures the auth store always holds real, server-verified user data.
+                let resolvedUser: any = loggedInUser || null;
+
+                try {
+                    const meRes = await fetch(`${API_BASE_URL}/user/me`, {
+                        headers: { 'Authorization': `Bearer ${tokenToUse}` }
+                    });
+                    if (meRes.ok) {
+                        const meJson = await meRes.json();
+                        if (meJson.success && meJson.data) {
+                            // /user/me returned real data — use it as the authoritative user.
+                            resolvedUser = meJson.data;
+                        } else {
+                            // Unexpected response shape — warn and fall back to loggedInUser.
+                            console.warn('[GCD] /user/me returned unexpected shape, falling back to login data:', meJson);
+                        }
+                    } else {
+                        // /user/me request failed (e.g. 401/403/network) — warn and fall back.
+                        console.warn('[GCD] /user/me responded with status', meRes.status, '— falling back to login data');
+                    }
+                } catch (meErr) {
+                    // Network or parse error — warn without exposing the token in the log.
+                    console.warn('[GCD] /user/me fetch error — falling back to login data:', meErr);
+                }
+
+                if (!resolvedUser) {
+                    // No user data available from any source — abort auth update to prevent
+                    // an invalid authentication state from being stored.
+                    console.error('[GCD] No valid user data available after booking. Auth store not updated.');
+                } else {
+                    // Single call to setAuth — no duplicates.
+                    setAuth(resolvedUser, tokenToUse);
+
+                    // Update GDPR consent in localStorage using the resolved user id.
+                    const userId = resolvedUser._id || resolvedUser.id;
+                    if (userId) {
+                        setGdprConsent(userId, true);
+                    }
                 }
             }
 
@@ -940,10 +981,47 @@ export function GlobalCareerDiagnostic() {
                                     <h3 className="text-2xl font-black text-gray-900 mb-3 tracking-tight">
                                         Slot Confirmed!
                                     </h3>
-                                    <p className="text-sm text-gray-500 max-w-sm mx-auto mb-8 font-medium">
+                                    <p className="text-sm text-gray-500 max-w-sm mx-auto mb-6 font-medium">
                                         Your consultation session has been reserved. Our mentorship team will contact you shortly via email and phone.
                                     </p>
-                                    
+
+                                    {/* ── Guest account notice ─────────────────────── */}
+                                    {isGuestAccount && (
+                                        <div className="w-full max-w-sm mx-auto mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left">
+                                            <p className="text-[11px] font-black uppercase tracking-widest text-amber-700 mb-2">Your Account Was Created</p>
+                                            <p className="text-xs text-amber-800 leading-relaxed mb-3">
+                                                We automatically created a SQURX account for you using your email. Use the password below to sign in after you log out.
+                                            </p>
+                                            <div className="flex items-center gap-2 bg-white rounded-xl border border-amber-200 px-3 py-2 mb-3">
+                                                <span className="flex-1 text-xs font-mono font-bold text-gray-800 select-all tracking-wider">
+                                                    SqurxGuestPass123!
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText('SqurxGuestPass123!').then(() => {
+                                                            setCopiedPassword(true);
+                                                            setTimeout(() => setCopiedPassword(false), 2000);
+                                                        });
+                                                    }}
+                                                    className="text-[10px] font-bold uppercase tracking-widest text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 rounded-lg px-2 py-1 transition-colors flex-shrink-0"
+                                                >
+                                                    {copiedPassword ? '✓ Copied' : 'Copy'}
+                                                </button>
+                                            </div>
+                                            <p className="text-[11px] text-amber-700 leading-relaxed">
+                                                💡 We recommend{' '}
+                                                <a
+                                                    href="/auth/forgot-password"
+                                                    className="font-bold underline underline-offset-2 hover:text-amber-900"
+                                                >
+                                                    setting a new password
+                                                </a>
+                                                {' '}immediately so you don't lose access.
+                                            </p>
+                                        </div>
+                                    )}
+
                                     <Button 
                                         onClick={() => {
                                             setShowOverlay(true);
@@ -952,6 +1030,7 @@ export function GlobalCareerDiagnostic() {
                                             setIsBookingConfirmed(false);
                                             setIsBookingMode(false);
                                             setIsLeadFormSubmitted(false);
+                                            setIsGuestAccount(false);
                                             navigate('/student');
                                         }} 
                                         size="lg" 

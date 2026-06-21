@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
+import { API_BASE_URL } from '@/lib/config';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUpRight, GraduationCap, Building2, Sparkles, X } from 'lucide-react';
 
 
 const ROLES = [
     {
-        targetRole: "student",
+        category: "student",
         title: "Students & Grads",
         subtitle: "The Dreamers",
         desc: "Stop applying into the void. Build your profile, showcase your real vibe, and let the perfect opportunities magically find you.",
@@ -19,7 +20,7 @@ const ROLES = [
         hoverShadow: "hover:shadow-blue-500/10 hover:border-blue-200"
     },
     {
-        targetRole: "recruiter",
+        category: "recruiter",
         title: "Companies",
         subtitle: "The Builders",
         desc: "Culture fit matters more than a resume. Connect with brilliant, motivated individuals who match your incredible team's energy.",
@@ -33,7 +34,7 @@ const ROLES = [
         hoverShadow: "hover:shadow-orange-500/10 hover:border-orange-200"
     },
     {
-        targetRole: "mentor",
+        category: "mentor",
         title: "Mentors",
         subtitle: "The Guides",
         desc: "Share your journey. Shape the next generation of bright minds and get rewarded for making a genuine difference in their lives.",
@@ -55,7 +56,7 @@ export function RoleCards() {
     const [isLoadingDetail, setIsLoadingDetail] = useState(false);
 
     useEffect(() => {
-        fetch('https://squrx-backend.onrender.com/api/v1/articles')
+        fetch(`${API_BASE_URL}/articles`)
             .then(res => res.json())
             .then(res => {
                 if (res.success && res.data) {
@@ -100,7 +101,7 @@ export function RoleCards() {
             return;
         }
         setIsLoadingDetail(true);
-        fetch(`https://squrx-backend.onrender.com/api/v1/articles/${selectedRole.article._id}`)
+        fetch(`${API_BASE_URL}/articles/${selectedRole.article._id}`)
             .then(res => res.json())
             .then(res => {
                 if (res.success && res.data) setArticleDetail(res.data);
@@ -159,11 +160,14 @@ export function RoleCards() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-10">
                     {ROLES.map((role, i) => {
                         const Icon = role.icon;
-                        const matchedArticle = Array.isArray(articles) ? articles.find(a => a.targetRole === role.targetRole && a.isActive) : undefined;
+                        // Match article by 'category' field (what the backend actually sends)
+                        const matchedArticle = Array.isArray(articles) ? articles.find(a => a.category === role.category && a.isActive) : undefined;
                         const displayTitle = matchedArticle ? matchedArticle.title : role.title;
-                        // Use a short preview of the content for the card description if article exists
-                        const displayDesc = matchedArticle && matchedArticle.content 
-                            ? (matchedArticle.content.length > 120 ? matchedArticle.content.substring(0, 120) + '...' : matchedArticle.content)
+                        // Strip HTML tags for the card preview snippet
+                        const stripHtml = (html: string) => html.replace(/<[^>]*>/g, '');
+                        const rawDesc = matchedArticle?.description || matchedArticle?.content || '';
+                        const displayDesc = rawDesc
+                            ? (stripHtml(rawDesc).length > 120 ? stripHtml(rawDesc).substring(0, 120) + '...' : stripHtml(rawDesc))
                             : role.desc;
 
                         return (
@@ -294,9 +298,11 @@ export function RoleCards() {
                                             <span className="text-sm font-medium">Loading full article...</span>
                                         </div>
                                     ) : (articleDetail?.content || selectedRole?.article?.content) ? (
-                                        <p className="text-lg md:text-xl leading-relaxed text-gray-600 font-medium">
-                                            {articleDetail?.content || selectedRole.article.content}
-                                        </p>
+                                        // Backend returns HTML content — render it safely
+                                        <div
+                                            className="text-base md:text-lg leading-relaxed text-gray-700 prose prose-headings:font-black prose-headings:text-gray-900 prose-p:text-gray-600 prose-p:leading-relaxed max-w-none"
+                                            dangerouslySetInnerHTML={{ __html: articleDetail?.content || selectedRole?.article?.content }}
+                                        />
                                     ) : (
                                         <div className="space-y-4 md:space-y-6">
                                             <p className="text-lg md:text-xl leading-relaxed text-gray-800 font-semibold">

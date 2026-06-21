@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "./store";
-import { useSignupMutation, useVerifyOtpMutation, useResendOtpMutation } from "@/lib/store/authApi";
+import { useSignupMutation, useVerifyOtpMutation, useResendOtpMutation, useGetCountriesQuery } from "@/lib/store/authApi";
 import { useNotificationStore } from "@/lib/store/notifications";
 import { Button, Input, Toast } from "@/components/ui";
 import { PageTransition } from "@/components/motion";
@@ -54,6 +54,13 @@ export function Register() {
     const [verifyOtpMutation] = useVerifyOtpMutation();
     const [resendOtpMutation] = useResendOtpMutation();
     const { sendEmail } = useNotificationStore();
+
+    // Country selection state
+    const [showCountryDropdown, setShowCountryDropdown] = useState(false);
+    const [countrySearch, setCountrySearch] = useState("");
+    const { data: countriesRes, isLoading: isCountriesLoading } = useGetCountriesQuery(
+        countrySearch.trim() ? { search: countrySearch } : undefined
+    );
 
     // Step state
     const [step, setStep] = useState(0);
@@ -120,12 +127,24 @@ export function Register() {
             name: "",
             email: "",
             mobile: "",
+            countryCode: "+1",
+            country: "6a265f8178dc3c43b364e4dd",
             password: "",
             resume: undefined,
         },
     });
 
     const selectedRole = watch("role");
+    const selectedCountryCode = watch("countryCode");
+    const selectedCountryId = watch("country");
+
+    const countriesList = Array.isArray(countriesRes)
+        ? countriesRes
+        : (countriesRes?.data && Array.isArray(countriesRes.data))
+            ? countriesRes.data
+            : [];
+
+    const selectedCountry = countriesList.find((c: any) => c._id === selectedCountryId);
 
     const nextStep = async (fieldsToValidate?: (keyof RegisterFormValues)[]) => {
         if (fieldsToValidate) {
@@ -160,6 +179,8 @@ export function Register() {
                 if (sanitizedMobile.length === 10) {
                     payload.mobile = sanitizedMobile;
                 }
+                payload.countryCode = data.countryCode;
+                payload.country = data.country;
             }
 
             const res = await signupMutation(payload).unwrap();
@@ -511,17 +532,132 @@ export function Register() {
                                                 </div>
 
                                                 {selectedRole === "STUDENT" && (
-                                                    <div className="space-y-2 group">
+                                                    <div className="space-y-2 group relative">
                                                         <label className="text-xs font-semibold text-black/70 uppercase tracking-widest pl-1 group-focus-within:text-black transition-colors">
                                                             Mobile Number
                                                         </label>
-                                                        <Input
-                                                            id="mobile"
-                                                            type="tel"
-                                                            placeholder="9876543210"
-                                                            className={`w-full bg-white hover:bg-black/[0.02] border border-black/10 focus-visible:ring-1 focus-visible:ring-black focus-visible:border-black rounded-xl p-3 shadow-inner transition-all duration-300 font-medium ${errors.mobile ? "border-red-500 focus-visible:border-red-500" : ""} `}
-                                                            {...formRegister("mobile")}
-                                                        />
+
+                                                        {/* Hidden inputs to bind to React Hook Form */}
+                                                        <input type="hidden" {...formRegister("countryCode")} />
+                                                        <input type="hidden" {...formRegister("country")} />
+
+                                                        <div className="flex gap-2 relative">
+                                                            {/* Country Dropdown Trigger */}
+                                                            <div className="relative w-[110px] flex-shrink-0">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setShowCountryDropdown(!showCountryDropdown)}
+                                                                    className={`w-full bg-white hover:bg-black/[0.02] border border-black/10 focus:ring-1 focus:ring-black focus:border-black rounded-xl px-3 h-[46px] shadow-inner transition-all duration-300 font-medium text-left flex justify-between items-center text-sm ${
+                                                                        errors.countryCode || errors.country ? "border-red-500" : ""
+                                                                    }`}
+                                                                >
+                                                                    <div className="flex items-center gap-1.5 min-w-0">
+                                                                        {selectedCountry?.code && (
+                                                                            <img
+                                                                                src={`https://flagcdn.com/w40/${selectedCountry.code.toLowerCase()}.png`}
+                                                                                alt={selectedCountry.name}
+                                                                                className="w-4 h-3 object-cover rounded flex-shrink-0 shadow-sm"
+                                                                            />
+                                                                        )}
+                                                                        <span className="truncate">
+                                                                            {selectedCountryCode || "Code"}
+                                                                        </span>
+                                                                    </div>
+                                                                    <span className="text-[9px] text-black/40 flex-shrink-0 pl-1">▼</span>
+                                                                </button>
+
+                                                                {showCountryDropdown && (
+                                                                    <>
+                                                                        {/* Click-outside backdrop overlay */}
+                                                                        <div 
+                                                                            className="fixed inset-0 z-30" 
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setShowCountryDropdown(false);
+                                                                                setCountrySearch("");
+                                                                            }} 
+                                                                        />
+                                                                        {/* Dropdown Menu */}
+                                                                        <div className="absolute left-0 mt-1.5 w-[260px] bg-white border border-black/10 rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.12)] z-40 max-h-60 overflow-y-auto flex flex-col p-2">
+                                                                            {/* Search bar inside dropdown */}
+                                                                            <div className="px-1 py-1 sticky top-0 bg-white z-10">
+                                                                                <input
+                                                                                    type="text"
+                                                                                    placeholder="Search country..."
+                                                                                    value={countrySearch}
+                                                                                    onChange={(e) => setCountrySearch(e.target.value)}
+                                                                                    onClick={(e) => e.stopPropagation()}
+                                                                                    className="w-full border border-black/10 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-black transition-colors"
+                                                                                />
+                                                                            </div>
+                                                                            <div className="mt-1">
+                                                                                {isCountriesLoading && (
+                                                                                    <div className="text-xs text-black/40 p-3 text-center">Loading countries...</div>
+                                                                                )}
+                                                                                {!isCountriesLoading && countriesList.length === 0 && (
+                                                                                    <div className="text-xs text-black/40 p-3 text-center">No countries found</div>
+                                                                                )}
+                                                                                {countriesList.map((c: any) => (
+                                                                                    <button
+                                                                                        key={c._id}
+                                                                                        type="button"
+                                                                                        onClick={() => {
+                                                                                            setValue("countryCode", c.phoneCode, { shouldValidate: true });
+                                                                                            setValue("country", c._id, { shouldValidate: true });
+                                                                                            setShowCountryDropdown(false);
+                                                                                            setCountrySearch("");
+                                                                                        }}
+                                                                                        className={`w-full text-left text-xs px-2.5 py-2 hover:bg-black/5 rounded-lg transition-colors flex items-center justify-between gap-2 ${
+                                                                                            selectedCountryId === c._id ? "bg-black/[0.03]" : ""
+                                                                                        }`}
+                                                                                    >
+                                                                                        <div className="flex items-center gap-2 min-w-0">
+                                                                                            {c.code && (
+                                                                                                <img
+                                                                                                    src={`https://flagcdn.com/w40/${c.code.toLowerCase()}.png`}
+                                                                                                    alt={c.name}
+                                                                                                    className="w-4 h-3 object-cover rounded shadow-xs flex-shrink-0"
+                                                                                                />
+                                                                                            )}
+                                                                                            <span className="font-semibold truncate">{c.name}</span>
+                                                                                        </div>
+                                                                                        <span className="text-black/50 text-[11px] font-medium flex-shrink-0">{c.phoneCode}</span>
+                                                                                    </button>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    </>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Mobile input */}
+                                                            <div className="flex-1">
+                                                                <Input
+                                                                    id="mobile"
+                                                                    type="tel"
+                                                                    inputMode="numeric"
+                                                                    maxLength={10}
+                                                                    placeholder="9876543210"
+                                                                    className={`w-full bg-white hover:bg-black/[0.02] border border-black/10 focus-visible:ring-1 focus-visible:ring-black focus-visible:border-black rounded-xl p-3 h-[46px] shadow-inner transition-all duration-300 font-medium ${errors.mobile ? "border-red-500 focus-visible:border-red-500" : ""} `}
+                                                                    onInput={(e) => {
+                                                                        const el = e.currentTarget as HTMLInputElement;
+                                                                        el.value = el.value.replace(/\D/g, '').slice(0, 10);
+                                                                    }}
+                                                                    {...formRegister("mobile")}
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Error Display */}
+                                                        {errors.countryCode && (
+                                                            <p className="text-xs text-red-500 pl-1">{errors.countryCode.message}</p>
+                                                        )}
+                                                        {errors.country && !errors.countryCode && (
+                                                            <p className="text-xs text-red-500 pl-1">{errors.country.message}</p>
+                                                        )}
+                                                        {errors.mobile && (
+                                                            <p className="text-xs text-red-500 pl-1">{errors.mobile.message}</p>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
@@ -713,7 +849,7 @@ export function Register() {
                                                             "name",
                                                             "email",
                                                             ...(selectedRole === "STUDENT"
-                                                                ? ["mobile" as const]
+                                                                ? ["mobile" as const, "countryCode" as const, "country" as const]
                                                                 : []),
                                                         ]);
                                                     else nextStep();

@@ -142,6 +142,12 @@ export function Login() {
                                             {...formRegister('password')}
                                         />
                                         {errors.password && <p className="text-red-500 text-xs pl-1 mt-1">{errors.password.message}</p>}
+                                        <p className="text-[11px] text-black/35 pl-1 mt-1 leading-relaxed">
+                                            Booked a consultation without signing up?{' '}
+                                            <Link to="/auth/forgot-password" className="underline underline-offset-2 hover:text-black/60 transition-colors">
+                                                Set your password here.
+                                            </Link>
+                                        </p>
                                     </div>
                                 </div>
 

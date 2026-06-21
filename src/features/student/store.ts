@@ -17,7 +17,7 @@ interface StudentStore {
   dismissReminder: (id: string) => void;
 
   fetchDashboardData: (userId: string) => Promise<void>;
-  updateProfile: (userId: string, data: Partial<StudentProfile>) => Promise<void>;
+  updateProfile: (userId: string, data: Partial<StudentProfile> & Record<string, any>) => Promise<void>;
   fetchVacancies: () => Promise<void>;
   applyForJob: (userId: string, vacancyId: string) => Promise<void>;
   bookConsultation: (studentId: string, payload: any) => Promise<void>;
@@ -77,7 +77,7 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
     }
   },
 
-  updateProfile: async (userId: string, data: Partial<StudentProfile>) => {
+  updateProfile: async (userId: string, data: Partial<StudentProfile> & Record<string, any>) => {
     set({ isLoading: true });
     try {
       await mockApi.updateStudentProfile(userId, data);

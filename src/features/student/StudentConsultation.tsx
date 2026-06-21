@@ -9,6 +9,8 @@ import { useNotificationStore } from '@/lib/store/notifications';
 
 
 
+import { API_BASE_URL } from '@/lib/config';
+
 export function StudentConsultation() {
     const { user } = useAuthStore();
     const { consultation, bookConsultation, cancelConsultation } = useStudentStore();
@@ -31,7 +33,7 @@ export function StudentConsultation() {
         }).catch(console.error);
 
         // GET /quizzes — fetch all quizzes for ID mapping
-        fetch('https://squrx-backend.onrender.com/api/v1/quizzes')
+        fetch(`${API_BASE_URL}/quizzes`)
             .then(res => res.json())
             .then(res => {
                 if (res.success && res.data) {
@@ -47,7 +49,7 @@ export function StudentConsultation() {
         if (!selectedDate || quizzesList.length === 0) return;
         Promise.all(
             quizzesList.map((q: any) =>
-                fetch(`https://squrx-backend.onrender.com/api/v1/quizzes/${q._id}`)
+                fetch(`${API_BASE_URL}/quizzes/${q._id}`)
                     .then(res => res.json())
                     .then(res => (res.success && res.data ? res.data : q))
                     .catch(() => q) // fall back to list data on error
@@ -59,9 +61,8 @@ export function StudentConsultation() {
         if (!selectedDate || !selectedTime) return;
         setIsLoading(true);
 
-        let quizAnswersList = [
-            { quizId: '65f000000000000000000000', choiceId: '65f000000000000000000000' }
-        ];
+        let quizAnswersList: any[] = [];
+        const activeQuizzes = quizzesList.filter((q: any) => q.isActive !== false);
 
         try {
             const answersStr = localStorage.getItem('squrx_quiz_answers');
@@ -72,17 +73,9 @@ export function StudentConsultation() {
                     const isValidHex = /^[0-9a-fA-F]{24}$/.test(choiceId);
                     if (!isValidHex) return null;
 
-                    // Fallback for the mock 5th question
-                    if (choiceId.startsWith('65f0000000000000000005')) {
-                        return {
-                            quizId: '65f000000000000000000500',
-                            choiceId: choiceId
-                        };
-                    }
-
                     // Use freshly-fetched individual quiz details (GET /quizzes/{id}) for accurate mapping.
-                    // Fall back to the list data if detail fetch hasn't completed yet.
-                    const quizzesSource = quizzesDetail.length > 0 ? quizzesDetail : quizzesList;
+                    // Fall back to the active list data if detail fetch hasn't completed yet.
+                    const quizzesSource = quizzesDetail.length > 0 ? quizzesDetail : activeQuizzes;
                     const matchingQuiz = quizzesSource.find((q: any) => 
                         q.options?.some((o: any) => o._id === choiceId)
                     );
@@ -99,6 +92,21 @@ export function StudentConsultation() {
             }
         } catch (e) {
             console.error("Failed to parse local storage quiz answers:", e);
+        }
+
+        // Default to the first option of each active quiz if no answers are saved in localStorage
+        if (quizAnswersList.length === 0 && activeQuizzes.length > 0) {
+            quizAnswersList = activeQuizzes.map((q: any) => ({
+                quizId: q._id,
+                choiceId: q.options?.[0]?._id || '65f000000000000000000000'
+            }));
+        }
+
+        // Ultimate fallback if no quizzes are fetched from the API
+        if (quizAnswersList.length === 0) {
+            quizAnswersList = [
+                { quizId: '65f000000000000000000000', choiceId: '65f000000000000000000000' }
+            ];
         }
 
         if (user) {
