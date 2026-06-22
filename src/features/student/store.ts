@@ -11,6 +11,7 @@ interface StudentStore {
   activities: SystemActivity[];
   isLoading: boolean;
   error: string | null;
+  saveError: string | null;
   
   // Local state only for dismissals so we don't spam the API with UI state
   dismissedReminderId: string | null;
@@ -23,6 +24,7 @@ interface StudentStore {
   bookConsultation: (studentId: string, payload: any) => Promise<void>;
   cancelConsultation: (studentId: string) => Promise<void>;
   deleteAccount: (userId: string) => Promise<void>;
+  clearSaveError: () => void;
   
   // Helpers
   getCompletionPercentage: () => number;
@@ -37,9 +39,11 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
   activities: [],
   isLoading: true,
   error: null,
+  saveError: null,
   dismissedReminderId: null,
 
   dismissReminder: (id) => set({ dismissedReminderId: id }),
+  clearSaveError: () => set({ saveError: null }),
 
   fetchDashboardData: async (userId: string) => {
     set({ isLoading: true, error: null });
@@ -78,13 +82,18 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
   },
 
   updateProfile: async (userId: string, data: Partial<StudentProfile> & Record<string, any>) => {
-    set({ isLoading: true });
+    // Optimistic update: merge data immediately so UI reflects changes without delay
+    const currentProfile = get().profile;
+    if (currentProfile) {
+      set({ profile: { ...currentProfile, ...data }, saveError: null });
+    }
     try {
       await mockApi.updateStudentProfile(userId, data);
       const profile = await mockApi.getStudentProfile(userId);
-      set({ profile, isLoading: false });
+      set({ profile, isLoading: false, saveError: null });
     } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+      // Rollback optimistic update on error
+      set({ profile: currentProfile || null, error: err.message, saveError: err.message, isLoading: false });
     }
   },
 
@@ -165,12 +174,15 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
     const p = get().profile;
     if (!p) return 0;
     
-    let score = 20; // Base score for registration
-    if (p.location && p.location.trim().length > 0) score += 16;
-    if (p.careerGoal && p.careerGoal.trim().length > 0) score += 16;
-    if (p.skills && p.skills.length > 0) score += 16;
-    if (p.cvUrl) score += 16;
-    if (p.documentUrl) score += 16;
+    let score = 10; // Base score for registration
+    if (p.education && p.education.trim().length > 0) score += 10;
+    if (p.experienceLevel && p.experienceLevel.trim().length > 0) score += 10;
+    if (p.expectedSalary && p.expectedSalary.trim().length > 0) score += 10;
+    if (p.location && p.location.trim().length > 0) score += 10;
+    if (p.jobType && p.jobType.trim().length > 0) score += 10;
+    if (p.careerGoal && p.careerGoal.trim().length > 0) score += 10;
+    if (p.skills && p.skills.length > 0) score += 10;
+    if (p.cvUrl) score += 20;
     
     return score;
   },

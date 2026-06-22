@@ -74,20 +74,76 @@ export const mockApi = {
             if (res.ok) {
                 const { data } = await res.json();
                 if (data) {
+                    // Sync CV/document URLs
                     profile.cvUrl = data.resume || profile.cvUrl;
                     profile.documentUrl = data.schoolLeavingCertificate || profile.documentUrl;
-                    // Sync the real domain/career goal and cache the domain ID for future updates
+
+                    // Sync domain/career goal
                     if (data.domain?.name) {
                         profile.careerGoal = data.domain.name;
-                        // Cache domain ID so PUT /user/me can send { domain: id } instead of customDomain
                         if (data.domain._id) {
                             localStorage.setItem('squrx_selected_domain_id', data.domain._id);
                         }
                     } else if (data.customDomain) {
                         profile.careerGoal = data.customDomain;
-                        // No real domain ID — clear any stale cache
                         localStorage.removeItem('squrx_selected_domain_id');
                     }
+
+                    // Sync education
+                    if (data.education?.name) {
+                        profile.education = data.education.name;
+                        profile.educationId = data.education._id || '';
+                    } else if (typeof data.education === 'string' && data.education) {
+                        profile.education = data.education;
+                    }
+
+                    // Sync experience level
+                    if (data.experienceLevel?.name) {
+                        profile.experienceLevel = data.experienceLevel.name;
+                        profile.experienceLevelId = data.experienceLevel._id || '';
+                    } else if (typeof data.experienceLevel === 'string' && data.experienceLevel) {
+                        profile.experienceLevel = data.experienceLevel;
+                    }
+
+                    // Sync skills (array of objects or strings)
+                    if (Array.isArray(data.skills) && data.skills.length > 0) {
+                        profile.skills = data.skills.map((s: any) =>
+                            typeof s === 'string' ? s : (s.name || '')
+                        ).filter(Boolean);
+                    }
+
+                    // Sync preferred locations
+                    if (Array.isArray(data.preferredLocations) && data.preferredLocations.length > 0) {
+                        const locNames = data.preferredLocations.map((l: any) =>
+                            typeof l === 'string' ? l : (l.name || '')
+                        ).filter(Boolean);
+                        if (locNames.length > 0) {
+                            profile.locations = locNames;
+                            profile.location = locNames.join(', ');
+                        }
+                    }
+
+                    // Sync preferred job types
+                    if (Array.isArray(data.preferredJobTypes) && data.preferredJobTypes.length > 0) {
+                        const jtNames = data.preferredJobTypes.map((j: any) =>
+                            typeof j === 'string' ? j : (j.name || '')
+                        ).filter(Boolean);
+                        if (jtNames.length > 0) {
+                            profile.jobTypes = jtNames;
+                            profile.jobType = jtNames.join(', ');
+                        }
+                    }
+
+                    // Sync salary fields
+                    if (data.expectedSalary) profile.expectedSalary = String(data.expectedSalary);
+                    if (data.currentSalary) profile.currentSalary = String(data.currentSalary);
+
+                    // Sync fullName
+                    if (data.fullName) profile.fullName = data.fullName;
+
+                    // Persist synced data back to local MockDB cache
+                    MockDB.updateStudentProfile(userId, profile);
+
                     // Sync backend user attributes with frontend useAuthStore
                     useAuthStore.getState().setAuth(data, token);
                 }

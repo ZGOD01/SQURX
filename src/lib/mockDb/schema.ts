@@ -12,6 +12,7 @@ export interface User {
 
 export interface StudentProfile {
   userId: string;
+  fullName?: string;
   location: string;
   jobType: string;
   careerGoal: string;
@@ -21,6 +22,13 @@ export interface StudentProfile {
   cvUrl: string | null;
   documentUrl?: string | null;
   alertCount: number;
+  // Extended onboarding fields
+  education?: string;
+  educationId?: string;
+  experienceLevel?: string;
+  experienceLevelId?: string;
+  expectedSalary?: string;
+  currentSalary?: string;
 }
 
 export interface CompanyProfile {

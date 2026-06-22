@@ -59,6 +59,7 @@ export function Onboarding() {
     const [cvName, setCvName] = useState(localStorage.getItem('squrx_cv_name') || '');
     const [selectedCvFile, setSelectedCvFile] = useState<File | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
+    const [hasCheckedInitialState, setHasCheckedInitialState] = useState(false);
 
     const currentSkillsParts = skills.split(',');
     const lastSkillPart = currentSkillsParts[currentSkillsParts.length - 1].trim();
@@ -141,7 +142,7 @@ export function Onboarding() {
 
     // Handle skip-checks and automatic stepping based on completed state
     useEffect(() => {
-        if (!profile) return;
+        if (!profile || hasCheckedInitialState) return;
 
         const hasProfile = !!(profile.careerGoal && profile.location && profile.jobType);
         const hasCv = !!profile.cvUrl;
@@ -153,7 +154,8 @@ export function Onboarding() {
         } else {
             setOnboardingStep(0);
         }
-    }, [profile, user, navigate]);
+        setHasCheckedInitialState(true);
+    }, [profile, user, navigate, hasCheckedInitialState]);
 
     // Initialize local form state values once user profile data loads
     useEffect(() => {
@@ -288,7 +290,7 @@ export function Onboarding() {
                 fullName,
                 education: eduMatch?._id || education,
                 experienceLevel: expMatch?._id || experienceLevel,
-                currentSalary: experienceLevel === 'Fresher' ? null : currentSalary,
+                currentSalary: experienceLevel === 'Fresher' ? '' : currentSalary,
                 expectedSalary,
                 preferredDomains: domainIds,
                 skills: skillIds,

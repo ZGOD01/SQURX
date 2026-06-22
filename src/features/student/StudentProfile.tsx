@@ -1,135 +1,148 @@
 import { useState, useRef, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { useStudentStore } from './store';
-import { Card, CardHeader, CardTitle, CardContent, Button, Input, Textarea, Toast, Modal, Badge } from '@/components/ui';
+import { Card, CardHeader, CardTitle, CardContent, Button, Input, Toast, Modal, Badge } from '@/components/ui';
 import { PageTransition } from '@/components/motion';
 import { useAuthStore } from '../auth/store';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '@/lib/store/notifications';
-import { studentProfileSchema, type StudentProfileValues } from '@/lib/validators/student';
-import { Loader2, UploadCloud, FileText, Trash2, ShieldCheck } from 'lucide-react';
+import { Loader2, UploadCloud, FileText, Trash2, ShieldCheck, Plus, X, Check } from 'lucide-react';
 import { getGdprConsent, setGdprConsent } from '@/lib/utils';
 import { consultationApi } from '@/lib/consultationApi';
+import {
+    useGetEducationsQuery,
+    useGetSkillsQuery,
+    useGetJobTypesQuery,
+    useGetExperienceLevelsQuery,
+    useGetLocationsQuery,
+    useGetDomainsQuery,
+} from '@/lib/store/authApi';
 
+// ─────────────────────────────────────────────
+// Inline Tag editor component (for skills)
+// ─────────────────────────────────────────────
+function SkillTagEditor({ skills, onChange, disabled }: { skills: string[]; onChange: (tags: string[]) => void; disabled?: boolean }) {
+    const [input, setInput] = useState('');
+
+    const addSkill = (skill: string) => {
+        const trimmed = skill.trim();
+        if (trimmed && !skills.includes(trimmed)) {
+            onChange([...skills, trimmed]);
+        }
+        setInput('');
+    };
+
+    const removeSkill = (skill: string) => {
+        onChange(skills.filter(s => s !== skill));
+    };
+
+    return (
+        <div className="space-y-2">
+            <div className="flex flex-wrap gap-2 min-h-[36px] p-2 border border-border rounded-xl bg-background">
+                {skills.map(skill => (
+                    <span
+                        key={skill}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-black text-white text-xs font-semibold rounded-lg"
+                    >
+                        {skill}
+                        {!disabled && (
+                            <button
+                                type="button"
+                                onClick={() => removeSkill(skill)}
+                                className="hover:text-gray-300 transition-colors ml-0.5"
+                            >
+                                <X className="w-3 h-3" />
+                            </button>
+                        )}
+                    </span>
+                ))}
+                {!disabled && (
+                    <input
+                        value={input}
+                        onChange={e => setInput(e.target.value)}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter' || e.key === ',') {
+                                e.preventDefault();
+                                addSkill(input);
+                            } else if (e.key === 'Backspace' && input === '' && skills.length > 0) {
+                                removeSkill(skills[skills.length - 1]);
+                            }
+                        }}
+                        placeholder={skills.length === 0 ? 'Type skill and press Enter...' : 'Add more...'}
+                        className="flex-1 min-w-[120px] outline-none text-sm bg-transparent text-foreground placeholder:text-muted-foreground"
+                    />
+                )}
+            </div>
+            {!disabled && input.trim() && (
+                <button
+                    type="button"
+                    onClick={() => addSkill(input)}
+                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                    <Plus className="w-3 h-3" /> Add "{input.trim()}"
+                </button>
+            )}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────
+// Main Profile Component
+// ─────────────────────────────────────────────
 export function StudentProfile() {
     const { user, logout } = useAuthStore();
-    const { profile, updateProfile, getCompletionPercentage, fetchDashboardData, deleteAccount } = useStudentStore();
+    const { profile, updateProfile, getCompletionPercentage, fetchDashboardData, deleteAccount, saveError, clearSaveError } = useStudentStore();
     const { sendEmail } = useNotificationStore();
     const navigate = useNavigate();
-    
+
+    // ── Form state ──────────────────────────────
+    const [location, setLocation] = useState('');
+    const [jobType, setJobType] = useState('');
+    const [jobTypeQuery, setJobTypeQuery] = useState('');
+    const [careerGoal, setCareerGoal] = useState('');
+    const [education, setEducation] = useState('');
+    const [educationQuery, setEducationQuery] = useState('');
+    const [educationId, setEducationId] = useState('');
+    const [experienceLevel, setExperienceLevel] = useState('');
+    const [experienceLevelQuery, setExperienceLevelQuery] = useState('');
+    const [experienceLevelId, setExperienceLevelId] = useState('');
+    const [expectedSalary, setExpectedSalary] = useState('');
+    const [currentSalary, setCurrentSalary] = useState('');
+    const [skills, setSkills] = useState<string[]>([]);
+    const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+    // ── Autocomplete dropdowns ───────────────────
+    const [showEduSuggestions, setShowEduSuggestions] = useState(false);
+    const [showExpSuggestions, setShowExpSuggestions] = useState(false);
+    const [showJobTypeSuggestions, setShowJobTypeSuggestions] = useState(false);
+    const [showDomainSuggestions, setShowDomainSuggestions] = useState(false);
+    const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
+    const [locationQuery, setLocationQuery] = useState('');
+
+    // ── Status states ────────────────────────────
     const [isSaving, setIsSaving] = useState(false);
+    const [saveSuccess, setSaveSuccess] = useState(false);
     const [isUploadingCV, setIsUploadingCV] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
+    const [toastVariant, setToastVariant] = useState<'success' | 'error'>('success');
     const [isConsentEnabled, setIsConsentEnabled] = useState(false);
+    const [profileInitialized, setProfileInitialized] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
 
-    useEffect(() => {
-        if (user) {
-            setIsConsentEnabled(getGdprConsent(user.id));
-        }
-    }, [user]);
-
-    const handleConsentToggle = async (checked: boolean) => {
-        if (!user) return;
-        setIsConsentEnabled(checked);
-        setGdprConsent(user.id, checked);
-        
-        // Log withdraw/re-consent
-        const log = {
-            userId: user.id,
-            email: user.email,
-            timestamp: new Date().toISOString(),
-            status: checked ? "GRANTED" : "WITHDRAWN"
-        };
-        localStorage.setItem(`squrx_gdpr_withdraw_log_${user.id}`, JSON.stringify(log));
-
-        if (checked) {
-            setToastMessage("Data processing consent restored successfully.");
-        } else {
-            setToastMessage("Consent withdrawn. Some personalization and job matching may be limited.");
-        }
-    };
-
+    // ── Refs ─────────────────────────────────────
     const cvInputRef = useRef<HTMLInputElement>(null);
     const fetchedRef = useRef(false);
 
-    const { register, handleSubmit, reset, formState: { errors } } = useForm<StudentProfileValues>({
-        resolver: zodResolver(studentProfileSchema),
-        defaultValues: {
-            location: profile?.location || '',
-            jobType: profile?.jobType || '',
-            careerGoal: profile?.careerGoal || '',
-        }
-    });
+    // ── API queries for autocomplete ─────────────
+    const { data: educationsData } = useGetEducationsQuery({ search: educationQuery });
+    const { data: experienceLevelsData } = useGetExperienceLevelsQuery({ search: experienceLevelQuery });
+    const { data: jobTypesData } = useGetJobTypesQuery({ search: jobTypeQuery });
+    const { data: domainsData } = useGetDomainsQuery({ search: careerGoal.split(',').pop()?.trim() || '' });
+    const { data: locationsData } = useGetLocationsQuery({ search: locationQuery });
+    const { data: skillsData } = useGetSkillsQuery({ search: '' });
 
-    const onSubmit = async (data: StudentProfileValues) => {
-        setIsSaving(true);
-        await new Promise(resolve => setTimeout(resolve, 800)); // mock delay
-        if (user) {
-            // Clear cached domain ID: this is a free-text career goal, not a domain selection.
-            // mockApi will use { customDomain: value } instead of { domain: id }.
-            localStorage.removeItem('squrx_selected_domain_id');
-            await updateProfile(user.id, data);
-            sendEmail('Profile Updated Successfully', `Your profile data has been updated on Squrx. Keeping your profile fresh increases your visibility!`);
-        }
-        setIsSaving(false);
-        setToastMessage('Profile details saved successfully.');
-    };
-
-    const handleConfirmDelete = async () => {
-        if (!user) return;
-        
-        setIsDeleting(true);
-        try {
-            await deleteAccount(user.id);
-            navigate('/', { replace: true });
-            setTimeout(() => {
-                logout();       // Clear Auth state
-            }, 0);
-        } catch (err) {
-            console.error(err);
-            setIsDeleting(false);
-            setIsDeleteModalOpen(false);
-            setToastMessage("Failed to delete account. Please try again.");
-        }
-    };
-
-    const handleCVUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        if (file.size > 5 * 1024 * 1024) { alert("File is too large. Max size is 5MB."); return; }
-        const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-        if (!validTypes.includes(file.type)) { alert("Invalid format. PDF/DOC/DOCX only."); return; }
-
-        if (!user) return;
-        setIsUploadingCV(true);
-        try {
-            // Upload to real backend: POST /api/v1/user/me/resume with multipart field 'resume'
-            // User identity is derived from the JWT token — no userId in URL needed.
-            const cvUrl = await consultationApi.uploadCv(file);
-            // Persist the returned S3 URL (or fallback to filename) locally
-            await updateProfile(user.id, { cvUrl: cvUrl || file.name });
-            sendEmail('CV Upload Received', `Your new Curriculum Vitae (${file.name}) was successfully processed and mapped to your applicant profile.`);
-            setToastMessage('CV uploaded successfully.');
-        } catch (err: any) {
-            console.error('CV upload error:', err);
-            setToastMessage(err.message || 'CV upload failed. Please try again.');
-        } finally {
-            setIsUploadingCV(false);
-            if (cvInputRef.current) cvInputRef.current.value = '';
-        }
-    };
-    const removeCV = async () => {
-        if (user) {
-            await updateProfile(user.id, { cvUrl: null });
-            setToastMessage('CV removed.');
-            sendEmail('CV Removed', 'Your active Curriculum Vitae has been successfully removed from our internal databases.');
-        }
-    };
-
+    // ── Fetch profile on mount ────────────────────
     useEffect(() => {
         if (user && !profile && !fetchedRef.current) {
             fetchedRef.current = true;
@@ -137,32 +150,197 @@ export function StudentProfile() {
         }
     }, [user, profile, fetchDashboardData]);
 
+    // ── Populate form from profile store ─────────
     useEffect(() => {
-        if (profile) {
-            reset({
-                location: profile.location || '',
-                jobType: profile.jobType || '',
-                careerGoal: profile.careerGoal || '',
-            });
+        if (profile && !profileInitialized) {
+            setLocation(profile.location || '');
+            setLocationQuery(profile.location || '');
+            setJobType(profile.jobType || '');
+            setJobTypeQuery(profile.jobType || '');
+            setCareerGoal(profile.careerGoal || '');
+            setEducation(profile.education || '');
+            setEducationQuery(profile.education || '');
+            setEducationId(profile.educationId || '');
+            setExperienceLevel(profile.experienceLevel || '');
+            setExperienceLevelQuery(profile.experienceLevel || '');
+            setExperienceLevelId(profile.experienceLevelId || '');
+            setExpectedSalary(profile.expectedSalary || '');
+            setCurrentSalary(profile.currentSalary || '');
+            setSkills(profile.skills || []);
+            setProfileInitialized(true);
         }
-    }, [profile, reset]);
+    }, [profile, profileInitialized]);
 
-    if (!profile) return (
-        <div className="flex flex-col items-center justify-center p-24 text-muted-foreground">
-            <Loader2 className="w-10 h-10 animate-spin text-primary mb-4" />
-            <p>Loading your profile...</p>
-        </div>
-    );
+    // Re-sync if profile reloads (e.g. after save)
+    useEffect(() => {
+        if (profile && profileInitialized) {
+            setLocation(profile.location || '');
+            setLocationQuery(profile.location || '');
+            setJobType(profile.jobType || '');
+            setJobTypeQuery(profile.jobType || '');
+            setCareerGoal(profile.careerGoal || '');
+            setEducation(profile.education || '');
+            setEducationQuery(profile.education || '');
+            setEducationId(profile.educationId || '');
+            setExperienceLevel(profile.experienceLevel || '');
+            setExperienceLevelQuery(profile.experienceLevel || '');
+            setExperienceLevelId(profile.experienceLevelId || '');
+            setExpectedSalary(profile.expectedSalary || '');
+            setCurrentSalary(profile.currentSalary || '');
+            setSkills(profile.skills || []);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [profile]);
+
+    // ── GDPR consent ─────────────────────────────
+    useEffect(() => {
+        if (user) setIsConsentEnabled(getGdprConsent(user.id));
+    }, [user]);
+
+    const handleConsentToggle = async (checked: boolean) => {
+        if (!user) return;
+        setIsConsentEnabled(checked);
+        setGdprConsent(user.id, checked);
+        const log = { userId: user.id, email: user.email, timestamp: new Date().toISOString(), status: checked ? 'GRANTED' : 'WITHDRAWN' };
+        localStorage.setItem(`squrx_gdpr_withdraw_log_${user.id}`, JSON.stringify(log));
+        showToast(checked ? 'Data processing consent restored.' : 'Consent withdrawn. Some matching may be limited.', checked ? 'success' : 'error');
+    };
+
+    // ── Toast helper ─────────────────────────────
+    const showToast = (msg: string, variant: 'success' | 'error' = 'success') => {
+        setToastMessage(msg);
+        setToastVariant(variant);
+    };
+
+    // ── Validate form ─────────────────────────────
+    const validate = (): boolean => {
+        const errs: Record<string, string> = {};
+        if (!location.trim() || location.trim().length < 2) errs.location = 'Location is required (min 2 chars)';
+        if (!jobType.trim() || jobType.trim().length < 2) errs.jobType = 'Job type is required';
+        if (!careerGoal.trim() || careerGoal.trim().length < 3) errs.careerGoal = 'Career goal / domain is required';
+        setFormErrors(errs);
+        return Object.keys(errs).length === 0;
+    };
+
+    // ── Save profile ──────────────────────────────
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user || !validate()) return;
+
+        setIsSaving(true);
+        setSaveSuccess(false);
+        clearSaveError();
+
+        try {
+            // Build skill IDs if available from API
+            const skillIds = skills.map(s =>
+                skillsData?.data?.find((sd: any) => sd.name.toLowerCase() === s.toLowerCase())?._id
+            ).filter(Boolean);
+
+            await updateProfile(user.id, {
+                location,
+                jobType,
+                careerGoal,
+                education: educationId || education,
+                educationId,
+                experienceLevel: experienceLevelId || experienceLevel,
+                experienceLevelId,
+                expectedSalary,
+                currentSalary: experienceLevel === 'Fresher' ? '' : currentSalary,
+                skills: skillIds.length > 0 ? skillIds : skills,
+                locations: location.split(',').map(l => l.trim()).filter(Boolean),
+                jobTypes: jobType.split(',').map(j => j.trim()).filter(Boolean),
+                // Cache for backend sync
+                preferredDomains: (() => {
+                    try { return JSON.parse(localStorage.getItem('squrx_selected_domain_ids') || '[]'); } catch { return []; }
+                })(),
+                preferredLocations: (() => {
+                    try { return JSON.parse(localStorage.getItem('squrx_selected_location_ids') || '[]'); } catch { return []; }
+                })(),
+                preferredJobTypes: (() => {
+                    try { return JSON.parse(localStorage.getItem('squrx_selected_job_type_ids') || '[]'); } catch { return []; }
+                })(),
+            });
+
+            setSaveSuccess(true);
+            setIsEditing(false);
+            showToast('Profile updated successfully!', 'success');
+            sendEmail('Profile Updated', 'Your profile has been updated on Squrx. Keeping your profile fresh increases your visibility!');
+        } catch (err: any) {
+            showToast(err.message || 'Failed to save profile. Please try again.', 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    // ── CV Upload ─────────────────────────────────
+    const handleCVUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) { showToast('File too large. Max 5MB.', 'error'); return; }
+        const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        if (!validTypes.includes(file.type)) { showToast('Invalid format. PDF/DOC/DOCX only.', 'error'); return; }
+        if (!user) return;
+
+        setIsUploadingCV(true);
+        try {
+            const cvUrl = await consultationApi.uploadCv(file);
+            await updateProfile(user.id, { cvUrl: cvUrl || file.name });
+            sendEmail('CV Upload Received', `Your CV (${file.name}) was successfully uploaded.`);
+            showToast('CV uploaded successfully.', 'success');
+        } catch (err: any) {
+            showToast(err.message || 'CV upload failed. Please try again.', 'error');
+        } finally {
+            setIsUploadingCV(false);
+            if (cvInputRef.current) cvInputRef.current.value = '';
+        }
+    };
+
+    const removeCV = async () => {
+        if (!user) return;
+        await updateProfile(user.id, { cvUrl: null });
+        showToast('CV removed.', 'success');
+        sendEmail('CV Removed', 'Your CV has been removed from your profile.');
+    };
+
+    // ── Delete account ────────────────────────────
+    const handleConfirmDelete = async () => {
+        if (!user) return;
+        setIsDeleting(true);
+        try {
+            await deleteAccount(user.id);
+            navigate('/', { replace: true });
+            setTimeout(() => logout(), 0);
+        } catch (err) {
+            console.error(err);
+            setIsDeleting(false);
+            setIsDeleteModalOpen(false);
+            showToast('Failed to delete account. Please try again.', 'error');
+        }
+    };
+
+    // ── Loading state ─────────────────────────────
+    if (!profile) {
+        return (
+            <div className="flex flex-col items-center justify-center p-24 text-muted-foreground">
+                <Loader2 className="w-10 h-10 animate-spin text-primary mb-4" />
+                <p>Loading your profile...</p>
+            </div>
+        );
+    }
 
     const completion = getCompletionPercentage();
+    const isFresher = experienceLevel === 'Fresher' || experienceLevel === '' || !experienceLevel;
 
     return (
-        <PageTransition className="max-w-4xl mx-auto space-y-6 pb-12">
+        <PageTransition className="max-w-5xl mx-auto space-y-6 pb-12">
+            {/* Header */}
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">Your Profile</h1>
-                <p className="text-muted-foreground mt-1">Complete your profile to increase your visibility among recruiters.</p>
+                <p className="text-muted-foreground mt-1">All information filled during signup is shown here. Edit and save to keep your profile up to date.</p>
             </div>
 
+            {/* Profile strength */}
             <div className="bg-muted/30 rounded-2xl p-6 border border-border/50 flex flex-col sm:flex-row items-center gap-6 shadow-sm">
                 <div className="relative w-24 h-24 rounded-full border-4 border-background shadow-md bg-secondary flex text-primary items-center justify-center shrink-0">
                     <div className="text-2xl font-bold">{completion}%</div>
@@ -180,93 +358,283 @@ export function StudentProfile() {
                     <h3 className="text-xl font-bold">Profile Strength</h3>
                     <p className="text-muted-foreground mt-1 max-w-lg">
                         {completion === 100
-                            ? "Your profile is fully complete! You are now 4x more likely to be noticed by top-tier firms."
-                            : `A complete profile is 4x more likely to be noticed. ${!profile.cvUrl ? 'Make sure you upload your CV.' : 'Finish adding your details below to reach 100% visibility.'}`
+                            ? 'Your profile is fully complete! You are 4x more likely to be noticed.'
+                            : `A complete profile is 4x more likely to be noticed. ${!profile.cvUrl ? 'Upload your CV.' : 'Fill remaining details to reach 100%.'}`
                         }
                     </p>
+                    {saveSuccess && (
+                        <span className="inline-flex items-center gap-1.5 mt-2 text-xs text-emerald-600 font-semibold">
+                            <Check className="w-3.5 h-3.5" /> Profile saved successfully
+                        </span>
+                    )}
                 </div>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6 items-start">
-                <Card className="border-border/60 shadow-sm bg-card">
-                    <CardHeader>
-                        <CardTitle>Basic Information</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-                            <div className="space-y-1.5 opacity-80">
-                                <label className="text-sm font-semibold flex items-center gap-1.5 text-muted-foreground">
-                                    Full Name <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-normal text-muted-foreground">Synced</span>
-                                </label>
-                                <Input
-                                    value={user?.name || user?.fullName || ''}
-                                    disabled
-                                    className="bg-muted/50 cursor-not-allowed border-border/40 text-muted-foreground font-medium"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5 opacity-80">
-                                <label className="text-sm font-semibold flex items-center gap-1.5 text-muted-foreground">
-                                    Email Address <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-normal text-muted-foreground">Synced</span>
-                                </label>
-                                <Input
-                                    value={user?.email || ''}
-                                    disabled
-                                    className="bg-muted/50 cursor-not-allowed border-border/40 text-muted-foreground font-medium"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5 opacity-80">
-                                <label className="text-sm font-semibold flex items-center gap-1.5 text-muted-foreground">
-                                    Mobile Number <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-normal text-muted-foreground">Synced</span>
-                                </label>
-                                <Input
-                                    value={user?.mobile || ''}
-                                    disabled
-                                    className="bg-muted/50 cursor-not-allowed border-border/40 text-muted-foreground font-medium"
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-semibold">Location <span className="text-destructive">*</span></label>
-                                <Input
-                                    placeholder="e.g. New York, Remote"
-                                    className={errors.location ? 'border-destructive focus-visible:ring-destructive' : ''}
-                                    {...register('location')}
-                                />
-                                {errors.location && <p className="text-destructive text-xs">{errors.location.message}</p>}
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-semibold">Desired Job Type <span className="text-destructive">*</span></label>
-                                <Input
-                                    placeholder="e.g. Full-Time, Internship, Remote"
-                                    className={errors.jobType ? 'border-destructive focus-visible:ring-destructive' : ''}
-                                    {...register('jobType')}
-                                />
-                                {errors.jobType && <p className="text-destructive text-xs">{errors.jobType.message}</p>}
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-semibold">Career Goal <span className="text-destructive">*</span></label>
-                                <Textarea
-                                    placeholder="Describe your 5-year strategic career goal..."
-                                    className={`resize-none h-32 ${errors.careerGoal ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-                                    {...register('careerGoal')}
-                                />
-                                {errors.careerGoal && <p className="text-destructive text-xs">{errors.careerGoal.message}</p>}
-                            </div>
-
-                            <Button type="submit" disabled={isSaving} className="w-full">
-                                {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</> : 'Save Information'}
-                            </Button>
-                        </form>
-                    </CardContent>
-                </Card>
-
-                <div className="space-y-6 sticky top-6">
+            <div className="grid md:grid-cols-[1fr_380px] gap-6 items-start">
+                {/* ── Left column: Full profile form ── */}
+                <div className="space-y-6">
+                    {/* Account info (read-only) */}
                     <Card className="border-border/60 shadow-sm bg-card">
                         <CardHeader>
-                            <CardTitle>Curriculum Vitae (CV)</CardTitle>
+                            <CardTitle className="text-base">Account Information</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid sm:grid-cols-2 gap-4">
+                                <div className="space-y-1.5 opacity-80">
+                                    <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                                        Full Name <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-normal">Synced</span>
+                                    </label>
+                                    <Input value={profile.fullName || user?.name || user?.fullName || ''} disabled className="bg-muted/50 cursor-not-allowed border-border/40 text-muted-foreground font-medium h-11" />
+                                </div>
+                                <div className="space-y-1.5 opacity-80">
+                                    <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                                        Email <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-normal">Synced</span>
+                                    </label>
+                                    <Input value={user?.email || ''} disabled className="bg-muted/50 cursor-not-allowed border-border/40 text-muted-foreground font-medium h-11" />
+                                </div>
+                                <div className="space-y-1.5 opacity-80">
+                                    <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                                        Mobile <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-normal">Synced</span>
+                                    </label>
+                                    <Input value={user?.mobile || ''} disabled className="bg-muted/50 cursor-not-allowed border-border/40 text-muted-foreground font-medium h-11" />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Editable profile form */}
+                    <Card className="border-border/60 shadow-sm bg-card">
+                        <CardHeader>
+                            <CardTitle className="text-base">Professional Details</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <form onSubmit={handleSubmit} className="space-y-5">
+                                {/* Error banner */}
+                                {saveError && (
+                                    <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm font-medium">
+                                        {saveError}
+                                    </div>
+                                )}
+
+                                <div className="grid sm:grid-cols-2 gap-5">
+                                    {/* Education */}
+                                    <div className="space-y-1.5 relative">
+                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Education / Degree</label>
+                                        <Input
+                                            placeholder="Search & select education..."
+                                            value={educationQuery}
+                                            onChange={e => { setEducationQuery(e.target.value); setShowEduSuggestions(true); }}
+                                            onFocus={() => setShowEduSuggestions(true)}
+                                            onBlur={() => setTimeout(() => setShowEduSuggestions(false), 200)}
+                                            disabled={!isEditing}
+                                            className="h-11"
+                                        />
+                                        {isEditing && showEduSuggestions && educationsData?.data && educationsData.data.length > 0 && (
+                                            <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-1.5 flex flex-col gap-0.5">
+                                                {educationsData.data.filter((e: any) => e.name.toLowerCase().includes(educationQuery.toLowerCase())).map((edu: any) => (
+                                                    <button key={edu._id} type="button"
+                                                        onMouseDown={() => { setEducation(edu.name); setEducationQuery(edu.name); setEducationId(edu._id); setShowEduSuggestions(false); localStorage.setItem('squrx_selected_education_id', edu._id); }}
+                                                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-lg transition-colors"
+                                                    >{edu.name}</button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {education && !showEduSuggestions && (
+                                            <p className="text-xs text-muted-foreground">Selected: <span className="font-semibold text-foreground">{education}</span></p>
+                                        )}
+                                    </div>
+
+                                    {/* Experience Level */}
+                                    <div className="space-y-1.5 relative">
+                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Experience Level</label>
+                                        <Input
+                                            placeholder="Search & select level..."
+                                            value={experienceLevelQuery}
+                                            onChange={e => { setExperienceLevelQuery(e.target.value); setShowExpSuggestions(true); }}
+                                            onFocus={() => setShowExpSuggestions(true)}
+                                            onBlur={() => setTimeout(() => setShowExpSuggestions(false), 200)}
+                                            disabled={!isEditing}
+                                            className="h-11"
+                                        />
+                                        {isEditing && showExpSuggestions && experienceLevelsData?.data && experienceLevelsData.data.length > 0 && (
+                                            <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-1.5 flex flex-col gap-0.5">
+                                                {experienceLevelsData.data.map((el: any) => {
+                                                    const displayName = el.name === 'Fresher' ? 'Fresher' : `${el.name} Years`;
+                                                    return (
+                                                        <button key={el._id} type="button"
+                                                            onMouseDown={() => { setExperienceLevel(el.name); setExperienceLevelQuery(displayName); setExperienceLevelId(el._id); setShowExpSuggestions(false); localStorage.setItem('squrx_selected_experience_level_id', el._id); }}
+                                                            className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-lg transition-colors"
+                                                        >{displayName}</button>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                        {experienceLevel && !showExpSuggestions && (
+                                            <p className="text-xs text-muted-foreground">Selected: <span className="font-semibold text-foreground">{experienceLevel === 'Fresher' ? 'Fresher' : `${experienceLevel} Years`}</span></p>
+                                        )}
+                                    </div>
+
+                                    {/* Expected Salary */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Expected Salary (Annual)</label>
+                                        <Input
+                                            placeholder="e.g. $85,000 or ₹12 LPA"
+                                            value={expectedSalary}
+                                            onChange={e => setExpectedSalary(e.target.value)}
+                                            disabled={!isEditing}
+                                            className="h-11"
+                                        />
+                                    </div>
+
+                                    {/* Current Salary (conditional) */}
+                                    {!isFresher && (
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Current Salary (Annual)</label>
+                                            <Input
+                                                placeholder="e.g. $70,000 or ₹8 LPA"
+                                                value={currentSalary}
+                                                onChange={e => setCurrentSalary(e.target.value)}
+                                                disabled={!isEditing}
+                                                className="h-11"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Location */}
+                                    <div className="space-y-1.5 relative">
+                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Preferred Location <span className="text-destructive">*</span></label>
+                                        <Input
+                                            placeholder="e.g. Remote, Mumbai, London"
+                                            value={locationQuery}
+                                            onChange={e => { setLocationQuery(e.target.value); setLocation(e.target.value); setShowLocationSuggestions(true); }}
+                                            onFocus={() => setShowLocationSuggestions(true)}
+                                            onBlur={() => setTimeout(() => setShowLocationSuggestions(false), 200)}
+                                            disabled={!isEditing}
+                                            className={`h-11 ${formErrors.location ? 'border-destructive' : ''}`}
+                                        />
+                                        {isEditing && showLocationSuggestions && locationsData?.data && locationsData.data.length > 0 && (
+                                            <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-2 flex flex-wrap gap-1.5">
+                                                {locationsData.data
+                                                    .filter((l: any) => l.name.toLowerCase().includes(locationQuery.toLowerCase()))
+                                                    .slice(0, 12)
+                                                    .map((l: any) => (
+                                                        <button key={l._id} type="button"
+                                                            onMouseDown={() => { setLocation(l.name); setLocationQuery(l.name); setShowLocationSuggestions(false); }}
+                                                            className="px-3 py-1.5 text-xs font-semibold bg-muted hover:bg-black hover:text-white rounded-lg transition-colors"
+                                                        >+ {l.name}</button>
+                                                    ))}
+                                            </div>
+                                        )}
+                                        {formErrors.location && <p className="text-destructive text-xs">{formErrors.location}</p>}
+                                    </div>
+
+                                    {/* Job Type */}
+                                    <div className="space-y-1.5 relative">
+                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Preferred Job Type <span className="text-destructive">*</span></label>
+                                        <Input
+                                            placeholder="Search & select job type..."
+                                            value={jobTypeQuery}
+                                            onChange={e => { setJobTypeQuery(e.target.value); setShowJobTypeSuggestions(true); }}
+                                            onFocus={() => setShowJobTypeSuggestions(true)}
+                                            onBlur={() => setTimeout(() => setShowJobTypeSuggestions(false), 200)}
+                                            disabled={!isEditing}
+                                            className={`h-11 ${formErrors.jobType ? 'border-destructive' : ''}`}
+                                        />
+                                        {isEditing && showJobTypeSuggestions && jobTypesData?.data && jobTypesData.data.length > 0 && (
+                                            <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-1.5 flex flex-col gap-0.5">
+                                                {jobTypesData.data.map((jt: any) => (
+                                                    <button key={jt._id} type="button"
+                                                        onMouseDown={() => { setJobType(jt.name); setJobTypeQuery(jt.name); setShowJobTypeSuggestions(false); localStorage.setItem('squrx_selected_job_type_ids', JSON.stringify([jt._id])); }}
+                                                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-lg transition-colors"
+                                                    >{jt.name}</button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {formErrors.jobType && <p className="text-destructive text-xs">{formErrors.jobType}</p>}
+                                    </div>
+                                </div>
+
+                                {/* Career Goal / Domain */}
+                                <div className="space-y-1.5 relative">
+                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Career Goal / Preferred Domain <span className="text-destructive">*</span></label>
+                                    <Input
+                                        placeholder="e.g. Software Engineering, Data Science"
+                                        value={careerGoal}
+                                        onChange={e => { setCareerGoal(e.target.value); setShowDomainSuggestions(true); }}
+                                        onFocus={() => setShowDomainSuggestions(true)}
+                                        onBlur={() => setTimeout(() => setShowDomainSuggestions(false), 200)}
+                                        disabled={!isEditing}
+                                        className={`h-11 ${formErrors.careerGoal ? 'border-destructive' : ''}`}
+                                    />
+                                    {isEditing && showDomainSuggestions && domainsData?.data && domainsData.data.length > 0 && (
+                                        <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-2 flex flex-wrap gap-1.5">
+                                            {domainsData.data
+                                                .filter((d: any) => d.name.toLowerCase().includes((careerGoal.split(',').pop()?.trim() || '').toLowerCase()))
+                                                .slice(0, 12)
+                                                .map((d: any) => (
+                                                    <button key={d._id} type="button"
+                                                        onMouseDown={() => {
+                                                            const parts = careerGoal.split(',');
+                                                            parts[parts.length - 1] = ` ${d.name}`;
+                                                            setCareerGoal(parts.join(',').trim());
+                                                            setShowDomainSuggestions(false);
+                                                            const domainIds = (() => { try { return JSON.parse(localStorage.getItem('squrx_selected_domain_ids') || '[]'); } catch { return []; } })();
+                                                            if (!domainIds.includes(d._id)) domainIds.push(d._id);
+                                                            localStorage.setItem('squrx_selected_domain_ids', JSON.stringify(domainIds));
+                                                        }}
+                                                        className="px-3 py-1.5 text-xs font-semibold bg-muted hover:bg-black hover:text-white rounded-lg transition-colors"
+                                                    >+ {d.name}</button>
+                                                ))}
+                                        </div>
+                                    )}
+                                    {formErrors.careerGoal && <p className="text-destructive text-xs">{formErrors.careerGoal}</p>}
+                                </div>
+
+                                {/* Skills */}
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Core Skills</label>
+                                    <SkillTagEditor skills={skills} onChange={setSkills} disabled={!isEditing} />
+                                    {isEditing && (
+                                        <p className="text-[11px] text-muted-foreground">Type a skill and press <kbd className="px-1 py-0.5 rounded bg-muted border text-[10px] font-mono">Enter</kbd> or <kbd className="px-1 py-0.5 rounded bg-muted border text-[10px] font-mono">,</kbd> to add.</p>
+                                    )}
+                                </div>
+
+                                {/* Submit / Edit Toggle */}
+                                {isEditing ? (
+                                    <Button
+                                        type="submit"
+                                        disabled={isSaving}
+                                        className="w-full h-12 bg-black text-white hover:bg-black/90 font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-[1.01] active:scale-95"
+                                    >
+                                        {isSaving ? (
+                                            <><Loader2 className="w-4 h-4 animate-spin" /> Saving profile...</>
+                                        ) : (
+                                            'Save Profile'
+                                        )}
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        type="button"
+                                        onClick={() => {
+                                            setSaveSuccess(false);
+                                            setIsEditing(true);
+                                        }}
+                                        className="w-full h-12 bg-black text-white hover:bg-black/90 font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-[1.01] active:scale-95"
+                                    >
+                                        Edit Profile
+                                    </Button>
+                                )}
+                            </form>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* ── Right column: CV, Skills badges, Consent ── */}
+                <div className="space-y-6 sticky top-6">
+                    {/* CV Upload */}
+                    <Card className="border-border/60 shadow-sm bg-card">
+                        <CardHeader>
+                            <CardTitle className="text-base">Curriculum Vitae (CV)</CardTitle>
                         </CardHeader>
                         <CardContent>
                             {profile.cvUrl ? (
@@ -276,89 +644,96 @@ export function StudentProfile() {
                                             <FileText size={20} />
                                         </div>
                                         <div className="flex-1 overflow-hidden">
-                                            <h4 className="font-semibold text-sm truncate" title="Uploaded CV">{profile.cvUrl.replace(/^.*[\\/]/, '') || 'Resume_Document.pdf'}</h4>
-                                            <p className="text-xs text-muted-foreground mt-0.5">
-                                                1.2 MB • Uploaded recently
-                                            </p>
+                                            <h4 className="font-semibold text-sm truncate" title="Uploaded CV">
+                                                {profile.cvUrl.replace(/^.*[\\/]/, '') || 'Resume_Document.pdf'}
+                                            </h4>
+                                            <p className="text-xs text-muted-foreground mt-0.5">Uploaded · Active</p>
                                         </div>
-                                        <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2" onClick={removeCV}>
-                                            <Trash2 size={16} />
-                                        </Button>
+                                        {isEditing && (
+                                            <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2" onClick={removeCV}>
+                                                <Trash2 size={16} />
+                                            </Button>
+                                        )}
                                     </div>
-
-                                    <div className="relative">
-                                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border"></div></div>
-                                        <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">Replace Document</span></div>
-                                    </div>
-
-                                    <Button variant="outline" className="w-full cursor-pointer overflow-hidden relative group">
-                                        <span className="flex items-center gap-2 group-hover:text-primary transition-colors">
-                                            <UploadCloud size={18} /> Upload New CV
-                                        </span>
-                                        <input
-                                            type="file"
-                                            onChange={handleCVUpload}
-                                            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                            className="absolute inset-0 opacity-0 cursor-pointer"
-                                        />
-                                    </Button>
+                                    {isEditing && (
+                                        <>
+                                            <div className="relative">
+                                                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
+                                                <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">Replace</span></div>
+                                            </div>
+                                            <Button variant="outline" className="w-full cursor-pointer overflow-hidden relative group">
+                                                <span className="flex items-center gap-2 group-hover:text-primary transition-colors">
+                                                    <UploadCloud size={18} /> Upload New CV
+                                                </span>
+                                                <input type="file" onChange={handleCVUpload}
+                                                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                                    className="absolute inset-0 opacity-0 cursor-pointer"
+                                                />
+                                            </Button>
+                                        </>
+                                    )}
                                 </div>
                             ) : (
-                                <div className="border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center justify-center text-center bg-muted/10 hover:bg-muted/30 hover:border-primary/40 transition-colors relative cursor-pointer group">
+                                <div className="border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center justify-center text-center bg-muted/10 transition-colors relative">
                                     {isUploadingCV ? (
                                         <div className="flex flex-col items-center gap-4 py-8">
                                             <Loader2 className="w-8 h-8 text-primary animate-spin" />
                                             <p className="text-sm font-medium">Processing document...</p>
                                         </div>
-                                    ) : (
-                                        <>
+                                    ) : isEditing ? (
+                                        <div className="w-full h-full flex flex-col items-center justify-center cursor-pointer group">
                                             <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                                 <UploadCloud size={28} />
                                             </div>
                                             <h4 className="font-bold mb-1">Upload your CV</h4>
                                             <p className="text-sm text-muted-foreground max-w-[200px]">PDF, DOC, DOCX up to 5MB</p>
                                             <Button size="sm" className="mt-6 font-medium px-6">Select File</Button>
-                                        </>
+                                            <input
+                                                type="file"
+                                                ref={cvInputRef}
+                                                onChange={handleCVUpload}
+                                                disabled={isUploadingCV}
+                                                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                                className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-wait"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center text-center py-4">
+                                            <div className="w-16 h-16 rounded-full bg-muted text-muted-foreground flex items-center justify-center mb-4">
+                                                <FileText size={28} />
+                                            </div>
+                                            <h4 className="font-bold mb-1 text-muted-foreground">No CV Uploaded</h4>
+                                            <p className="text-xs text-muted-foreground max-w-[200px]">Click 'Edit Profile' to upload a CV.</p>
+                                        </div>
                                     )}
-                                    <input
-                                        type="file"
-                                        ref={cvInputRef}
-                                        onChange={handleCVUpload}
-                                        disabled={isUploadingCV}
-                                        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                        className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-wait"
-                                    />
                                 </div>
                             )}
                         </CardContent>
                     </Card>
 
-                    <Card className="border-border/60 shadow-sm bg-card">
-                        <CardHeader>
-                            <CardTitle className="text-base font-bold flex items-center justify-between">
-                                Core Skills
-                                <Link to="/student/preferences" className="text-xs text-primary hover:underline font-normal">Edit Preferences</Link>
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {profile.skills && profile.skills.length > 0 ? (
+                    {/* Skills Badge Preview */}
+                    {skills.length > 0 && (
+                        <Card className="border-border/60 shadow-sm bg-card">
+                            <CardHeader>
+                                <CardTitle className="text-base">Skills Preview</CardTitle>
+                            </CardHeader>
+                            <CardContent>
                                 <div className="flex flex-wrap gap-2">
-                                    {profile.skills.map((skill, index) => (
-                                        <Badge key={index} variant="secondary" className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-secondary/80 text-secondary-foreground">
+                                    {skills.map((skill, i) => (
+                                        <Badge key={i} variant="secondary" className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-secondary/80">
                                             {skill}
                                         </Badge>
                                     ))}
                                 </div>
-                            ) : (
-                                <p className="text-sm text-muted-foreground italic">No skills added yet. Add core skills in preferences to get job alerts.</p>
-                            )}
-                        </CardContent>
-                    </Card>
+                            </CardContent>
+                        </Card>
+                    )}
 
+                    {/* Privacy & Consent */}
                     <Card className="border-border/60 shadow-sm bg-card">
                         <CardHeader>
                             <CardTitle className="text-base font-bold flex items-center gap-2">
-                                <ShieldCheck className="w-4 h-4 text-black" /> Privacy & Consent (DPDP / GDPR)
+                                <ShieldCheck className="w-4 h-4 text-black" /> Privacy & Consent
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-5">
@@ -370,26 +745,19 @@ export function StudentProfile() {
                                     </p>
                                 </div>
                                 <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={isConsentEnabled} 
-                                        onChange={(e) => handleConsentToggle(e.target.checked)} 
-                                        className="sr-only peer" 
-                                    />
-                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-black"></div>
+                                    <input type="checkbox" checked={isConsentEnabled} onChange={e => handleConsentToggle(e.target.checked)} className="sr-only peer" />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-black" />
                                 </label>
                             </div>
-
                             <div className="space-y-2">
                                 <h4 className="font-semibold text-sm">Your Control Rights</h4>
                                 <p className="text-xs text-muted-foreground leading-relaxed">
-                                    In compliance with the Digital Personal Data Protection Act (DPDP) 2023, you have the right to withdraw consent, see what data we hold, or delete your account. For inquiries, email <a href="mailto:privacy@sqrex.com" className="text-primary hover:underline">privacy@sqrex.com</a>.
+                                    In compliance with DPDP 2023 & GDPR, you have the right to withdraw consent or delete your account. Email <a href="mailto:privacy@sqrex.com" className="text-primary hover:underline">privacy@sqrex.com</a> for inquiries.
                                 </p>
                             </div>
-
                             <div className="pt-2">
-                                <Button 
-                                    variant="outline" 
+                                <Button
+                                    variant="outline"
                                     onClick={() => setIsDeleteModalOpen(true)}
                                     className="w-full border-red-200/60 bg-red-50/30 text-red-600 hover:bg-red-600 hover:text-white transition-colors duration-300 h-10 font-semibold"
                                 >
@@ -401,29 +769,19 @@ export function StudentProfile() {
                 </div>
             </div>
 
-            {/* Subtle but recognizable Account Deletion Button */}
-            <div className="flex justify-start sm:justify-end pt-8 mt-4 border-t border-border/40">
-                <Button 
-                    variant="outline" 
-                    onClick={() => setIsDeleteModalOpen(true)}
-                    className="border-red-200/50 bg-red-50/50 text-red-600 hover:bg-red-100 hover:text-red-700 hover:border-red-300 transition-all shadow-sm h-10 px-6 font-medium"
-                >
-                    <Trash2 className="w-4 h-4 mr-2" /> Delete My Data
-                </Button>
-            </div>
-
+            {/* Delete account modal */}
             <Modal isOpen={isDeleteModalOpen} onClose={() => !isDeleting && setIsDeleteModalOpen(false)} title="Delete Data & Profile?">
                 <div className="space-y-5 mt-2">
                     <p className="text-muted-foreground text-[15px] leading-relaxed">
-                        Are you absolutely sure you want to completely delete your profile data? All of your uploaded certificates, CVs, and applications will be permanently erased from our system in compliance with DPDP 2023 data fiduciary obligations. 
-                        <br/><br/>
+                        Are you absolutely sure you want to delete your profile data? All uploaded certificates, CVs, and applications will be permanently erased in compliance with DPDP 2023.
+                        <br /><br />
                         <strong className="text-foreground font-semibold">This action cannot be undone.</strong>
                     </p>
                     <div className="flex justify-end gap-3 pt-6 border-t border-border/40 mt-6">
                         <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)} disabled={isDeleting}>Cancel</Button>
-                        <Button 
-                            variant="outline" 
-                            onClick={handleConfirmDelete} 
+                        <Button
+                            variant="outline"
+                            onClick={handleConfirmDelete}
                             disabled={isDeleting}
                             className="bg-red-50 text-red-600 border-red-200 hover:bg-red-600 hover:text-white transition-colors duration-300"
                         >
@@ -433,9 +791,10 @@ export function StudentProfile() {
                 </div>
             </Modal>
 
+            {/* Toast */}
             {toastMessage && (
                 <div className="fixed bottom-4 right-4 z-[100]">
-                    <Toast variant="success" title="Success" onClose={() => setToastMessage(null)}>
+                    <Toast variant={toastVariant} title={toastVariant === 'success' ? 'Success' : 'Error'} onClose={() => setToastMessage(null)}>
                         {toastMessage}
                     </Toast>
                 </div>

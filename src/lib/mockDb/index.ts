@@ -47,7 +47,7 @@ export const MockDB = {
     if (index > -1) {
       db.studentProfiles[index] = { ...db.studentProfiles[index], ...profile };
     } else {
-      db.studentProfiles.push({ userId, location: '', jobType: 'Full-Time', careerGoal: '', skills: [], locations: [], jobTypes: [], cvUrl: null, alertCount: 10, ...profile });
+      db.studentProfiles.push({ userId, location: '', jobType: 'Full-Time', careerGoal: '', skills: [], locations: [], jobTypes: [], cvUrl: null, alertCount: 10, fullName: '', education: '', educationId: '', experienceLevel: '', experienceLevelId: '', expectedSalary: '', currentSalary: '', ...profile });
     }
     saveDb(db);
   },
