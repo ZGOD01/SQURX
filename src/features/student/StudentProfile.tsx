@@ -5,7 +5,7 @@ import { PageTransition } from '@/components/motion';
 import { useAuthStore } from '../auth/store';
 import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '@/lib/store/notifications';
-import { Loader2, UploadCloud, FileText, Trash2, ShieldCheck, Plus, X, Check } from 'lucide-react';
+import { Loader2, UploadCloud, FileText, Trash2, ShieldCheck, Plus, X, Check, Eye, Lock } from 'lucide-react';
 import { getGdprConsent, setGdprConsent } from '@/lib/utils';
 import { consultationApi } from '@/lib/consultationApi';
 import {
@@ -117,6 +117,8 @@ export function StudentProfile() {
     const [showDomainSuggestions, setShowDomainSuggestions] = useState(false);
     const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
     const [locationQuery, setLocationQuery] = useState('');
+    // Track the selected location's ID for correct backend payload
+    const [selectedLocationId, setSelectedLocationId] = useState<string>('');
 
     // ── Status states ────────────────────────────
     const [isSaving, setIsSaving] = useState(false);
@@ -129,6 +131,17 @@ export function StudentProfile() {
     const [isConsentEnabled, setIsConsentEnabled] = useState(false);
     const [profileInitialized, setProfileInitialized] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
+
+    // ── Snapshot for cancel: captures form values the moment Edit is clicked ──
+    const [formSnapshot, setFormSnapshot] = useState<{
+        location: string; locationQuery: string; selectedLocationId: string;
+        jobType: string; jobTypeQuery: string;
+        careerGoal: string;
+        education: string; educationQuery: string; educationId: string;
+        experienceLevel: string; experienceLevelQuery: string; experienceLevelId: string;
+        expectedSalary: string; currentSalary: string;
+        skills: string[];
+    } | null>(null);
 
     // ── Refs ─────────────────────────────────────
     const cvInputRef = useRef<HTMLInputElement>(null);
@@ -167,13 +180,19 @@ export function StudentProfile() {
             setExpectedSalary(profile.expectedSalary || '');
             setCurrentSalary(profile.currentSalary || '');
             setSkills(profile.skills || []);
+            // Restore previously cached location ID
+            try {
+                const cachedIds = JSON.parse(localStorage.getItem('squrx_selected_location_ids') || '[]');
+                if (cachedIds.length > 0) setSelectedLocationId(cachedIds[0]);
+            } catch { /* ignore */ }
             setProfileInitialized(true);
         }
     }, [profile, profileInitialized]);
 
-    // Re-sync if profile reloads (e.g. after save)
+    // Re-sync if profile reloads (e.g. after save) — SKIP while user is actively editing
+    // to avoid overwriting unsaved form values mid-edit
     useEffect(() => {
-        if (profile && profileInitialized) {
+        if (profile && profileInitialized && !isEditing) {
             setLocation(profile.location || '');
             setLocationQuery(profile.location || '');
             setJobType(profile.jobType || '');
@@ -194,22 +213,80 @@ export function StudentProfile() {
 
     // ── GDPR consent ─────────────────────────────
     useEffect(() => {
-        if (user) setIsConsentEnabled(getGdprConsent(user.id));
-    }, [user]);
+        if (user) {
+            // Merge localStorage state with backend gdprConsent value
+            const localConsent = getGdprConsent(user.id);
+            const backendConsent = profile?.gdprConsent;
+            // If backend says true, always honour it — consent cannot be revoked from UI
+            setIsConsentEnabled(backendConsent === true ? true : localConsent);
+        }
+    }, [user, profile]);
 
     const handleConsentToggle = async (checked: boolean) => {
         if (!user) return;
+        // Prevent disabling consent that has already been accepted
+        if (!checked && isConsentEnabled) {
+            showToast('Consent has been accepted and cannot be withdrawn from this screen. Contact privacy@sqrex.com for inquiries.', 'error');
+            return;
+        }
         setIsConsentEnabled(checked);
         setGdprConsent(user.id, checked);
         const log = { userId: user.id, email: user.email, timestamp: new Date().toISOString(), status: checked ? 'GRANTED' : 'WITHDRAWN' };
         localStorage.setItem(`squrx_gdpr_withdraw_log_${user.id}`, JSON.stringify(log));
-        showToast(checked ? 'Data processing consent restored.' : 'Consent withdrawn. Some matching may be limited.', checked ? 'success' : 'error');
+        showToast(checked ? 'Data processing consent accepted.' : 'Consent withdrawn.', checked ? 'success' : 'error');
     };
 
     // ── Toast helper ─────────────────────────────
     const showToast = (msg: string, variant: 'success' | 'error' = 'success') => {
         setToastMessage(msg);
         setToastVariant(variant);
+    };
+
+    // ── Enter edit mode ───────────────────────────
+    // Captures a snapshot of the current form values so Cancel can restore them.
+    // Does NOT call any API or show any success message.
+    const enterEditMode = () => {
+        setSaveSuccess(false);   // clear any stale success badge
+        setFormErrors({});       // clear any stale validation errors
+        clearSaveError();
+        // Take a snapshot of the current form state for cancel
+        setFormSnapshot({
+            location, locationQuery, selectedLocationId,
+            jobType, jobTypeQuery,
+            careerGoal,
+            education, educationQuery, educationId,
+            experienceLevel, experienceLevelQuery, experienceLevelId,
+            expectedSalary, currentSalary,
+            skills: [...skills],
+        });
+        setIsEditing(true);
+    };
+
+    // ── Cancel edit ───────────────────────────────
+    // Restores all form values from the snapshot taken when Edit was clicked.
+    // Does NOT call any API.
+    const handleCancel = () => {
+        if (formSnapshot) {
+            setLocation(formSnapshot.location);
+            setLocationQuery(formSnapshot.locationQuery);
+            setSelectedLocationId(formSnapshot.selectedLocationId);
+            setJobType(formSnapshot.jobType);
+            setJobTypeQuery(formSnapshot.jobTypeQuery);
+            setCareerGoal(formSnapshot.careerGoal);
+            setEducation(formSnapshot.education);
+            setEducationQuery(formSnapshot.educationQuery);
+            setEducationId(formSnapshot.educationId);
+            setExperienceLevel(formSnapshot.experienceLevel);
+            setExperienceLevelQuery(formSnapshot.experienceLevelQuery);
+            setExperienceLevelId(formSnapshot.experienceLevelId);
+            setExpectedSalary(formSnapshot.expectedSalary);
+            setCurrentSalary(formSnapshot.currentSalary);
+            setSkills(formSnapshot.skills);
+        }
+        setFormErrors({});
+        setIsEditing(false);
+        setFormSnapshot(null);
+        clearSaveError();
     };
 
     // ── Validate form ─────────────────────────────
@@ -254,7 +331,10 @@ export function StudentProfile() {
                 preferredDomains: (() => {
                     try { return JSON.parse(localStorage.getItem('squrx_selected_domain_ids') || '[]'); } catch { return []; }
                 })(),
+                // Build preferredLocations from in-memory state (most reliable)
+                // then fall back to localStorage (populated by onboarding / previous session)
                 preferredLocations: (() => {
+                    if (selectedLocationId) return [selectedLocationId];
                     try { return JSON.parse(localStorage.getItem('squrx_selected_location_ids') || '[]'); } catch { return []; }
                 })(),
                 preferredJobTypes: (() => {
@@ -329,6 +409,7 @@ export function StudentProfile() {
         );
     }
 
+    // Use backend value as source of truth; getCompletionPercentage() already handles this fallback
     const completion = getCompletionPercentage();
     const isFresher = experienceLevel === 'Fresher' || experienceLevel === '' || !experienceLevel;
 
@@ -519,7 +600,14 @@ export function StudentProfile() {
                                                     .slice(0, 12)
                                                     .map((l: any) => (
                                                         <button key={l._id} type="button"
-                                                            onMouseDown={() => { setLocation(l.name); setLocationQuery(l.name); setShowLocationSuggestions(false); }}
+                                                            onMouseDown={() => {
+                                                                setLocation(l.name);
+                                                                setLocationQuery(l.name);
+                                                                setShowLocationSuggestions(false);
+                                                                // Capture ID immediately so submit payload is correct
+                                                                setSelectedLocationId(l._id || '');
+                                                                localStorage.setItem('squrx_selected_location_ids', JSON.stringify([l._id].filter(Boolean)));
+                                                            }}
                                                             className="px-3 py-1.5 text-xs font-semibold bg-muted hover:bg-black hover:text-white rounded-lg transition-colors"
                                                         >+ {l.name}</button>
                                                     ))}
@@ -601,24 +689,34 @@ export function StudentProfile() {
 
                                 {/* Submit / Edit Toggle */}
                                 {isEditing ? (
-                                    <Button
-                                        type="submit"
-                                        disabled={isSaving}
-                                        className="w-full h-12 bg-black text-white hover:bg-black/90 font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-[1.01] active:scale-95"
-                                    >
-                                        {isSaving ? (
-                                            <><Loader2 className="w-4 h-4 animate-spin" /> Saving profile...</>
-                                        ) : (
-                                            'Save Profile'
-                                        )}
-                                    </Button>
+                                    <div className="flex gap-3">
+                                        {/* Cancel: restores snapshot, no API call */}
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={handleCancel}
+                                            disabled={isSaving}
+                                            className="flex-1 h-12 font-bold rounded-xl border-border/60 hover:bg-muted transition-colors"
+                                        >
+                                            Cancel
+                                        </Button>
+                                        {/* Save: the ONLY button that submits the form / calls the API */}
+                                        <Button
+                                            type="submit"
+                                            disabled={isSaving}
+                                            className="flex-1 h-12 bg-black text-white hover:bg-black/90 font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-[1.01] active:scale-95"
+                                        >
+                                            {isSaving ? (
+                                                <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
+                                            ) : (
+                                                'Save Changes'
+                                            )}
+                                        </Button>
+                                    </div>
                                 ) : (
                                     <Button
                                         type="button"
-                                        onClick={() => {
-                                            setSaveSuccess(false);
-                                            setIsEditing(true);
-                                        }}
+                                        onClick={enterEditMode}
                                         className="w-full h-12 bg-black text-white hover:bg-black/90 font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-[1.01] active:scale-95"
                                     >
                                         Edit Profile
@@ -649,6 +747,19 @@ export function StudentProfile() {
                                             </h4>
                                             <p className="text-xs text-muted-foreground mt-0.5">Uploaded · Active</p>
                                         </div>
+                                        {/* ── Resume view/preview button ── */}
+                                        {profile.cvUrl && (
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                title="Preview Resume"
+                                                className="text-primary hover:text-primary hover:bg-primary/10 px-2"
+                                                onClick={() => window.open(profile.cvUrl!, '_blank', 'noopener,noreferrer')}
+                                            >
+                                                <Eye size={16} />
+                                            </Button>
+                                        )}
                                         {isEditing && (
                                             <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2" onClick={removeCV}>
                                                 <Trash2 size={16} />
@@ -744,10 +855,21 @@ export function StudentProfile() {
                                         Allow SQURX to process your profile, CV, and preferences to match you with job openings.
                                     </p>
                                 </div>
-                                <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                                    <input type="checkbox" checked={isConsentEnabled} onChange={e => handleConsentToggle(e.target.checked)} className="sr-only peer" />
-                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-black" />
-                                </label>
+                                {/* When consent is already given, show a locked state — it cannot be revoked from this screen */}
+                                {isConsentEnabled ? (
+                                    <div className="flex flex-col items-center gap-1 shrink-0">
+                                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                                            <Lock size={12} className="text-emerald-600" />
+                                            <span className="text-xs font-bold text-emerald-700">Accepted</span>
+                                        </div>
+                                        <span className="text-[10px] text-muted-foreground text-center">Cannot be revoked here</span>
+                                    </div>
+                                ) : (
+                                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                                        <input type="checkbox" checked={false} onChange={e => handleConsentToggle(e.target.checked)} className="sr-only peer" />
+                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-black" />
+                                    </label>
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <h4 className="font-semibold text-sm">Your Control Rights</h4>

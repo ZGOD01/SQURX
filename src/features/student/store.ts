@@ -173,7 +173,13 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
   getCompletionPercentage: () => {
     const p = get().profile;
     if (!p) return 0;
-    
+
+    // ── Use backend value as source of truth when available ──
+    if (typeof p.profileCompletionPercentage === 'number') {
+      return p.profileCompletionPercentage;
+    }
+
+    // ── Fallback: local calculation when backend hasn't synced yet ──
     let score = 10; // Base score for registration
     if (p.education && p.education.trim().length > 0) score += 10;
     if (p.experienceLevel && p.experienceLevel.trim().length > 0) score += 10;
@@ -183,7 +189,7 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
     if (p.careerGoal && p.careerGoal.trim().length > 0) score += 10;
     if (p.skills && p.skills.length > 0) score += 10;
     if (p.cvUrl) score += 20;
-    
+
     return score;
   },
 

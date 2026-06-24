@@ -77,6 +77,8 @@ export const mockApi = {
                     // Sync CV/document URLs
                     profile.cvUrl = data.resume || profile.cvUrl;
                     profile.documentUrl = data.schoolLeavingCertificate || profile.documentUrl;
+                    // Keep the raw resume URL separately for direct PDF preview
+                    profile.resume = data.resume || profile.resume;
 
                     // Sync domain/career goal
                     if (data.domain?.name) {
@@ -121,6 +123,13 @@ export const mockApi = {
                             profile.locations = locNames;
                             profile.location = locNames.join(', ');
                         }
+                        // Also cache the IDs for future profile edits
+                        const locIds = data.preferredLocations.map((l: any) =>
+                            typeof l === 'string' ? null : (l._id || null)
+                        ).filter(Boolean);
+                        if (locIds.length > 0) {
+                            localStorage.setItem('squrx_selected_location_ids', JSON.stringify(locIds));
+                        }
                     }
 
                     // Sync preferred job types
@@ -141,11 +150,28 @@ export const mockApi = {
                     // Sync fullName
                     if (data.fullName) profile.fullName = data.fullName;
 
+                    // ── NEW: Sync backend-authoritative fields ──────────────
+                    // Profile completion percentage from backend (source of truth)
+                    if (typeof data.profileCompletionPercentage === 'number') {
+                        profile.profileCompletionPercentage = data.profileCompletionPercentage;
+                    }
+
+                    // GDPR consent state from backend
+                    if (typeof data.gdprConsent === 'boolean') {
+                        profile.gdprConsent = data.gdprConsent;
+                        // Keep localStorage in sync with backend value
+                        if (data.gdprConsent) {
+                            localStorage.setItem(`squrx_gdpr_consent_${userId}`, 'true');
+                        }
+                    }
+                    // ── END NEW ─────────────────────────────────────────────
+
                     // Persist synced data back to local MockDB cache
                     MockDB.updateStudentProfile(userId, profile);
 
                     // Sync backend user attributes with frontend useAuthStore
                     useAuthStore.getState().setAuth(data, token);
+
                 }
             }
         }

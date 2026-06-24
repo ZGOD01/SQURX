@@ -46,6 +46,8 @@ export function Onboarding() {
 
     const [location, setLocation] = useState('');
     const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
+    // Track IDs of selected locations immediately on selection (not re-resolved at submit)
+    const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
 
     const [jobType, setJobType] = useState('Full-Time');
     const [jobTypeQuery, setJobTypeQuery] = useState('Full-Time');
@@ -126,11 +128,18 @@ export function Onboarding() {
         }).slice(0, 15);
     };
 
-    const handleAddLocation = (locationName: string) => {
+    const handleAddLocation = (locationName: string, locationId?: string) => {
         const parts = location.split(',');
         parts[parts.length - 1] = ` ${locationName}`;
         setLocation(parts.join(',').trim() + ', ');
         setShowLocationSuggestions(false);
+        // Capture the ID immediately so submit doesn't need to re-resolve against stale cache
+        if (locationId) {
+            setSelectedLocationIds(prev => {
+                if (prev.includes(locationId)) return prev;
+                return [...prev, locationId];
+            });
+        }
     };
 
     // Fetch dashboard/profile data on mount
@@ -274,10 +283,15 @@ export function Onboarding() {
                 localStorage.removeItem('squrx_selected_job_type_ids');
             }
 
-            const parsedLocations = location.split(',').map(l => l.trim()).filter(Boolean);
-            const locationIds = parsedLocations
-                .map(l => locationsData?.data?.find((ld: any) => ld.name.toLowerCase() === l.toLowerCase())?._id)
-                .filter(Boolean);
+            // Use pre-captured IDs (populated at selection time) to avoid stale-cache race condition.
+            // Fall back to re-resolution only if the user typed locations manually without selecting from dropdown.
+            let locationIds = selectedLocationIds.filter(Boolean);
+            if (locationIds.length === 0) {
+                const parsedLocations = location.split(',').map(l => l.trim()).filter(Boolean);
+                locationIds = parsedLocations
+                    .map(l => locationsData?.data?.find((ld: any) => ld.name.toLowerCase() === l.toLowerCase())?._id)
+                    .filter(Boolean) as string[];
+            }
             localStorage.setItem('squrx_selected_location_ids', JSON.stringify(locationIds));
 
             const parsedSkills = skills.split(',').map(s => s.trim()).filter(Boolean);
@@ -624,7 +638,7 @@ export function Onboarding() {
                                                     <button
                                                         key={l._id || l.name}
                                                         type="button"
-                                                        onMouseDown={() => handleAddLocation(l.name)}
+                                                        onMouseDown={() => handleAddLocation(l.name, l._id)}
                                                         className="px-3 py-1.5 text-xs font-semibold bg-gray-100 hover:bg-black hover:text-white rounded-lg transition-colors cursor-pointer text-black"
                                                     >
                                                         + {l.name}

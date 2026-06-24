@@ -29,6 +29,12 @@ export interface StudentProfile {
   experienceLevelId?: string;
   expectedSalary?: string;
   currentSalary?: string;
+  // Backend-synced completion percentage (source of truth from /me)
+  profileCompletionPercentage?: number;
+  // Backend-synced GDPR consent state
+  gdprConsent?: boolean;
+  // Resume URL synced from backend
+  resume?: string | null;
 }
 
 export interface CompanyProfile {
