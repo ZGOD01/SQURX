@@ -25,6 +25,8 @@ interface StudentStore {
   cancelConsultation: (studentId: string) => Promise<void>;
   deleteAccount: (userId: string) => Promise<void>;
   clearSaveError: () => void;
+  /** Called on logout to wipe all cached profile/application data from memory. */
+  reset: () => void;
   
   // Helpers
   getCompletionPercentage: () => number;
@@ -44,6 +46,18 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
 
   dismissReminder: (id) => set({ dismissedReminderId: id }),
   clearSaveError: () => set({ saveError: null }),
+
+  reset: () => set({
+    profile: null,
+    vacancies: [],
+    applications: [],
+    consultation: null,
+    activities: [],
+    isLoading: false,
+    error: null,
+    saveError: null,
+    dismissedReminderId: null,
+  }),
 
   fetchDashboardData: async (userId: string) => {
     set({ isLoading: true, error: null });

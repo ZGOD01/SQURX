@@ -1,4 +1,5 @@
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui';
+import { MissingApiAlert } from '@/components/ui/MissingApiAlert';
 import { PageTransition } from '@/components/motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 import { Activity, Download, MousePointerClick } from 'lucide-react';
@@ -24,6 +25,7 @@ const mockRoleData = [
 export function AdminReports() {
     return (
         <PageTransition className="space-y-6 max-w-6xl mx-auto pb-12">
+            <MissingApiAlert featureName="Admin Reports & Analytics" />
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">System Reporting</h1>

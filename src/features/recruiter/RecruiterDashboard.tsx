@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useRecruiterStore } from './store';
 import { useAuthStore } from '../auth/store';
-import { Card, CardHeader, CardTitle, CardContent, Button } from '@/components/ui';
+import { Card, CardHeader, CardTitle, CardContent, Button, MissingApiAlert } from '@/components/ui';
 import { PageTransition, HoverLift } from '@/components/motion';
 import { Building2, Briefcase, Eye, MousePointerClick, ArrowRight, Activity } from 'lucide-react';
 
@@ -54,6 +54,7 @@ export function RecruiterDashboard() {
 
     return (
         <PageTransition className="space-y-6 max-w-5xl mx-auto pb-12">
+            <MissingApiAlert featureName="Recruiter Dashboard" />
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Recruiter Operations</h1>

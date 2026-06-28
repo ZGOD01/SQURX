@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStudentStore } from './store';
 import { useAuthStore } from '../auth/store';
-import { Card, Button, Badge } from '@/components/ui';
+import { Card, Button, Badge, MissingApiAlert } from '@/components/ui';
 import { PageTransition, StaggerContainer, StaggerItem, HoverLift } from '@/components/motion';
 import { Building2, MapPin, ExternalLink, Loader2, Sparkles, IndianRupee } from 'lucide-react';
 import { mockApi } from '@/lib/mockApi';
@@ -56,6 +56,7 @@ export function StudentDashboard() {
 
     return (
         <PageTransition className="space-y-8 max-w-7xl mx-auto pb-12">
+            <MissingApiAlert featureName="Jobs Board Feed" />
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Welcome back, {(user?.name || user?.fullName) ? (user.name || user.fullName).split(' ')[0] : 'there'}</h1>

@@ -12,9 +12,9 @@ import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/features/auth/store';
 
 export function Landing() {
-    const { user, _hasHydrated } = useAuthStore();
+    const { user, isAuthLoading, isAuthVerified } = useAuthStore();
 
-    if (_hasHydrated && user) {
+    if (!isAuthLoading && isAuthVerified && user) {
         const role = String(user.role).toUpperCase();
         switch (role) {
             case 'STUDENT': 

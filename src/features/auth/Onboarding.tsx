@@ -58,7 +58,7 @@ export function Onboarding() {
 
     const [isProfileSaving, setIsProfileSaving] = useState(false);
     const [isUploadingCV, setIsUploadingCV] = useState(false);
-    const [cvName, setCvName] = useState(localStorage.getItem('squrx_cv_name') || '');
+    const [cvName, setCvName] = useState('');
     const [selectedCvFile, setSelectedCvFile] = useState<File | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
     const [hasCheckedInitialState, setHasCheckedInitialState] = useState(false);
@@ -169,57 +169,37 @@ export function Onboarding() {
     // Initialize local form state values once user profile data loads
     useEffect(() => {
         if ((user || profile) && !isInitialized) {
-            const savedProfileRaw = localStorage.getItem('squrx_onboarding_profile');
-            let savedProfile: any = {};
-            
-            if (savedProfileRaw) {
-                try {
-                    const parsed = JSON.parse(savedProfileRaw);
-                    // Only use the saved profile if it belongs to the currently logged-in user
-                    if (parsed && parsed.email === user?.email) {
-                        savedProfile = parsed;
-                    } else {
-                        // Clear stale cache from a different user session
-                        localStorage.removeItem('squrx_onboarding_profile');
-                        localStorage.removeItem('squrx_cv_name');
-                        localStorage.removeItem('squrx_selected_domain_id');
-                        setCvName('');
-                    }
-                } catch (e) {
-                    console.error("Failed to parse onboarding profile:", e);
-                }
-            } else {
-                // No profile cache exists, make sure CV name state is also empty
-                localStorage.removeItem('squrx_cv_name');
-                setCvName('');
-            }
-
-            setFullName(savedProfile.fullName || user?.name || user?.fullName || '');
+            setFullName(profile?.fullName || user?.name || user?.fullName || '');
             setEmail(user?.email || '');
             setPhone(user?.mobile || '');
-            const initialEducation = savedProfile.education || '';
+            const initialEducation = profile?.education || '';
             setEducation(initialEducation);
             setEducationQuery(initialEducation);
 
-            setSkills(savedProfile.skills || (profile?.skills ? profile.skills.join(', ') : ''));
+            setSkills(profile?.skills ? profile.skills.join(', ') : '');
 
-            const initialExp = savedProfile.experienceLevel || 'Fresher';
+            const initialExp = profile?.experienceLevel || 'Fresher';
             setExperienceLevel(initialExp);
-            // If experienceLevel is "1-3" or "3-5" or "5+", we append " Years" to look better
             setExperienceLevelQuery(initialExp === 'Fresher' || initialExp.includes('Years') ? initialExp : `${initialExp} Years`);
 
-            const initialCareerGoal = savedProfile.careerGoal || profile?.careerGoal || '';
+            const initialCareerGoal = profile?.careerGoal || '';
             setCareerGoal(initialCareerGoal);
 
-            const initialLocation = savedProfile.location || profile?.location || '';
+            const initialLocation = profile?.location || '';
             setLocation(initialLocation);
 
-            const initialJobType = savedProfile.jobType || profile?.jobType || 'Full-Time';
+            const initialJobType = profile?.jobType || 'Full-Time';
             setJobType(initialJobType);
             setJobTypeQuery(initialJobType);
 
-            setExpectedSalary(savedProfile.expectedSalary || '');
-            setCurrentSalary(savedProfile.currentSalary || '');
+            setExpectedSalary(profile?.expectedSalary || '');
+            setCurrentSalary(profile?.currentSalary || '');
+
+            if (profile?.cvUrl) {
+                const parts = profile.cvUrl.split('/');
+                setCvName(parts[parts.length - 1] || 'Resume_Document.pdf');
+            }
+
             setIsInitialized(true);
         }
     }, [user, profile, isInitialized]);
@@ -242,46 +222,15 @@ export function Onboarding() {
 
         setIsProfileSaving(true);
         try {
-            const onboardingProfile = {
-                fullName,
-                education,
-                skills,
-                experienceLevel,
-                careerGoal,
-                location,
-                jobType,
-                expectedSalary,
-                currentSalary: experienceLevel === 'Fresher' ? '' : currentSalary
-            };
-            localStorage.setItem('squrx_onboarding_profile', JSON.stringify(onboardingProfile));
-
-            // Resolve and cache lookup IDs for the backend update request
+            // Resolve lookup IDs for the backend update request
             const parsedDomains = careerGoal.split(',').map(d => d.trim()).filter(Boolean);
             const domainIds = parsedDomains
                 .map(d => domainsData?.data?.find((dd: any) => dd.name.toLowerCase() === d.toLowerCase())?._id)
                 .filter(Boolean);
-            localStorage.setItem('squrx_selected_domain_ids', JSON.stringify(domainIds));
 
             const eduMatch = educationsData?.data?.find((e: any) => e.name === education);
-            if (eduMatch) {
-                localStorage.setItem('squrx_selected_education_id', eduMatch._id);
-            } else {
-                localStorage.removeItem('squrx_selected_education_id');
-            }
-
             const expMatch = experienceLevelsData?.data?.find((e: any) => e.name === experienceLevel);
-            if (expMatch) {
-                localStorage.setItem('squrx_selected_experience_level_id', expMatch._id);
-            } else {
-                localStorage.removeItem('squrx_selected_experience_level_id');
-            }
-
             const jobTypeMatch = jobTypesData?.data?.find((j: any) => j.name === jobType);
-            if (jobTypeMatch) {
-                localStorage.setItem('squrx_selected_job_type_ids', JSON.stringify([jobTypeMatch._id]));
-            } else {
-                localStorage.removeItem('squrx_selected_job_type_ids');
-            }
 
             // Use pre-captured IDs (populated at selection time) to avoid stale-cache race condition.
             // Fall back to re-resolution only if the user typed locations manually without selecting from dropdown.
@@ -292,13 +241,11 @@ export function Onboarding() {
                     .map(l => locationsData?.data?.find((ld: any) => ld.name.toLowerCase() === l.toLowerCase())?._id)
                     .filter(Boolean) as string[];
             }
-            localStorage.setItem('squrx_selected_location_ids', JSON.stringify(locationIds));
 
             const parsedSkills = skills.split(',').map(s => s.trim()).filter(Boolean);
             const skillIds = parsedSkills
                 .map(s => skillsData?.data?.find((sd: any) => sd.name.toLowerCase() === s.toLowerCase())?._id)
                 .filter(Boolean);
-            localStorage.setItem('squrx_selected_skill_ids', JSON.stringify(skillIds));
 
             await updateProfile(user.id, {
                 fullName,
@@ -355,7 +302,6 @@ export function Onboarding() {
             const cvUrl = await consultationApi.uploadCv(file);
             await updateProfile(user.id, { cvUrl: cvUrl || file.name });
             setCvName(file.name);
-            localStorage.setItem('squrx_cv_name', file.name);
             setSelectedCvFile(null);
         } catch (err) {
             console.error('CV upload error:', err);
@@ -366,7 +312,7 @@ export function Onboarding() {
 
     const handleCompleteOnboarding = () => {
         if (user) {
-            localStorage.removeItem(`squrx_new_user_${user.id}`);
+            useAuthStore.getState().setNewUser(false);
         }
         navigate('/student/jobs', { replace: true });
     };
@@ -764,7 +710,6 @@ export function Onboarding() {
                                                 await updateProfile(user.id, { cvUrl: null });
                                                 setCvName("");
                                                 setSelectedCvFile(null);
-                                                localStorage.removeItem('squrx_cv_name');
                                             }}
                                             className="text-red-500 hover:underline text-xs font-bold mt-2"
                                         >

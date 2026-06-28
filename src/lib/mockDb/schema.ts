@@ -35,6 +35,9 @@ export interface StudentProfile {
   gdprConsent?: boolean;
   // Resume URL synced from backend
   resume?: string | null;
+  preferredDomainIds?: string[];
+  preferredLocationIds?: string[];
+  preferredJobTypeIds?: string[];
 }
 
 export interface CompanyProfile {

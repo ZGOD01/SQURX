@@ -1,7 +1,8 @@
 import { MockDB } from './mockDb';
 import type { User, StudentProfile, CompanyProfile, JobVacancy, JobApplication, ConsultationBooking, SystemActivity } from './mockDb/schema';
-import { useAuthStore } from '@/features/auth/store';
 import { API_BASE_URL } from './config';
+import { getInMemToken } from '@/features/auth/store';
+
 
 const delay = (ms = 800) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -63,35 +64,51 @@ export const mockApi = {
   // Student
   getStudentProfile: async (userId: string): Promise<StudentProfile | null> => {
     await delay(500);
-    const profile = MockDB.getStudentProfile(userId);
+    // Start with whatever MockDB has (may be empty/null for first-time users)
+    let profile = MockDB.getStudentProfile(userId);
     try {
-        const token = localStorage.getItem('token');
-        if (token && profile) {
+        const token = getInMemToken();
+        if (token) {
             const res = await fetchWithTimeout(`${API_BASE_URL}/user/me`, {
                 headers: { 'Authorization': `Bearer ${token}` },
-                timeout: 2000
-            });
+                // Always bypass stale browser cache for profile data
+                cache: 'no-store',
+                timeout: 3000
+            } as any);
             if (res.ok) {
-                const { data } = await res.json();
+                const json = await res.json();
+                const data = json.data || json;
                 if (data) {
-                    // Sync CV/document URLs
-                    profile.cvUrl = data.resume || profile.cvUrl;
-                    profile.documentUrl = data.schoolLeavingCertificate || profile.documentUrl;
-                    // Keep the raw resume URL separately for direct PDF preview
-                    profile.resume = data.resume || profile.resume;
-
-                    // Sync domain/career goal
-                    if (data.domain?.name) {
-                        profile.careerGoal = data.domain.name;
-                        if (data.domain._id) {
-                            localStorage.setItem('squrx_selected_domain_id', data.domain._id);
-                        }
-                    } else if (data.customDomain) {
-                        profile.careerGoal = data.customDomain;
-                        localStorage.removeItem('squrx_selected_domain_id');
+                    // Ensure we have a profile object to populate
+                    if (!profile) {
+                        // First visit: create a baseline profile in MockDB
+                        MockDB.updateStudentProfile(userId, {});
+                        profile = MockDB.getStudentProfile(userId) as StudentProfile;
                     }
 
-                    // Sync education
+                    // ── Backend is the source of truth for all fields below ──
+
+                    // CV / document URLs
+                    profile.cvUrl = data.resume || profile.cvUrl;
+                    profile.documentUrl = data.schoolLeavingCertificate || profile.documentUrl;
+                    profile.resume = data.resume || profile.resume;
+
+                    // Domain / career goal + domain ID
+                    if (data.domain?.name) {
+                        profile.careerGoal = data.domain.name;
+                    } else if (data.customDomain) {
+                        profile.careerGoal = data.customDomain;
+                    }
+                    // Store domain IDs directly on profile (no sessionStorage)
+                    if (data.domain?._id) {
+                        profile.preferredDomainIds = [data.domain._id];
+                    } else if (Array.isArray(data.preferredDomains) && data.preferredDomains.length > 0) {
+                        profile.preferredDomainIds = data.preferredDomains
+                            .map((d: any) => (typeof d === 'string' ? d : (d._id || null)))
+                            .filter(Boolean);
+                    }
+
+                    // Education
                     if (data.education?.name) {
                         profile.education = data.education.name;
                         profile.educationId = data.education._id || '';
@@ -99,7 +116,7 @@ export const mockApi = {
                         profile.education = data.education;
                     }
 
-                    // Sync experience level
+                    // Experience level
                     if (data.experienceLevel?.name) {
                         profile.experienceLevel = data.experienceLevel.name;
                         profile.experienceLevelId = data.experienceLevel._id || '';
@@ -107,14 +124,14 @@ export const mockApi = {
                         profile.experienceLevel = data.experienceLevel;
                     }
 
-                    // Sync skills (array of objects or strings)
+                    // Skills (array of objects or strings)
                     if (Array.isArray(data.skills) && data.skills.length > 0) {
                         profile.skills = data.skills.map((s: any) =>
                             typeof s === 'string' ? s : (s.name || '')
                         ).filter(Boolean);
                     }
 
-                    // Sync preferred locations
+                    // Preferred locations — store IDs directly in profile (no sessionStorage)
                     if (Array.isArray(data.preferredLocations) && data.preferredLocations.length > 0) {
                         const locNames = data.preferredLocations.map((l: any) =>
                             typeof l === 'string' ? l : (l.name || '')
@@ -123,16 +140,15 @@ export const mockApi = {
                             profile.locations = locNames;
                             profile.location = locNames.join(', ');
                         }
-                        // Also cache the IDs for future profile edits
-                        const locIds = data.preferredLocations.map((l: any) =>
-                            typeof l === 'string' ? null : (l._id || null)
-                        ).filter(Boolean);
+                        const locIds = data.preferredLocations
+                            .map((l: any) => (typeof l === 'string' ? null : (l._id || null)))
+                            .filter(Boolean);
                         if (locIds.length > 0) {
-                            localStorage.setItem('squrx_selected_location_ids', JSON.stringify(locIds));
+                            profile.preferredLocationIds = locIds;
                         }
                     }
 
-                    // Sync preferred job types
+                    // Preferred job types — store IDs directly in profile (no sessionStorage)
                     if (Array.isArray(data.preferredJobTypes) && data.preferredJobTypes.length > 0) {
                         const jtNames = data.preferredJobTypes.map((j: any) =>
                             typeof j === 'string' ? j : (j.name || '')
@@ -141,149 +157,68 @@ export const mockApi = {
                             profile.jobTypes = jtNames;
                             profile.jobType = jtNames.join(', ');
                         }
+                        const jtIds = data.preferredJobTypes
+                            .map((j: any) => (typeof j === 'string' ? null : (j._id || null)))
+                            .filter(Boolean);
+                        if (jtIds.length > 0) {
+                            profile.preferredJobTypeIds = jtIds;
+                        }
                     }
 
-                    // Sync salary fields
+                    // Salary fields
                     if (data.expectedSalary) profile.expectedSalary = String(data.expectedSalary);
                     if (data.currentSalary) profile.currentSalary = String(data.currentSalary);
 
-                    // Sync fullName
+                    // Full name
                     if (data.fullName) profile.fullName = data.fullName;
 
-                    // ── NEW: Sync backend-authoritative fields ──────────────
-                    // Profile completion percentage from backend (source of truth)
+                    // Profile completion percentage (backend is the single source of truth)
                     if (typeof data.profileCompletionPercentage === 'number') {
                         profile.profileCompletionPercentage = data.profileCompletionPercentage;
                     }
 
-                    // GDPR consent state from backend
+                    // GDPR consent (from backend, not from localStorage)
                     if (typeof data.gdprConsent === 'boolean') {
                         profile.gdprConsent = data.gdprConsent;
-                        // Keep localStorage in sync with backend value
-                        if (data.gdprConsent) {
-                            localStorage.setItem(`squrx_gdpr_consent_${userId}`, 'true');
-                        }
                     }
-                    // ── END NEW ─────────────────────────────────────────────
 
                     // Persist synced data back to local MockDB cache
                     MockDB.updateStudentProfile(userId, profile);
-
-                    // Sync backend user attributes with frontend useAuthStore
-                    useAuthStore.getState().setAuth(data, token);
-
                 }
             }
         }
     } catch(e) {
-        console.error("Failed to fetch real profile data", e);
+        console.error("Failed to fetch real profile data from /user/me", e);
     }
     return profile;
   },
+
   updateStudentProfile: async (userId: string, data: Partial<StudentProfile> & Record<string, any>): Promise<void> => {
     await delay();
     MockDB.updateStudentProfile(userId, data);
     
-    // Sync domain/career goal and other fields with real backend via PUT /api/v1/user/me
+    // Sync with real backend via PUT /api/v1/user/me
     try {
-        const token = localStorage.getItem('token');
+        const token = getInMemToken();
         if (token) {
-            const cachedDomainIds = localStorage.getItem('squrx_selected_domain_ids');
-            const cachedEducationId = localStorage.getItem('squrx_selected_education_id');
-            const cachedExperienceLevelId = localStorage.getItem('squrx_selected_experience_level_id');
-            const cachedJobTypeIds = localStorage.getItem('squrx_selected_job_type_ids');
-            const cachedSkillIds = localStorage.getItem('squrx_selected_skill_ids');
-            const cachedLocationIds = localStorage.getItem('squrx_selected_location_ids');
-            
-            const savedProfileRaw = localStorage.getItem('squrx_onboarding_profile');
-            let savedProfile: any = {};
-            if (savedProfileRaw) {
-                try {
-                    savedProfile = JSON.parse(savedProfileRaw);
-                } catch(e) {}
-            }
-
+            // Build payload purely from the incoming `data` argument — no sessionStorage fallbacks.
             const payload: Record<string, any> = {};
-            
-            // Map fullName
-            if (data.fullName !== undefined) {
-                payload.fullName = data.fullName;
-            } else if (savedProfile.fullName) {
-                payload.fullName = savedProfile.fullName;
-            }
 
-            // Map mobile
-            if (data.mobile !== undefined) {
-                payload.mobile = data.mobile;
-            } else if (data.phone !== undefined) {
-                payload.mobile = data.phone;
-            } else if (savedProfile.phone) {
-                payload.mobile = savedProfile.phone;
-            }
-
-            // Map expectedSalary
-            if (data.expectedSalary !== undefined) {
-                payload.expectedSalary = data.expectedSalary;
-            } else if (savedProfile.expectedSalary) {
-                payload.expectedSalary = savedProfile.expectedSalary;
-            }
-
-            // Map currentSalary
-            if (data.currentSalary !== undefined) {
-                payload.currentSalary = data.currentSalary;
-            } else if (savedProfile.currentSalary !== undefined) {
-                payload.currentSalary = savedProfile.currentSalary;
-            }
-
-            // Map preferredDomains
-            if (data.preferredDomains !== undefined) {
-                payload.preferredDomains = data.preferredDomains;
-            } else if (cachedDomainIds) {
-                try {
-                    payload.preferredDomains = JSON.parse(cachedDomainIds);
-                } catch(e) {}
-            }
-
-            // Map education
-            if (data.education !== undefined) {
-                payload.education = data.education;
-            } else if (cachedEducationId) {
-                payload.education = cachedEducationId;
-            }
-
-            // Map experienceLevel
-            if (data.experienceLevel !== undefined) {
-                payload.experienceLevel = data.experienceLevel;
-            } else if (cachedExperienceLevelId) {
-                payload.experienceLevel = cachedExperienceLevelId;
-            }
-            
-            // Map preferredJobTypes
-            if (data.preferredJobTypes !== undefined) {
-                payload.preferredJobTypes = data.preferredJobTypes;
-            } else if (cachedJobTypeIds) {
-                try {
-                    payload.preferredJobTypes = JSON.parse(cachedJobTypeIds);
-                } catch(e) {}
-            }
-
-            // Map skills
-            if (data.skills !== undefined) {
-                payload.skills = data.skills;
-            } else if (cachedSkillIds) {
-                try {
-                    payload.skills = JSON.parse(cachedSkillIds);
-                } catch(e) {}
-            }
-
-            // Map preferredLocations
-            if (data.preferredLocations !== undefined) {
-                payload.preferredLocations = data.preferredLocations;
-            } else if (cachedLocationIds) {
-                try {
-                    payload.preferredLocations = JSON.parse(cachedLocationIds);
-                } catch(e) {}
-            }
+            if (data.gdprConsent !== undefined) payload.gdprConsent = data.gdprConsent;
+            if (data.fullName !== undefined) payload.fullName = data.fullName;
+            if (data.mobile !== undefined) payload.mobile = data.mobile;
+            else if (data.phone !== undefined) payload.mobile = data.phone;
+            if (data.expectedSalary !== undefined) payload.expectedSalary = data.expectedSalary;
+            if (data.currentSalary !== undefined) payload.currentSalary = data.currentSalary;
+            if (data.preferredDomains !== undefined) payload.preferredDomains = data.preferredDomains;
+            if (data.education !== undefined) payload.education = data.education;
+            if (data.educationId !== undefined) payload.education = data.educationId;
+            if (data.experienceLevel !== undefined) payload.experienceLevel = data.experienceLevel;
+            if (data.experienceLevelId !== undefined) payload.experienceLevel = data.experienceLevelId;
+            if (data.preferredJobTypes !== undefined) payload.preferredJobTypes = data.preferredJobTypes;
+            if (data.skills !== undefined) payload.skills = data.skills;
+            if (data.preferredLocations !== undefined) payload.preferredLocations = data.preferredLocations;
+            if (data.cvUrl !== undefined) payload.resume = data.cvUrl;
 
             await fetchWithTimeout(`${API_BASE_URL}/user/me`, {
                 method: 'PUT',

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { PageTransition, StaggerContainer, StaggerItem, HoverLift } from '@/components/motion';
-import { Card, Select, Button, Badge, Skeleton, Modal, Toast } from '@/components/ui';
+import { Card, Select, Button, Badge, Skeleton, Modal, Toast, MissingApiAlert } from '@/components/ui';
 import { 
     Search, 
     MapPin, 
@@ -28,10 +28,12 @@ import type { JobVacancy } from '@/lib/mockDb/schema';
 import { useNotificationStore } from '@/lib/store/notifications';
 import { useStudentStore } from './store';
 import { calculateJobRelevance } from './jobRelevance';
+import { useAuthStore } from '@/features/auth/store';
 import { cn } from '@/lib/utils';
 
 export function StudentJobs() {
-    const { profile } = useStudentStore();
+    const { user } = useAuthStore();
+    const { profile, applications, applyForJob } = useStudentStore();
     const [jobs, setJobs] = useState<JobVacancy[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -48,30 +50,26 @@ export function StudentJobs() {
     const { sendEmail } = useNotificationStore();
 
     const [selectedJob, setSelectedJob] = useState<(JobVacancy & { relevance?: number }) | null>(null);
-    const [appliedJobs, setAppliedJobs] = useState<string[]>([]);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+    const appliedJobs = applications.map(app => app.vacancyId);
+
     useEffect(() => {
-        // Load data and applied history
+        // Load data
         const loadData = async () => {
             setIsLoading(true);
             await new Promise(res => setTimeout(res, 1000)); // fake delay for skeletons
             const vacancies = await mockApi.getStudentVacancies();
             setJobs(vacancies);
-
-            const applied = localStorage.getItem('squrx_applied_jobs');
-            if (applied) {
-                setAppliedJobs(JSON.parse(applied));
-            }
             setIsLoading(false);
         };
         loadData();
     }, []);
 
     const handleApply = (job: JobVacancy) => {
-        const updated = [...appliedJobs, job.id];
-        setAppliedJobs(updated);
-        localStorage.setItem('squrx_applied_jobs', JSON.stringify(updated));
+        if (user) {
+            applyForJob(user.id, job.id).catch(console.error);
+        }
 
         if (job.applyLink) {
             window.open(job.applyLink, '_blank', 'noopener,noreferrer');
@@ -131,6 +129,7 @@ export function StudentJobs() {
 
     return (
         <PageTransition className="space-y-6 max-w-7xl mx-auto pb-12">
+            <MissingApiAlert featureName="Jobs Board" />
             {/* Hero and Search Section */}
             <div className="relative overflow-hidden rounded-[2rem] bg-black p-8 md:p-12 mb-4 border border-white/10 shadow-2xl">
                 {/* Decorative gradients */}
@@ -598,7 +597,7 @@ export function StudentJobs() {
                                 <Button disabled className="w-full h-12 font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">Application Submitted</Button>
                             ) : (
                                 <div className="space-y-2">
-                                    <Button className="w-full h-12 gap-2 font-bold" onClick={() => handleApply(selectedJob)}>
+                                    <Button className="w-full h-12 gap-2 font-bold" onClick={() => handleApply(selectedJob)} disabled>
                                         Apply Externally <ExternalLink size={16} />
                                     </Button>
                                     <p className="text-[11px] text-center text-muted-foreground font-light leading-normal">

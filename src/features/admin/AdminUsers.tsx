@@ -1,5 +1,6 @@
 import { useAdminStore } from './store';
 import { Card, Table, TableHeader, TableRow, TableHead, TableBody, TableCell, Badge, Select, Input, Button } from '@/components/ui';
+import { MissingApiAlert } from '@/components/ui/MissingApiAlert';
 import { PageTransition } from '@/components/motion';
 import { Search, CheckCircle, XCircle } from 'lucide-react';
 import { useState } from 'react';
@@ -15,6 +16,7 @@ export function AdminUsers() {
 
     return (
         <PageTransition className="space-y-6 max-w-6xl mx-auto pb-12">
+            <MissingApiAlert featureName="Admin User Management" />
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Identity Management</h1>

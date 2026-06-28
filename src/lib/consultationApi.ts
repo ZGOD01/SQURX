@@ -1,6 +1,8 @@
 import { API_BASE_URL as BASE_URL } from './config';
+import { getInMemToken } from '@/features/auth/store';
 
-export const getAuthToken = () => localStorage.getItem('token');
+export const getAuthToken = () => getInMemToken();
+
 
 const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: number } = {}) => {
   const { timeout = 30000, ...rest } = options;

@@ -22,8 +22,6 @@ export function StudentConsultation() {
 
     const [slotsData, setSlotsData] = useState<any[]>([]);
     const [quizzesList, setQuizzesList] = useState<any[]>([]);
-    // Holds freshly-fetched detail for each quiz via GET /quizzes/{id}
-    const [quizzesDetail, setQuizzesDetail] = useState<any[]>([]);
 
     useEffect(() => {
         consultationApi.getTimeSlots().then(res => {
@@ -43,20 +41,6 @@ export function StudentConsultation() {
             .catch(console.error);
     }, []);
 
-    // GET /quizzes/{id} — when date is selected, refresh each quiz individually
-    // This ensures up-to-date options are used for the quiz answer mapping
-    useEffect(() => {
-        if (!selectedDate || quizzesList.length === 0) return;
-        Promise.all(
-            quizzesList.map((q: any) =>
-                fetch(`${API_BASE_URL}/quizzes/${q._id}`)
-                    .then(res => res.json())
-                    .then(res => (res.success && res.data ? res.data : q))
-                    .catch(() => q) // fall back to list data on error
-            )
-        ).then(setQuizzesDetail).catch(console.error);
-    }, [selectedDate, quizzesList]);
-
     const handleBooking = async () => {
         if (!selectedDate || !selectedTime) return;
         setIsLoading(true);
@@ -64,38 +48,8 @@ export function StudentConsultation() {
         let quizAnswersList: any[] = [];
         const activeQuizzes = quizzesList.filter((q: any) => q.isActive !== false);
 
-        try {
-            const answersStr = localStorage.getItem('squrx_quiz_answers');
-            if (answersStr) {
-                const rawAnswers = JSON.parse(answersStr);
-                const mappedAnswers = Object.keys(rawAnswers).map(key => {
-                    const choiceId = rawAnswers[key];
-                    const isValidHex = /^[0-9a-fA-F]{24}$/.test(choiceId);
-                    if (!isValidHex) return null;
-
-                    // Use freshly-fetched individual quiz details (GET /quizzes/{id}) for accurate mapping.
-                    // Fall back to the active list data if detail fetch hasn't completed yet.
-                    const quizzesSource = quizzesDetail.length > 0 ? quizzesDetail : activeQuizzes;
-                    const matchingQuiz = quizzesSource.find((q: any) => 
-                        q.options?.some((o: any) => o._id === choiceId)
-                    );
-
-                    return {
-                        quizId: matchingQuiz ? matchingQuiz._id : '65f000000000000000000000',
-                        choiceId: choiceId
-                    };
-                }).filter(Boolean) as any[];
-
-                if (mappedAnswers.length > 0) {
-                    quizAnswersList = mappedAnswers;
-                }
-            }
-        } catch (e) {
-            console.error("Failed to parse local storage quiz answers:", e);
-        }
-
-        // Default to the first option of each active quiz if no answers are saved in localStorage
-        if (quizAnswersList.length === 0 && activeQuizzes.length > 0) {
+        // Default to the first option of each active quiz
+        if (activeQuizzes.length > 0) {
             quizAnswersList = activeQuizzes.map((q: any) => ({
                 quizId: q._id,
                 choiceId: q.options?.[0]?._id || '65f000000000000000000000'

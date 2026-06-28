@@ -2,17 +2,16 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRecruiterStore } from './store';
-import { Card, CardHeader, CardTitle, CardContent, Button, Input, Textarea, Toast } from '@/components/ui';
+import { Card, CardHeader, CardTitle, CardContent, Button, Input, Textarea, Toast, MissingApiAlert } from '@/components/ui';
 import { PageTransition } from '@/components/motion';
 import { companyProfileSchema, type CompanyProfileValues } from '@/lib/validators/recruiter';
-import { Loader2, Building2 } from 'lucide-react';
+import { Building2 } from 'lucide-react';
 
 import { useAuthStore } from '../auth/store';
 
 export function RecruiterCompany() {
     const { user } = useAuthStore();
     const { company, updateCompany } = useRecruiterStore();
-    const [isSaving, setIsSaving] = useState(false);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
     const { register, handleSubmit, formState: { errors } } = useForm<CompanyProfileValues>({
@@ -26,11 +25,9 @@ export function RecruiterCompany() {
     });
 
     const onSubmit = async (data: CompanyProfileValues) => {
-        setIsSaving(true);
         if (user) {
             await updateCompany(user.id, data);
         }
-        setIsSaving(false);
         setToastMessage('Company profile updated successfully.');
     };
 
@@ -38,6 +35,7 @@ export function RecruiterCompany() {
 
     return (
         <PageTransition className="max-w-3xl mx-auto space-y-6 pb-12">
+            <MissingApiAlert featureName="Company Profile Management" />
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">Company Profile</h1>
                 <p className="text-muted-foreground mt-1">Manage how your company appears to candidates.</p>
@@ -61,6 +59,7 @@ export function RecruiterCompany() {
                                 <Input
                                     placeholder="e.g. Acme Corp"
                                     className={errors.name ? 'border-destructive focus-visible:ring-destructive' : ''}
+                                    disabled
                                     {...register('name')}
                                 />
                                 {errors.name && <p className="text-destructive text-xs">{errors.name.message}</p>}
@@ -71,6 +70,7 @@ export function RecruiterCompany() {
                                 <Input
                                     placeholder="e.g. Finance, Technology"
                                     className={errors.industry ? 'border-destructive focus-visible:ring-destructive' : ''}
+                                    disabled
                                     {...register('industry')}
                                 />
                                 {errors.industry && <p className="text-destructive text-xs">{errors.industry.message}</p>}
@@ -82,6 +82,7 @@ export function RecruiterCompany() {
                             <Input
                                 placeholder="https://example.com"
                                 className={errors.website ? 'border-destructive focus-visible:ring-destructive' : ''}
+                                disabled
                                 {...register('website')}
                             />
                             {errors.website && <p className="text-destructive text-xs">{errors.website.message}</p>}
@@ -92,14 +93,15 @@ export function RecruiterCompany() {
                             <Textarea
                                 placeholder="What does your company do? What is the culture like?"
                                 className={`resize-none h-40 ${errors.description ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                                disabled
                                 {...register('description')}
                             />
                             {errors.description && <p className="text-destructive text-xs">{errors.description.message}</p>}
                         </div>
 
                         <div className="flex justify-end pt-4 border-t border-border/50">
-                            <Button type="submit" disabled={isSaving} className="w-full md:w-auto px-8">
-                                {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</> : 'Save Profile'}
+                            <Button type="submit" disabled className="w-full md:w-auto px-8">
+                                Save Profile
                             </Button>
                         </div>
                     </form>

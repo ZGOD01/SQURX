@@ -30,18 +30,7 @@ export function Register() {
     const [marketingOptIn, setMarketingOptIn] = useState<'yes' | 'no' | null>(null);
     const [showGdprModal, setShowGdprModal] = useState(false);
     const allConsentsGiven = consentAge18 && consentReadUnderstood && consentDataProcessing && consentResumeSharing;
-    const [userIp, setUserIp] = useState("127.0.0.1");
 
-    useEffect(() => {
-        fetch('https://api.ipify.org?format=json')
-            .then(res => res.json())
-            .then(data => {
-                if (data.ip) setUserIp(data.ip);
-            })
-            .catch(() => {
-                setUserIp("192.168.1.42");
-            });
-    }, []);
 
     const showToast = (type: 'success'|'error'|'info', title: string, message: string) => {
         setToast({ open: true, type, title, message });
@@ -49,7 +38,7 @@ export function Register() {
     };
     const navigate = useNavigate();
     
-    const { setAuth } = useAuthStore();
+    const { setAuth, setNewUser } = useAuthStore();
     const [signupMutation] = useSignupMutation();
     const [verifyOtpMutation] = useVerifyOtpMutation();
     const [resendOtpMutation] = useResendOtpMutation();
@@ -226,22 +215,8 @@ export function Register() {
             
             if(verifyRes.success && verifyRes.data?.token) {
                 const uId = verifyRes.data.user._id || verifyRes.data.user.id;
-                localStorage.setItem(`squrx_new_user_${uId}`, 'true');
+                setNewUser(true);
                 setGdprConsent(uId, true);
-                const consentLog = {
-                    userId: uId,
-                    email: verifyRes.data.user.email,
-                    timestamp: new Date().toISOString(),
-                    ip: userIp,
-                    consents: {
-                        consentAge18,
-                        consentReadUnderstood,
-                        consentDataProcessing,
-                        consentResumeSharing,
-                        marketingOptIn
-                    }
-                };
-                localStorage.setItem(`squrx_gdpr_log_${uId}`, JSON.stringify(consentLog));
                 setAuth(verifyRes.data.user, verifyRes.data.token);
                 showToast('success', 'Welcome to Squrx!', 'Your account has been verified. Redirecting...');
 

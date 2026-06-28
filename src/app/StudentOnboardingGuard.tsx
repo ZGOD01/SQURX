@@ -5,7 +5,7 @@ import { useStudentStore } from '@/features/student/store';
 import { Loader2 } from 'lucide-react';
 
 export function StudentOnboardingGuard({ children }: { children: React.ReactNode }) {
-    const { user } = useAuthStore();
+    const { user, isNewUser } = useAuthStore();
     const { profile, isLoading, fetchDashboardData } = useStudentStore();
     const fetchedRef = useRef(false);
 
@@ -27,8 +27,6 @@ export function StudentOnboardingGuard({ children }: { children: React.ReactNode
             </div>
         );
     }
-
-    const isNewUser = localStorage.getItem(`squrx_new_user_${user?.id}`) === 'true';
 
     if (isNewUser) {
         const hasProfile = !!(profile && profile.careerGoal && profile.location && profile.jobType);

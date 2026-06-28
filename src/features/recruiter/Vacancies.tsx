@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRecruiterStore } from './store';
-import { Card, CardContent, Button, Input, Textarea, Select, TagInput, Toast, Badge, Drawer } from '@/components/ui';
+import { Card, CardContent, Button, Input, Textarea, Select, TagInput, Toast, Badge, Drawer, MissingApiAlert } from '@/components/ui';
 import { PageTransition, StaggerContainer, StaggerItem, HoverLift } from '@/components/motion';
 import { vacancySchema, type VacancyValues } from '@/lib/validators/recruiter';
 import { Loader2, Plus, Briefcase, MapPin, Eye, MousePointerClick, Building2 } from 'lucide-react';
@@ -59,12 +59,13 @@ export function RecruiterVacancies() {
 
     return (
         <PageTransition className="space-y-6 max-w-6xl mx-auto pb-12">
+            <MissingApiAlert featureName="Vacancy Management" />
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Vacancies</h1>
                     <p className="text-muted-foreground mt-1">Manage your active listings and create new roles.</p>
                 </div>
-                <Button onClick={() => setIsDrawerOpen(true)} className="shrink-0 group">
+                <Button onClick={() => setIsDrawerOpen(true)} className="shrink-0 group" disabled>
                     <Plus className="w-4 h-4 mr-2 group-hover:rotate-90 transition-transform" /> Create Vacancy
                 </Button>
             </div>
@@ -128,6 +129,7 @@ export function RecruiterVacancies() {
                                                 size="sm"
                                                 className="flex-1 text-xs"
                                                 onClick={() => updateVacancyStatus(vacancy.id, vacancy.status === 'Active' ? 'Closed' : 'Active')}
+                                                disabled
                                             >
                                                 {vacancy.status === 'Active' ? 'Close Listing' : 'Reactivate'}
                                             </Button>
@@ -137,6 +139,7 @@ export function RecruiterVacancies() {
                                                 className="px-2 text-destructive hover:bg-destructive/10 hover:text-destructive border-border"
                                                 onClick={() => deleteVacancy(vacancy.id)}
                                                 title="Delete Vacancy"
+                                                disabled
                                             >
                                                 Delete
                                             </Button>

@@ -6,7 +6,6 @@ import { useAuthStore } from '../auth/store';
 import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '@/lib/store/notifications';
 import { Loader2, UploadCloud, FileText, Trash2, ShieldCheck, Plus, X, Check, Eye, Lock } from 'lucide-react';
-import { getGdprConsent, setGdprConsent } from '@/lib/utils';
 import { consultationApi } from '@/lib/consultationApi';
 import {
     useGetEducationsQuery,
@@ -119,6 +118,9 @@ export function StudentProfile() {
     const [locationQuery, setLocationQuery] = useState('');
     // Track the selected location's ID for correct backend payload
     const [selectedLocationId, setSelectedLocationId] = useState<string>('');
+    const [selectedDomainIds, setSelectedDomainIds] = useState<string[]>([]);
+    const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
+    const [selectedJobTypeIds, setSelectedJobTypeIds] = useState<string[]>([]);
 
     // ── Status states ────────────────────────────
     const [isSaving, setIsSaving] = useState(false);
@@ -132,7 +134,6 @@ export function StudentProfile() {
     const [profileInitialized, setProfileInitialized] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
 
-    // ── Snapshot for cancel: captures form values the moment Edit is clicked ──
     const [formSnapshot, setFormSnapshot] = useState<{
         location: string; locationQuery: string; selectedLocationId: string;
         jobType: string; jobTypeQuery: string;
@@ -141,6 +142,9 @@ export function StudentProfile() {
         experienceLevel: string; experienceLevelQuery: string; experienceLevelId: string;
         expectedSalary: string; currentSalary: string;
         skills: string[];
+        selectedDomainIds: string[];
+        selectedLocationIds: string[];
+        selectedJobTypeIds: string[];
     } | null>(null);
 
     // ── Refs ─────────────────────────────────────
@@ -180,17 +184,13 @@ export function StudentProfile() {
             setExpectedSalary(profile.expectedSalary || '');
             setCurrentSalary(profile.currentSalary || '');
             setSkills(profile.skills || []);
-            // Restore previously cached location ID
-            try {
-                const cachedIds = JSON.parse(localStorage.getItem('squrx_selected_location_ids') || '[]');
-                if (cachedIds.length > 0) setSelectedLocationId(cachedIds[0]);
-            } catch { /* ignore */ }
+            setSelectedDomainIds(profile.preferredDomainIds || []);
+            setSelectedLocationIds(profile.preferredLocationIds || []);
+            setSelectedJobTypeIds(profile.preferredJobTypeIds || []);
             setProfileInitialized(true);
         }
     }, [profile, profileInitialized]);
 
-    // Re-sync if profile reloads (e.g. after save) — SKIP while user is actively editing
-    // to avoid overwriting unsaved form values mid-edit
     useEffect(() => {
         if (profile && profileInitialized && !isEditing) {
             setLocation(profile.location || '');
@@ -207,6 +207,9 @@ export function StudentProfile() {
             setExpectedSalary(profile.expectedSalary || '');
             setCurrentSalary(profile.currentSalary || '');
             setSkills(profile.skills || []);
+            setSelectedDomainIds(profile.preferredDomainIds || []);
+            setSelectedLocationIds(profile.preferredLocationIds || []);
+            setSelectedJobTypeIds(profile.preferredJobTypeIds || []);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [profile]);
@@ -214,11 +217,7 @@ export function StudentProfile() {
     // ── GDPR consent ─────────────────────────────
     useEffect(() => {
         if (user) {
-            // Merge localStorage state with backend gdprConsent value
-            const localConsent = getGdprConsent(user.id);
-            const backendConsent = profile?.gdprConsent;
-            // If backend says true, always honour it — consent cannot be revoked from UI
-            setIsConsentEnabled(backendConsent === true ? true : localConsent);
+            setIsConsentEnabled(profile?.gdprConsent === true);
         }
     }, [user, profile]);
 
@@ -230,10 +229,13 @@ export function StudentProfile() {
             return;
         }
         setIsConsentEnabled(checked);
-        setGdprConsent(user.id, checked);
-        const log = { userId: user.id, email: user.email, timestamp: new Date().toISOString(), status: checked ? 'GRANTED' : 'WITHDRAWN' };
-        localStorage.setItem(`squrx_gdpr_withdraw_log_${user.id}`, JSON.stringify(log));
-        showToast(checked ? 'Data processing consent accepted.' : 'Consent withdrawn.', checked ? 'success' : 'error');
+        try {
+            await updateProfile(user.id, { gdprConsent: checked });
+            showToast('Data processing consent accepted.', 'success');
+        } catch (err: any) {
+            showToast(err.message || 'Failed to sync consent settings with backend.', 'error');
+            setIsConsentEnabled(!checked);
+        }
     };
 
     // ── Toast helper ─────────────────────────────
@@ -258,6 +260,9 @@ export function StudentProfile() {
             experienceLevel, experienceLevelQuery, experienceLevelId,
             expectedSalary, currentSalary,
             skills: [...skills],
+            selectedDomainIds: [...selectedDomainIds],
+            selectedLocationIds: [...selectedLocationIds],
+            selectedJobTypeIds: [...selectedJobTypeIds],
         });
         setIsEditing(true);
     };
@@ -282,6 +287,9 @@ export function StudentProfile() {
             setExpectedSalary(formSnapshot.expectedSalary);
             setCurrentSalary(formSnapshot.currentSalary);
             setSkills(formSnapshot.skills);
+            setSelectedDomainIds(formSnapshot.selectedDomainIds);
+            setSelectedLocationIds(formSnapshot.selectedLocationIds);
+            setSelectedJobTypeIds(formSnapshot.selectedJobTypeIds);
         }
         setFormErrors({});
         setIsEditing(false);
@@ -327,19 +335,9 @@ export function StudentProfile() {
                 skills: skillIds.length > 0 ? skillIds : skills,
                 locations: location.split(',').map(l => l.trim()).filter(Boolean),
                 jobTypes: jobType.split(',').map(j => j.trim()).filter(Boolean),
-                // Cache for backend sync
-                preferredDomains: (() => {
-                    try { return JSON.parse(localStorage.getItem('squrx_selected_domain_ids') || '[]'); } catch { return []; }
-                })(),
-                // Build preferredLocations from in-memory state (most reliable)
-                // then fall back to localStorage (populated by onboarding / previous session)
-                preferredLocations: (() => {
-                    if (selectedLocationId) return [selectedLocationId];
-                    try { return JSON.parse(localStorage.getItem('squrx_selected_location_ids') || '[]'); } catch { return []; }
-                })(),
-                preferredJobTypes: (() => {
-                    try { return JSON.parse(localStorage.getItem('squrx_selected_job_type_ids') || '[]'); } catch { return []; }
-                })(),
+                preferredDomains: selectedDomainIds,
+                preferredLocations: selectedLocationIds.length > 0 ? selectedLocationIds : (selectedLocationId ? [selectedLocationId] : []),
+                preferredJobTypes: selectedJobTypeIds,
             });
 
             setSaveSuccess(true);
@@ -514,7 +512,7 @@ export function StudentProfile() {
                                             <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-1.5 flex flex-col gap-0.5">
                                                 {educationsData.data.filter((e: any) => e.name.toLowerCase().includes(educationQuery.toLowerCase())).map((edu: any) => (
                                                     <button key={edu._id} type="button"
-                                                        onMouseDown={() => { setEducation(edu.name); setEducationQuery(edu.name); setEducationId(edu._id); setShowEduSuggestions(false); localStorage.setItem('squrx_selected_education_id', edu._id); }}
+                                                        onMouseDown={() => { setEducation(edu.name); setEducationQuery(edu.name); setEducationId(edu._id); setShowEduSuggestions(false); }}
                                                         className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-lg transition-colors"
                                                     >{edu.name}</button>
                                                 ))}
@@ -543,7 +541,7 @@ export function StudentProfile() {
                                                     const displayName = el.name === 'Fresher' ? 'Fresher' : `${el.name} Years`;
                                                     return (
                                                         <button key={el._id} type="button"
-                                                            onMouseDown={() => { setExperienceLevel(el.name); setExperienceLevelQuery(displayName); setExperienceLevelId(el._id); setShowExpSuggestions(false); localStorage.setItem('squrx_selected_experience_level_id', el._id); }}
+                                                            onMouseDown={() => { setExperienceLevel(el.name); setExperienceLevelQuery(displayName); setExperienceLevelId(el._id); setShowExpSuggestions(false); }}
                                                             className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-lg transition-colors"
                                                         >{displayName}</button>
                                                     );
@@ -604,9 +602,8 @@ export function StudentProfile() {
                                                                 setLocation(l.name);
                                                                 setLocationQuery(l.name);
                                                                 setShowLocationSuggestions(false);
-                                                                // Capture ID immediately so submit payload is correct
                                                                 setSelectedLocationId(l._id || '');
-                                                                localStorage.setItem('squrx_selected_location_ids', JSON.stringify([l._id].filter(Boolean)));
+                                                                setSelectedLocationIds([l._id].filter(Boolean));
                                                             }}
                                                             className="px-3 py-1.5 text-xs font-semibold bg-muted hover:bg-black hover:text-white rounded-lg transition-colors"
                                                         >+ {l.name}</button>
@@ -632,7 +629,7 @@ export function StudentProfile() {
                                             <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-1.5 flex flex-col gap-0.5">
                                                 {jobTypesData.data.map((jt: any) => (
                                                     <button key={jt._id} type="button"
-                                                        onMouseDown={() => { setJobType(jt.name); setJobTypeQuery(jt.name); setShowJobTypeSuggestions(false); localStorage.setItem('squrx_selected_job_type_ids', JSON.stringify([jt._id])); }}
+                                                        onMouseDown={() => { setJobType(jt.name); setJobTypeQuery(jt.name); setShowJobTypeSuggestions(false); setSelectedJobTypeIds([jt._id].filter(Boolean)); }}
                                                         className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-lg transition-colors"
                                                     >{jt.name}</button>
                                                 ))}
@@ -666,9 +663,9 @@ export function StudentProfile() {
                                                             parts[parts.length - 1] = ` ${d.name}`;
                                                             setCareerGoal(parts.join(',').trim());
                                                             setShowDomainSuggestions(false);
-                                                            const domainIds = (() => { try { return JSON.parse(localStorage.getItem('squrx_selected_domain_ids') || '[]'); } catch { return []; } })();
-                                                            if (!domainIds.includes(d._id)) domainIds.push(d._id);
-                                                            localStorage.setItem('squrx_selected_domain_ids', JSON.stringify(domainIds));
+                                                            if (!selectedDomainIds.includes(d._id)) {
+                                                                setSelectedDomainIds([...selectedDomainIds, d._id]);
+                                                            }
                                                         }}
                                                         className="px-3 py-1.5 text-xs font-semibold bg-muted hover:bg-black hover:text-white rounded-lg transition-colors"
                                                     >+ {d.name}</button>

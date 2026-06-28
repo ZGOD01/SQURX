@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { useAuthStore } from '@/features/auth/store';
+import { useAuthStore, getInMemToken } from '@/features/auth/store';
 import { useStudentStore } from '@/features/student/store';
 import { useRecruiterStore } from '@/features/recruiter/store';
 import { LogOut, LayoutDashboard, UserSquare, Briefcase, Settings, Users, FileBarChart, Loader2, Home, ArrowLeft, ShieldAlert } from 'lucide-react';
@@ -42,7 +42,8 @@ export function AppShell() {
 
     // Decodes JWT to extract user ID safely
     const getUserIdFromToken = () => {
-        const token = localStorage.getItem('token');
+        const token = getInMemToken();
+
         if (!token) return null;
         try {
             const base64Url = token.split('.')[1];

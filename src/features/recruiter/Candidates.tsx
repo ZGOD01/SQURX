@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useRecruiterStore } from './store';
-import { Card, CardContent, Button, Select, Badge, Drawer, Textarea, Toast } from '@/components/ui';
+import { Card, CardContent, Button, Select, Badge, Drawer, Textarea, Toast, MissingApiAlert } from '@/components/ui';
 import { PageTransition, StaggerContainer, StaggerItem, HoverLift } from '@/components/motion';
 import { Briefcase, MapPin, Search, Download, CheckCircle, XCircle, Clock } from 'lucide-react';
 import type { StudentProfile, User as DbUser, JobApplication } from '@/lib/mockDb/schema';
@@ -74,6 +74,7 @@ export function RecruiterCandidates() {
 
     return (
         <PageTransition className="space-y-6 max-w-6xl mx-auto pb-12">
+            <MissingApiAlert featureName="Candidate Sourcing & Decision Management" />
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Candidate Sourcing</h1>
@@ -232,6 +233,7 @@ export function RecruiterCandidates() {
                                 className="resize-none h-24"
                                 value={notes}
                                 onChange={(e) => setNotes(e.target.value)}
+                                disabled
                             />
                         </div>
 
@@ -240,6 +242,7 @@ export function RecruiterCandidates() {
                                 variant="outline"
                                 className="flex-1 border-destructive text-destructive hover:bg-destructive/10"
                                 onClick={() => handleDecision('REJECT')}
+                                disabled
                             >
                                 Reject
                             </Button>
@@ -247,12 +250,14 @@ export function RecruiterCandidates() {
                                 variant="outline"
                                 className="flex-1 border-amber-500 text-amber-600 hover:bg-amber-500/10"
                                 onClick={() => handleDecision('HOLD')}
+                                disabled
                             >
                                 Hold
                             </Button>
                             <Button
                                 className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg"
                                 onClick={() => handleDecision('SHORTLIST')}
+                                disabled
                             >
                                 Shortlist
                             </Button>

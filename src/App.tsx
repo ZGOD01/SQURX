@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import UiPreview from '@/app/UiPreview';
 import { AppShell } from '@/app/AppShell';
@@ -6,6 +7,7 @@ import { GuestRoute } from '@/app/GuestRoute';
 import { RoleGuard } from '@/app/RoleGuard';
 import { StudentOnboardingGuard } from '@/app/StudentOnboardingGuard';
 import { EmailToaster } from '@/components/ui';
+import { useAuthStore } from '@/features/auth/store';
 
 import { Landing } from '@/features/landing/Landing';
 import { Login } from '@/features/auth/Login';
@@ -18,6 +20,16 @@ import { RecruiterDashboard, RecruiterCompany, RecruiterVacancies, RecruiterCand
 import { AdminDashboard, AdminUsers, AdminReports } from '@/features/admin/AdminViews';
 
 function App() {
+  const verifySession = useAuthStore((s) => s.verifySession);
+
+  // Validate the stored token against the backend exactly once on startup.
+  // Guards (ProtectedRoute / GuestRoute) will wait for this to resolve
+  // before making any routing decision.
+  useEffect(() => {
+    verifySession();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>

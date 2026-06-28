@@ -11,11 +11,10 @@ interface RoleGuardProps {
 }
 
 export function RoleGuard({ children, allowedRoles, fallbackPath }: RoleGuardProps) {
-    const { user, _hasHydrated } = useAuthStore();
+    const { user, isAuthLoading, isAuthVerified } = useAuthStore();
 
-    // Wait for the persisted store to rehydrate before making any routing decision.
-    // Without this, refreshing /student shows 403 because user is null for a brief moment.
-    if (!_hasHydrated) {
+    // Wait for backend session verification before making any role-based decision.
+    if (isAuthLoading || !isAuthVerified) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-background">
                 <Loader2 className="animate-spin text-primary w-8 h-8" />

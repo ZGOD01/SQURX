@@ -4,12 +4,12 @@ import { useAuthStore } from '@/features/auth/store';
 import { Loader2 } from 'lucide-react';
 
 export function ProtectedRoute({ children }: { children: ReactNode }) {
-    const { user, _hasHydrated } = useAuthStore();
+    const { user, isAuthLoading, isAuthVerified } = useAuthStore();
     const location = useLocation();
 
-    // Wait for the store to rehydrate from localStorage before deciding.
-    // This prevents the 404/redirect flash when refreshing a protected route.
-    if (!_hasHydrated) {
+    // Wait for the backend /me check to complete before making any routing decision.
+    // This prevents showing old user data or a flash-redirect while verification is pending.
+    if (isAuthLoading || !isAuthVerified) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-background">
                 <Loader2 className="animate-spin text-primary w-8 h-8" />

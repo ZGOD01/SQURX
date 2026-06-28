@@ -28,9 +28,11 @@ export const initialJobs: JobListing[] = [
   }))
 ];
 
+let mockJobsMemory: JobListing[] | null = null;
+
 export function getMockJobs(): JobListing[] {
-  const stored = localStorage.getItem('squrx_mock_jobs');
-  if (stored) return JSON.parse(stored);
-  localStorage.setItem('squrx_mock_jobs', JSON.stringify(initialJobs));
-  return initialJobs;
+  if (!mockJobsMemory) {
+    mockJobsMemory = initialJobs;
+  }
+  return mockJobsMemory;
 }

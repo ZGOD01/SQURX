@@ -1,20 +1,17 @@
 import type { DatabaseSchema, User, JobVacancy, JobApplication, StudentProfile, CompanyProfile, ConsultationBooking, SystemActivity } from './schema';
 import { generateSeedData } from './seed';
 
-const DB_KEY = 'squrx_master_db_v4';
+let inMemoryDb: DatabaseSchema | null = null;
 
 const getDb = (): DatabaseSchema => {
-  const store = localStorage.getItem(DB_KEY);
-  if (!store) {
-    const seed = generateSeedData();
-    localStorage.setItem(DB_KEY, JSON.stringify(seed));
-    return seed;
+  if (!inMemoryDb) {
+    inMemoryDb = generateSeedData();
   }
-  return JSON.parse(store) as DatabaseSchema;
+  return inMemoryDb;
 };
 
 const saveDb = (db: DatabaseSchema) => {
-  localStorage.setItem(DB_KEY, JSON.stringify(db));
+  inMemoryDb = db;
 };
 
 export const MockDB = {

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { consultationApi } from '@/lib/consultationApi';
 import { FadeInOnView } from '@/components/motion';
-import { useAuthStore } from '@/features/auth/store';
+import { useAuthStore, getInMemToken, setInMemToken } from '@/features/auth/store';
 import { useNavigate } from 'react-router-dom';
 import { setGdprConsent } from '@/lib/utils';
 import { 
@@ -200,8 +200,7 @@ export function GlobalCareerDiagnostic() {
         if (index < questions.length - 1) {
             setTimeout(() => setStep(index + 1), 250);
         } else {
-            // Write user answers to localStorage so that they are synced and readable across tabs
-            localStorage.setItem('squrx_quiz_answers', JSON.stringify(nextAnswers));
+            // Answers are held in React state — no sessionStorage write needed
             setIsAnalyzing(true);
             setTimeout(() => {
                 setIsAnalyzing(false);
@@ -234,7 +233,7 @@ export function GlobalCareerDiagnostic() {
         setBookingError(null);
         
         try {
-            // Build quiz answers from component state (no localStorage)
+            // Build quiz answers from component state (no sessionStorage)
             const quizAnswersList = Object.keys(answers).map(key => {
                 const stepIndex = parseInt(key, 10);
                 const rawChoice = answers[stepIndex];
@@ -260,7 +259,7 @@ export function GlobalCareerDiagnostic() {
 
             // Silent signup & login flow to ensure user document exists and has gdprConsent verified,
             // and obtaining a valid token to authorize the subsequent book request.
-            let activeToken = localStorage.getItem('token') || '';
+            let activeToken = getInMemToken() || '';
             let authError: string | null = null;
             let loggedInUser: any = null;
             
@@ -284,7 +283,7 @@ export function GlobalCareerDiagnostic() {
                     if (loginRes.status === 200 && loginData.success && loginData.data?.token) {
                         activeToken = loginData.data.token;
                         loggedInUser = loginData.data.user;
-                        localStorage.setItem('token', activeToken);
+                        setInMemToken(activeToken);
                         setPasswordRequired(false);
                     } else if (loginRes.status === 401) {
                         authError = "Incorrect password. Please verify your password and try again.";
@@ -333,7 +332,7 @@ export function GlobalCareerDiagnostic() {
                             if (verifyRes.status === 200 && verifyData.success && verifyData.data?.token) {
                                 activeToken = verifyData.data.token;
                                 loggedInUser = verifyData.data.user;
-                                localStorage.setItem('token', activeToken);
+                                setInMemToken(activeToken);
                                 setIsGuestAccount(true); // brand-new account — show temp password notice
                             } else {
                                 console.warn("Silent OTP verification failed:", verifyData);
@@ -353,7 +352,7 @@ export function GlobalCareerDiagnostic() {
                         if (loginRes.status === 200 && loginData.success && loginData.data?.token) {
                             activeToken = loginData.data.token;
                             loggedInUser = loginData.data.user;
-                            localStorage.setItem('token', activeToken);
+                            setInMemToken(activeToken);
                         } else if (loginRes.status === 401) {
                             setPasswordRequired(true);
                             authError = "This email/mobile is already registered. Please enter your password below to confirm booking.";
@@ -428,7 +427,7 @@ export function GlobalCareerDiagnostic() {
                     // Single call to setAuth — no duplicates.
                     setAuth(resolvedUser, tokenToUse);
 
-                    // Update GDPR consent in localStorage using the resolved user id.
+                    // Update GDPR consent using the resolved user id.
                     const userId = resolvedUser._id || resolvedUser.id;
                     if (userId) {
                         setGdprConsent(userId, true);
@@ -706,7 +705,7 @@ export function GlobalCareerDiagnostic() {
                                         
                                         const formData = new FormData(e.currentTarget);
 
-                                        // Store lead info in component state (no localStorage)
+                                        // Store lead info in component state (no sessionStorage)
                                         setLeadData({
                                             name: String(formData.get('name') || ''),
                                             email: String(formData.get('email') || ''),
