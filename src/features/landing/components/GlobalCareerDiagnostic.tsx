@@ -15,6 +15,7 @@ import {
 import { Button } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL } from '@/lib/config';
+import { useGetCountriesQuery } from '@/lib/store/authApi';
 
 const QUESTIONS = [
     {
@@ -107,7 +108,31 @@ export function GlobalCareerDiagnostic() {
     // Lead Generation Form State
     const [isLeadFormMode, setIsLeadFormMode] = useState(false);
     const [isLeadFormSubmitted, setIsLeadFormSubmitted] = useState(false);
-    const [leadData, setLeadData] = useState<{ name: string; email: string; mobile: string }>({ name: '', email: '', mobile: '' });
+
+    // Country selection state
+    const [selectedCountryCode, setSelectedCountryCode] = useState("+1");
+    const [selectedCountryId, setSelectedCountryId] = useState("6a265f8178dc3c43b364e4dd");
+    const [showCountryDropdown, setShowCountryDropdown] = useState(false);
+    const [countrySearch, setCountrySearch] = useState("");
+    const { data: countriesRes, isLoading: isCountriesLoading } = useGetCountriesQuery(
+        countrySearch.trim() ? { search: countrySearch } : undefined
+    );
+
+    const countriesList = Array.isArray(countriesRes)
+        ? countriesRes
+        : (countriesRes?.data && Array.isArray(countriesRes.data))
+            ? countriesRes.data
+            : [];
+
+    const selectedCountry = countriesList.find((c: any) => c._id === selectedCountryId);
+
+    const [leadData, setLeadData] = useState<{ name: string; email: string; mobile: string; countryCode: string; country: string }>({ 
+        name: '', 
+        email: '', 
+        mobile: '',
+        countryCode: '+1',
+        country: '6a265f8178dc3c43b364e4dd'
+    });
 
     const [slotsData, setSlotsData] = useState<any[]>([]);
     const [showOverlay, setShowOverlay] = useState(true);
@@ -206,10 +231,16 @@ export function GlobalCareerDiagnostic() {
                 setIsAnalyzing(false);
                 setStep(questions.length);
                 if (user) {
+                    const cCode = user.countryCode || (typeof user.country === 'object' ? user.country?.phoneCode : null) || '+1';
+                    const cId = (typeof user.country === 'object' ? user.country?._id : user.country) || '6a265f8178dc3c43b364e4dd';
+                    setSelectedCountryCode(cCode);
+                    setSelectedCountryId(cId);
                     setLeadData({
                         name: user.name || user.fullName || 'Student',
                         email: user.email || '',
-                        mobile: user.mobile || '9999999999'
+                        mobile: user.mobile || '9999999999',
+                        countryCode: cCode,
+                        country: cId
                     });
                     setIsLeadFormSubmitted(true);
                     setIsBookingMode(true);
@@ -306,6 +337,8 @@ export function GlobalCareerDiagnostic() {
                             fullName: leadData.name || 'Guest User',
                             email: leadData.email || 'guest@example.com',
                             mobile: sanitizedMobile,
+                            countryCode: leadData.countryCode,
+                            country: leadData.country,
                             password: guestPassword,
                             role: 'student',
                             gdprConsent: true,
@@ -709,7 +742,9 @@ export function GlobalCareerDiagnostic() {
                                         setLeadData({
                                             name: String(formData.get('name') || ''),
                                             email: String(formData.get('email') || ''),
-                                            mobile: String(formData.get('mobile') || '')
+                                            mobile: String(formData.get('mobile') || ''),
+                                            countryCode: selectedCountryCode,
+                                            country: selectedCountryId
                                         });
 
                                         setPasswordRequired(false);
@@ -736,12 +771,115 @@ export function GlobalCareerDiagnostic() {
                                         </div>
                                         
                                         <div className="space-y-1.5 group">
-                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1 group-focus-within:text-blue-600 transition-colors">Mobile Number</label>
-                                            <div className="relative border-2 border-gray-100 hover:border-gray-200 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 rounded-[1rem] flex items-center bg-gray-50/50 focus-within:bg-white transition-all shadow-sm">
-                                                <span className="pl-4 pr-2 text-sm font-bold text-gray-500 border-r border-gray-200 py-1">+91</span>
-                                                <input name="mobile" required type="tel" pattern="[0-9]{10}" minLength={10} maxLength={10} defaultValue={leadData.mobile} title="Mobile number must be exactly 10 digits" placeholder="9876543210" className="w-full h-14 bg-transparent px-4 text-sm font-bold text-gray-900 outline-none" />
-                                            </div>
-                                        </div>
+                                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1 group-focus-within:text-blue-600 transition-colors">Mobile Number</label>
+                                             <div className="flex gap-3 relative">
+                                                 {/* Country Dropdown Trigger */}
+                                                 <div className="relative w-[130px] flex-shrink-0">
+                                                     <button
+                                                         type="button"
+                                                         onClick={() => setShowCountryDropdown(!showCountryDropdown)}
+                                                         className="w-full bg-gray-50/50 hover:bg-white border-2 border-gray-100 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-[1rem] px-3.5 h-14 transition-all duration-300 font-bold text-left flex justify-between items-center text-sm text-gray-900 shadow-sm"
+                                                     >
+                                                         <div className="flex items-center gap-2 min-w-0">
+                                                             {selectedCountry?.code && (
+                                                                 <img
+                                                                     src={`https://flagcdn.com/w40/${selectedCountry.code.toLowerCase()}.png`}
+                                                                     alt={selectedCountry.name}
+                                                                     className="w-5 h-3.5 object-cover rounded flex-shrink-0 shadow-sm"
+                                                                 />
+                                                             )}
+                                                             <span className="truncate">
+                                                                 {selectedCountryCode || "Code"}
+                                                             </span>
+                                                         </div>
+                                                         <span className="text-[9px] text-gray-400 flex-shrink-0 pl-1">▼</span>
+                                                     </button>
+
+                                                     {showCountryDropdown && (
+                                                         <>
+                                                             {/* Click-outside backdrop overlay */}
+                                                             <div 
+                                                                 className="fixed inset-0 z-30" 
+                                                                 onClick={(e) => {
+                                                                     e.stopPropagation();
+                                                                     setShowCountryDropdown(false);
+                                                                     setCountrySearch("");
+                                                                 }} 
+                                                             />
+                                                             {/* Dropdown Menu */}
+                                                             <div className="absolute left-0 mt-2 w-[280px] bg-white border border-gray-100 rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.12)] z-40 max-h-60 overflow-y-auto flex flex-col p-2">
+                                                                 {/* Search bar inside dropdown */}
+                                                                 <div className="px-1 py-1 sticky top-0 bg-white z-10">
+                                                                     <input
+                                                                         type="text"
+                                                                         placeholder="Search country..."
+                                                                         value={countrySearch}
+                                                                         onChange={(e) => setCountrySearch(e.target.value)}
+                                                                         onClick={(e) => e.stopPropagation()}
+                                                                         className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all font-semibold"
+                                                                     />
+                                                                 </div>
+                                                                 <div className="mt-1">
+                                                                     {isCountriesLoading && (
+                                                                         <div className="text-xs text-gray-400 p-3 text-center">Loading countries...</div>
+                                                                     )}
+                                                                     {!isCountriesLoading && countriesList.length === 0 && (
+                                                                         <div className="text-xs text-gray-400 p-3 text-center">No countries found</div>
+                                                                     )}
+                                                                     {countriesList.map((c: any) => (
+                                                                         <button
+                                                                             key={c._id}
+                                                                             type="button"
+                                                                             onClick={() => {
+                                                                                 setSelectedCountryCode(c.phoneCode);
+                                                                                 setSelectedCountryId(c._id);
+                                                                                 setShowCountryDropdown(false);
+                                                                                 setCountrySearch("");
+                                                                             }}
+                                                                             className={`w-full text-left text-xs px-3 py-2.5 hover:bg-gray-50 rounded-xl transition-colors flex items-center justify-between gap-2 ${
+                                                                                 selectedCountryId === c._id ? "bg-blue-50/50 text-blue-600" : "text-gray-700"
+                                                                             }`}
+                                                                         >
+                                                                             <div className="flex items-center gap-2 min-w-0">
+                                                                                 {c.code && (
+                                                                                     <img
+                                                                                         src={`https://flagcdn.com/w40/${c.code.toLowerCase()}.png`}
+                                                                                         alt={c.name}
+                                                                                         className="w-5 h-3.5 object-cover rounded shadow-sm flex-shrink-0"
+                                                                                     />
+                                                                                 )}
+                                                                                 <span className="font-bold truncate">{c.name}</span>
+                                                                             </div>
+                                                                             <span className="text-gray-400 text-xs font-bold flex-shrink-0">{c.phoneCode}</span>
+                                                                         </button>
+                                                                     ))}
+                                                                 </div>
+                                                             </div>
+                                                         </>
+                                                     )}
+                                                 </div>
+
+                                                 {/* Mobile input */}
+                                                 <div className="flex-1">
+                                                     <input 
+                                                         name="mobile" 
+                                                         required 
+                                                         type="tel" 
+                                                         pattern="[0-9]{10}" 
+                                                         minLength={10} 
+                                                         maxLength={10} 
+                                                         defaultValue={leadData.mobile} 
+                                                         title="Mobile number must be exactly 10 digits" 
+                                                         placeholder="9876543210" 
+                                                         className="w-full h-14 bg-gray-50/50 border-2 border-gray-100 hover:border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-[1rem] px-4 text-sm font-bold text-gray-900 transition-all outline-none shadow-sm"
+                                                         onInput={(e) => {
+                                                             const el = e.currentTarget as HTMLInputElement;
+                                                             el.value = el.value.replace(/\D/g, '').slice(0, 10);
+                                                         }}
+                                                     />
+                                                 </div>
+                                             </div>
+                                         </div>
 
                                         <div className="flex gap-3 mt-6">
                                             <Button type="button" variant="outline" className="flex-1 rounded-2xl h-14 text-sm font-bold" onClick={() => {
