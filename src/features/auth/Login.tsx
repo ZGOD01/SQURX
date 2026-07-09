@@ -8,7 +8,7 @@ import { useLoginMutation } from '@/lib/store/authApi';
 import { Button, Input, Toast } from '@/components/ui';
 import { PageTransition } from '@/components/motion';
 import { loginSchema, type LoginFormValues } from '@/lib/validators/auth';
-import { Loader2, ArrowRight, KeyRound } from 'lucide-react';
+import { Loader2, ArrowRight, KeyRound, Eye, EyeOff } from 'lucide-react';
 import { setGdprConsent } from '@/lib/utils';
 
 export function Login() {
@@ -22,6 +22,7 @@ export function Login() {
     const location = useLocation();
     const { setAuth } = useAuthStore();
     const [loginMutation, { isLoading }] = useLoginMutation();
+    const [showPassword, setShowPassword] = useState(false);
 
     const { register: formRegister, handleSubmit, formState: { errors } } = useForm<LoginFormValues>({
         resolver: zodResolver(loginSchema),
@@ -134,13 +135,27 @@ export function Login() {
                                             <label className="text-xs font-semibold text-black/70 uppercase tracking-widest group-focus-within:text-black transition-colors" htmlFor="password">Password</label>
                                             <Link to="/auth/forgot-password" className="text-[10px] font-bold tracking-widest uppercase text-black/40 hover:text-black transition-colors border-b border-transparent hover:border-black pb-0.5">Forgot password?</Link>
                                         </div>
-                                        <Input
-                                            id="password"
-                                            type="password"
-                                            placeholder="••••••••"
-                                            className={`h-14 bg-black/[0.02] border-black/10 focus-visible:bg-white focus-visible:border-black focus-visible:ring-4 focus-visible:ring-black/5 font-light rounded-xl transition-all text-lg shadow-inner ${errors.password ? 'border-red-500 focus-visible:border-red-500' : ''}`}
-                                            {...formRegister('password')}
-                                        />
+                                        <div className="relative">
+                                            <Input
+                                                id="password"
+                                                type={showPassword ? 'text' : 'password'}
+                                                placeholder="••••••••"
+                                                className={`h-14 pr-12 w-full bg-black/[0.02] border-black/10 focus-visible:bg-white focus-visible:border-black focus-visible:ring-4 focus-visible:ring-black/5 font-light rounded-xl transition-all text-lg shadow-inner ${errors.password ? 'border-red-500 focus-visible:border-red-500' : ''}`}
+                                                {...formRegister('password')}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPassword(!showPassword)}
+                                                className="absolute right-4 top-1/2 -translate-y-1/2 text-black/40 hover:text-black/70 focus:outline-none transition-colors p-1"
+                                                aria-label={showPassword ? "Hide password" : "Show password"}
+                                            >
+                                                {showPassword ? (
+                                                    <EyeOff className="w-5 h-5" />
+                                                ) : (
+                                                    <Eye className="w-5 h-5" />
+                                                )}
+                                            </button>
+                                        </div>
                                         {errors.password && <p className="text-red-500 text-xs pl-1 mt-1">{errors.password.message}</p>}
                                         <p className="text-[11px] text-black/35 pl-1 mt-1 leading-relaxed">
                                             Booked a consultation without signing up?{' '}

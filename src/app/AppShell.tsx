@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore, getInMemToken } from '@/features/auth/store';
 import { useStudentStore } from '@/features/student/store';
 import { useRecruiterStore } from '@/features/recruiter/store';
-import { LogOut, LayoutDashboard, UserSquare, Briefcase, Settings, Users, FileBarChart, Loader2, Home, ArrowLeft, ShieldAlert } from 'lucide-react';
+import { LogOut, LayoutDashboard, UserSquare, Briefcase, Settings, Users, FileBarChart, Loader2, Home, ArrowLeft, ShieldAlert, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, Toast } from '@/components/ui';
 import { useNotificationStore } from '@/lib/store/notifications';
@@ -141,8 +141,7 @@ export function AppShell() {
         }
     };
 
-    const { fetchDashboardData: fetchStudent, isLoading: isStudentLoading, profile: studentProfile } = useStudentStore();
-    const { fetchDashboardData: fetchRecruiter, isLoading: isRecruiterLoading, company: recruiterCompany } = useRecruiterStore();
+    const { fetchDashboardData: fetchRecruiter, company: recruiterCompany } = useRecruiterStore();
     const fetchedRef = useRef(false);
 
     const { sendEmail } = useNotificationStore();
@@ -150,31 +149,12 @@ export function AppShell() {
     useEffect(() => {
         if (user && !fetchedRef.current) {
             fetchedRef.current = true;
-            if (user.role === 'STUDENT' && !studentProfile) {
-                fetchStudent(user.id).catch(console.error);
-            } else if (user.role === 'RECRUITER' && !recruiterCompany) {
+            // Recruiter data fetch (student data is handled by StudentOnboardingGuard)
+            if (user.role === 'RECRUITER' && !recruiterCompany) {
                 fetchRecruiter(user.id).catch(console.error);
             }
         }
-
-        // Simulate sending a "We missed you!" email if the user has been inactive for > 10 days
-        if (user && user.lastLoginAt) {
-            const lastLogin = new Date(user.lastLoginAt);
-            const now = new Date();
-            const diffDays = Math.floor((now.getTime() - lastLogin.getTime()) / (1000 * 3600 * 24));
-
-            if (diffDays >= 10) {
-                // Sent after a slight delay so they see it entering the dashboard
-                setTimeout(() => {
-                    const firstName = (user.name || user.fullName) ? (user.name || user.fullName).split(' ')[0] : 'there';
-                    sendEmail(
-                        `We missed you, ${firstName}!`,
-                        `It's been ${diffDays} days since you last checked for opportunities on Squrx. Log back in to see fresh matches tailored for you!`
-                    );
-                }, 2000);
-            }
-        }
-    }, [user, fetchStudent, fetchRecruiter, sendEmail]);
+    }, [user, fetchRecruiter, recruiterCompany]);
 
     const getSidebarLinks = () => {
         if (!user) return [];
@@ -184,6 +164,7 @@ export function AppShell() {
                     { to: '/student', label: 'Dashboard', icon: LayoutDashboard },
                     { to: '/student/profile', label: 'Profile', icon: UserSquare },
                     { to: '/student/jobs', label: 'Jobs', icon: Briefcase },
+                    { to: '/student/consultations', label: 'Consultations', icon: Calendar },
                     { to: '/student/preferences', label: 'Preferences', icon: Settings },
                 ];
             case 'RECRUITER':
@@ -223,7 +204,7 @@ export function AppShell() {
                             <NavLink
                                 key={link.to}
                                 to={link.to}
-                                end={link.to.split('/').length === 2} // Exact match for base dashboard
+                                end={link.to === '/student' || link.to === '/recruiter' || link.to === '/admin'}
                                 className={({ isActive }) =>
                                     cn(
                                         'flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors',
@@ -294,13 +275,7 @@ export function AppShell() {
                 </header>
 
                 {/* Scrollable Main Content */}
-                <main className="flex-1 overflow-y-auto bg-background p-6 md:p-10 relative">
-                    {(isStudentLoading && user?.role === 'STUDENT') || (isRecruiterLoading && user?.role === 'RECRUITER') ? (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/50 backdrop-blur-sm z-50">
-                            <Loader2 className="w-10 h-10 animate-spin text-primary mb-4" />
-                            <p className="font-semibold text-muted-foreground animate-pulse">Loading workspace...</p>
-                        </div>
-                    ) : null}
+                <main className="flex-1 overflow-y-auto bg-background p-6 md:p-10">
                     <Outlet />
                 </main>
             </div>

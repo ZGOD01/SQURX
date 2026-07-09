@@ -15,7 +15,7 @@ import { Register } from '@/features/auth/Register';
 import { ForgotPassword } from '@/features/auth/ForgotPassword';
 import { Onboarding } from '@/features/auth/Onboarding';
 
-import { StudentDashboard, StudentProfile, StudentJobs, StudentPreferences } from '@/features/student/StudentViews';
+import { StudentDashboard, StudentProfile, StudentJobs, StudentPreferences, StudentConsultation } from '@/features/student/StudentViews';
 import { RecruiterDashboard, RecruiterCompany, RecruiterVacancies, RecruiterCandidates } from '@/features/recruiter/RecruiterViews';
 import { AdminDashboard, AdminUsers, AdminReports } from '@/features/admin/AdminViews';
 
@@ -70,6 +70,7 @@ function App() {
           <Route index element={<StudentDashboard />} />
           <Route path="profile" element={<StudentProfile />} />
           <Route path="jobs" element={<StudentJobs />} />
+          <Route path="consultations" element={<StudentConsultation />} />
           <Route path="preferences" element={<StudentPreferences />} />
         </Route>
 

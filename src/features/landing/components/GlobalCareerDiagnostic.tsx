@@ -10,7 +10,8 @@ import {
     ShieldCheck, Scale, GraduationCap,
     TrendingUp, Home, Microscope, Handshake, 
     HelpCircle, Calculator, Star, Map, CheckCircle2,
-    CalendarDays, LogIn, ArrowRight, Clock, Loader2
+    CalendarDays, LogIn, ArrowRight, Clock, Loader2,
+    Eye, EyeOff
 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -86,15 +87,20 @@ const PALETTES = [
 ];
 
 
-export function GlobalCareerDiagnostic() {
+export interface GlobalCareerDiagnosticProps {
+    directBooking?: boolean;
+    onSuccess?: () => void;
+}
+
+export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: GlobalCareerDiagnosticProps = {}) {
     const navigate = useNavigate();
     const { user, setAuth } = useAuthStore();
-    const [step, setStep] = useState(0);
+    const [step, setStep] = useState(directBooking ? QUESTIONS.length : 0);
     const [answers, setAnswers] = useState<Record<number, string>>({});
     const [isAnalyzing, setIsAnalyzing] = useState(false);
 
     // Consultation Booking States
-    const [isBookingMode, setIsBookingMode] = useState(false);
+    const [isBookingMode, setIsBookingMode] = useState(directBooking);
     const [selectedDate, setSelectedDate] = useState<string>('');
     const [selectedTime, setSelectedTime] = useState<string>('');
     const [isConfirmingBooking, setIsConfirmingBooking] = useState(false);
@@ -107,7 +113,9 @@ export function GlobalCareerDiagnostic() {
 
     // Lead Generation Form State
     const [isLeadFormMode, setIsLeadFormMode] = useState(false);
-    const [isLeadFormSubmitted, setIsLeadFormSubmitted] = useState(false);
+    const [isLeadFormSubmitted, setIsLeadFormSubmitted] = useState(directBooking);
+
+    const [showPassword, setShowPassword] = useState(false);
 
     // Country selection state
     const [selectedCountryCode, setSelectedCountryCode] = useState("+1");
@@ -135,7 +143,7 @@ export function GlobalCareerDiagnostic() {
     });
 
     const [slotsData, setSlotsData] = useState<any[]>([]);
-    const [showOverlay, setShowOverlay] = useState(true);
+    const [showOverlay, setShowOverlay] = useState(!directBooking);
     const [initialChoice, setInitialChoice] = useState<'jobs' | 'consultation' | null>(null);
 
     const [questions, setQuestions] = useState<any[]>(QUESTIONS);
@@ -217,6 +225,22 @@ export function GlobalCareerDiagnostic() {
             }
         }).catch(console.error);
     }, []);
+
+    useEffect(() => {
+        if (directBooking && user) {
+            const cCode = user.countryCode || (typeof user.country === 'object' ? user.country?.phoneCode : null) || '+1';
+            const cId = (typeof user.country === 'object' ? user.country?._id : user.country) || '6a265f8178dc3c43b364e4dd';
+            setSelectedCountryCode(cCode);
+            setSelectedCountryId(cId);
+            setLeadData({
+                name: user.name || user.fullName || 'Student',
+                email: user.email || '',
+                mobile: user.mobile || '9999999999',
+                countryCode: cCode,
+                country: cId
+            });
+        }
+    }, [directBooking, user]);
 
     const handleSelectOption = (index: number, optionId: string) => {
         const nextAnswers = { ...answers, [index]: optionId };
@@ -470,6 +494,7 @@ export function GlobalCareerDiagnostic() {
 
             setIsConfirmingBooking(false);
             setIsBookingConfirmed(true);
+            onSuccess?.();
         } catch (error: any) {
             console.error('Booking failed:', error);
             setBookingError(error.message || 'Failed to book consultation');
@@ -807,7 +832,7 @@ export function GlobalCareerDiagnostic() {
                                                                  }} 
                                                              />
                                                              {/* Dropdown Menu */}
-                                                             <div className="absolute left-0 mt-2 w-[280px] bg-white border border-gray-100 rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.12)] z-40 max-h-60 overflow-y-auto flex flex-col p-2">
+                                                             <div className="absolute left-0 bottom-full mb-2 w-[280px] bg-white border border-gray-100 rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.12)] z-40 max-h-60 overflow-y-auto flex flex-col p-2">
                                                                  {/* Search bar inside dropdown */}
                                                                  <div className="px-1 py-1 sticky top-0 bg-white z-10">
                                                                      <input
@@ -1053,14 +1078,26 @@ export function GlobalCareerDiagnostic() {
                                                      Confirm Your Password
                                                  </label>
                                              </div>
-                                             <div className="relative border-2 border-gray-100 hover:border-gray-200 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 rounded-[1.2rem] bg-white transition-all shadow-sm flex items-center">
+                                             <div className="relative border-2 border-gray-100 hover:border-gray-200 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 rounded-[1.2rem] bg-white transition-all shadow-sm flex items-center pr-3">
                                                  <input 
-                                                     type="password" 
+                                                     type={showPassword ? "text" : "password"} 
                                                      value={customPassword} 
                                                      onChange={(e) => setCustomPassword(e.target.value)}
                                                      placeholder="Enter account password" 
-                                                     className="w-full h-12 bg-transparent px-4 text-sm font-bold text-gray-900 outline-none" 
+                                                     className="w-full h-12 bg-transparent pl-4 pr-2 text-sm font-bold text-gray-900 outline-none" 
                                                  />
+                                                 <button
+                                                     type="button"
+                                                     onClick={() => setShowPassword(!showPassword)}
+                                                     className="text-gray-400 hover:text-gray-600 focus:outline-none transition-colors p-1"
+                                                     aria-label={showPassword ? "Hide password" : "Show password"}
+                                                 >
+                                                     {showPassword ? (
+                                                         <EyeOff className="w-5 h-5" />
+                                                     ) : (
+                                                         <Eye className="w-5 h-5" />
+                                                     )}
+                                                 </button>
                                              </div>
                                              <p className="text-[10px] text-gray-400 font-medium pl-1 leading-relaxed">
                                                  Verification token will be generated upon confirmation to secure your consultation appointment.
@@ -1161,19 +1198,23 @@ export function GlobalCareerDiagnostic() {
 
                                     <Button 
                                         onClick={() => {
-                                            setShowOverlay(true);
-                                            setStep(0);
-                                            setAnswers({});
-                                            setIsBookingConfirmed(false);
-                                            setIsBookingMode(false);
-                                            setIsLeadFormSubmitted(false);
-                                            setIsGuestAccount(false);
-                                            navigate('/student');
+                                            if (directBooking && onSuccess) {
+                                                onSuccess();
+                                            } else {
+                                                setShowOverlay(true);
+                                                setStep(0);
+                                                setAnswers({});
+                                                setIsBookingConfirmed(false);
+                                                setIsBookingMode(false);
+                                                setIsLeadFormSubmitted(false);
+                                                setIsGuestAccount(false);
+                                                navigate('/student');
+                                            }
                                         }} 
                                         size="lg" 
                                         className="w-full max-w-xs mx-auto rounded-xl h-12 text-sm bg-gray-900 hover:bg-black text-white font-bold shadow-lg transition-all"
                                     >
-                                        Go to Dashboard
+                                        {directBooking ? 'Back to Consultations' : 'Go to Dashboard'}
                                     </Button>
                                 </motion.div>
                             )}

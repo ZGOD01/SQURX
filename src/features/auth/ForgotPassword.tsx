@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useForgotPasswordMutation, useResetPasswordMutation } from "@/lib/store/authApi";
 import { Button, Input, Toast } from "@/components/ui";
 import { PageTransition } from "@/components/motion";
-import { Loader2, ArrowLeft, Mail, Lock } from "lucide-react";
+import { Loader2, ArrowLeft, Mail, Lock, Eye, EyeOff } from "lucide-react";
 
 export function ForgotPassword() {
     const [isLoading, setIsLoading] = useState(false);
@@ -22,6 +22,7 @@ export function ForgotPassword() {
     // Flow state
     const [step, setStep] = useState(0); // 0: Email, 1: OTP + New Password
     const [email, setEmail] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
     const [otp, setOtp] = useState("");
     const [newPassword, setNewPassword] = useState("");
     const [userId, setUserId] = useState<string | null>(null);
@@ -213,13 +214,25 @@ export function ForgotPassword() {
                                             <div className="relative">
                                                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-black/20" />
                                                 <Input
-                                                    type="password"
+                                                    type={showPassword ? "text" : "password"}
                                                     required
                                                     value={newPassword}
                                                     onChange={(e) => setNewPassword(e.target.value)}
                                                     placeholder="At least 6 characters"
-                                                    className="h-14 pl-12 bg-black/[0.02] border-black/10 focus-visible:bg-white focus-visible:border-black font-light rounded-xl"
+                                                    className="h-14 pl-12 pr-12 w-full bg-black/[0.02] border-black/10 focus-visible:bg-white focus-visible:border-black font-light rounded-xl"
                                                 />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowPassword(!showPassword)}
+                                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-black/40 hover:text-black/70 focus:outline-none transition-colors p-1"
+                                                    aria-label={showPassword ? "Hide password" : "Show password"}
+                                                >
+                                                    {showPassword ? (
+                                                        <EyeOff className="w-5 h-5" />
+                                                    ) : (
+                                                        <Eye className="w-5 h-5" />
+                                                    )}
+                                                </button>
                                             </div>
                                         </div>
                                     </div>

@@ -18,6 +18,8 @@ import {
     CheckCircle2,
     Building2,
     GraduationCap,
+    Eye,
+    EyeOff,
 } from "lucide-react";
 
 export function Register() {
@@ -46,6 +48,7 @@ export function Register() {
 
     // Country selection state
     const [showCountryDropdown, setShowCountryDropdown] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
     const [countrySearch, setCountrySearch] = useState("");
     const { data: countriesRes, isLoading: isCountriesLoading } = useGetCountriesQuery(
         countrySearch.trim() ? { search: countrySearch } : undefined
@@ -553,7 +556,7 @@ export function Register() {
                                                                             }} 
                                                                         />
                                                                         {/* Dropdown Menu */}
-                                                                        <div className="absolute left-0 mt-1.5 w-[260px] bg-white border border-black/10 rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.12)] z-40 max-h-60 overflow-y-auto flex flex-col p-2">
+                                                                        <div className="absolute left-0 bottom-full mb-1.5 w-[260px] bg-white border border-black/10 rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.12)] z-40 max-h-60 overflow-y-auto flex flex-col p-2">
                                                                             {/* Search bar inside dropdown */}
                                                                             <div className="px-1 py-1 sticky top-0 bg-white z-10">
                                                                                 <input
@@ -655,13 +658,27 @@ export function Register() {
                                                 <label className="text-xs font-semibold text-black/70 uppercase tracking-widest pl-1 group-focus-within:text-black transition-colors">
                                                     Account Password
                                                 </label>
-                                                <Input
-                                                    id="password"
-                                                    type="password"
-                                                    placeholder="At least 6 characters"
-                                                    className={`w-full bg-white hover:bg-black/[0.02] border border-black/10 focus-visible:ring-1 focus-visible:ring-black focus-visible:border-black rounded-xl p-3 shadow-inner transition-all duration-300 font-medium ${errors.password ? "border-red-500 focus-visible:border-red-500" : ""} `}
-                                                    {...formRegister("password")}
-                                                />
+                                                <div className="relative">
+                                                    <Input
+                                                        id="password"
+                                                        type={showPassword ? "text" : "password"}
+                                                        placeholder="At least 6 characters"
+                                                        className={`w-full pr-12 bg-white hover:bg-black/[0.02] border border-black/10 focus-visible:ring-1 focus-visible:ring-black focus-visible:border-black rounded-xl p-3 shadow-inner transition-all duration-300 font-medium ${errors.password ? "border-red-500 focus-visible:border-red-500" : ""} `}
+                                                        {...formRegister("password")}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowPassword(!showPassword)}
+                                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-black/40 hover:text-black/70 focus:outline-none transition-colors p-1"
+                                                        aria-label={showPassword ? "Hide password" : "Show password"}
+                                                    >
+                                                        {showPassword ? (
+                                                            <EyeOff className="w-5 h-5" />
+                                                        ) : (
+                                                            <Eye className="w-5 h-5" />
+                                                        )}
+                                                    </button>
+                                                </div>
                                                 {errors.password && (
                                                     <p className="text-xs text-red-500 pl-1">{errors.password.message}</p>
                                                 )}
