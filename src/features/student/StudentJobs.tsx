@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
 import { PageTransition, StaggerContainer, StaggerItem, HoverLift } from '@/components/motion';
-import { Card, Select, Button, Badge, Skeleton, Modal, Toast, MissingApiAlert } from '@/components/ui';
+import { Card, Select, Button, Badge, Skeleton, Modal, Toast } from '@/components/ui';
 import { 
     Search, 
     MapPin, 
     Building2, 
     Briefcase, 
     Filter, 
-    ExternalLink, 
     IndianRupee, 
     Sparkles, 
     GraduationCap, 
@@ -21,10 +20,11 @@ import {
     Clock, 
     ArrowRight, 
     CheckCircle2,
-    AlertTriangle
+    AlertTriangle,
+    WifiOff
 } from 'lucide-react';
-import { mockApi } from '@/lib/mockApi';
 import type { JobVacancy } from '@/lib/mockDb/schema';
+import { fetchJobs } from '@/lib/jobsApi';
 import { useNotificationStore } from '@/lib/store/notifications';
 import { useStudentStore } from './store';
 import { calculateJobRelevance } from './jobRelevance';
@@ -36,11 +36,12 @@ export function StudentJobs() {
     const { profile, applications, applyForJob } = useStudentStore();
     const [jobs, setJobs] = useState<JobVacancy[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [fetchError, setFetchError] = useState<string | null>(null);
     const [search, setSearch] = useState('');
     const [filterType, setFilterType] = useState('All');
     const [experienceFilter, setExperienceFilter] = useState('All');
     
-    // New Advanced Filters
+    // Advanced Filters
     const [locationFilter, setLocationFilter] = useState('All');
     const [skillFilter, setSkillFilter] = useState('All');
     const [minRelevance, setMinRelevance] = useState(0);
@@ -55,13 +56,18 @@ export function StudentJobs() {
     const appliedJobs = applications.map(app => app.vacancyId);
 
     useEffect(() => {
-        // Load data
         const loadData = async () => {
             setIsLoading(true);
-            await new Promise(res => setTimeout(res, 1000)); // fake delay for skeletons
-            const vacancies = await mockApi.getStudentVacancies();
-            setJobs(vacancies);
-            setIsLoading(false);
+            setFetchError(null);
+            try {
+                const vacancies = await fetchJobs({ limit: 200 });
+                setJobs(vacancies);
+            } catch (err: any) {
+                console.error('[StudentJobs] Failed to load jobs from API:', err);
+                setFetchError(err?.message ?? 'Unable to load jobs. Please try again.');
+            } finally {
+                setIsLoading(false);
+            }
         };
         loadData();
     }, []);
@@ -102,10 +108,20 @@ export function StudentJobs() {
                 j.skills?.some(s => s.toLowerCase().includes(query))
             );
         })
-        .filter(j => filterType === 'All' || j.jobType.includes(filterType))
-        .filter(j => experienceFilter === 'All' || j.experienceLevel === experienceFilter)
-        .filter(j => locationFilter === 'All' || j.location === locationFilter)
-        .filter(j => skillFilter === 'All' || j.skills?.includes(skillFilter))
+        .filter(j => {
+            // Case-insensitive job type match — API may return FULL_TIME, Full-Time, full time etc.
+            if (filterType === 'All') return true;
+            const jt = j.jobType.toLowerCase().replace(/[_\s-]+/g, '');
+            const ft = filterType.toLowerCase().replace(/[_\s-]+/g, '');
+            return jt.includes(ft) || ft.includes(jt);
+        })
+        .filter(j => {
+            // Case-insensitive experience level match
+            if (experienceFilter === 'All') return true;
+            return j.experienceLevel.toLowerCase() === experienceFilter.toLowerCase();
+        })
+        .filter(j => locationFilter === 'All' || j.location.toLowerCase() === locationFilter.toLowerCase())
+        .filter(j => skillFilter === 'All' || j.skills?.some(s => s.toLowerCase() === skillFilter.toLowerCase()))
         .filter(j => j.relevance >= minRelevance)
         .sort((a, b) => {
             if (sortBy === 'Relevance') {
@@ -129,7 +145,33 @@ export function StudentJobs() {
 
     return (
         <PageTransition className="space-y-6 max-w-7xl mx-auto pb-12">
-            <MissingApiAlert featureName="Jobs Board" />
+            {/* API Error Banner */}
+            {fetchError && (
+                <div className="flex items-start gap-4 p-5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-700 shadow-sm">
+                    <WifiOff className="w-5 h-5 shrink-0 mt-0.5 text-rose-600" />
+                    <div className="flex-1 min-w-0">
+                        <p className="font-bold text-rose-800">Could not load jobs</p>
+                        <p className="text-sm text-rose-600 mt-0.5 leading-relaxed">{fetchError}</p>
+                    </div>
+                    <button
+                        onClick={async () => {
+                            setIsLoading(true);
+                            setFetchError(null);
+                            try {
+                                const vacancies = await fetchJobs({ limit: 200 });
+                                setJobs(vacancies);
+                            } catch (err: any) {
+                                setFetchError(err?.message ?? 'Unable to load jobs.');
+                            } finally {
+                                setIsLoading(false);
+                            }
+                        }}
+                        className="shrink-0 px-4 py-1.5 text-xs font-bold rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-700 transition-colors"
+                    >
+                        Retry
+                    </button>
+                </div>
+            )}
             {/* Hero and Search Section */}
             <div className="relative overflow-hidden rounded-[2rem] bg-black p-8 md:p-12 mb-4 border border-white/10 shadow-2xl">
                 {/* Decorative gradients */}
@@ -347,44 +389,9 @@ export function StudentJobs() {
                     </div>
                 ) : (
                     <>
-                        <div className="mb-6 p-6 bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-purple-500/10 border border-blue-500/20 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
-                            {/* Decorative background blur */}
-                            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-                            <div className="flex items-center gap-4 relative z-10 w-full md:w-auto text-center md:text-left">
-                                <div className="w-14 h-14 rounded-2xl bg-blue-500/20 flex flex-col items-center justify-center text-blue-700 shrink-0 mx-auto md:mx-0">
-                                    <ExternalLink size={24} className="mb-0.5" />
-                                    <span className="text-[10px] font-bold tracking-wider">APIS</span>
-                                </div>
-                                <div className="flex-1">
-                                    <p className="text-lg font-bold text-blue-800 dark:text-blue-300">Live External Feeds</p>
-                                    <p className="text-sm text-foreground/80 font-medium max-w-lg mt-1">
-                                        Jobs synced from <strong>fantastic.jobs</strong>, <strong>coresignal.com</strong>, and <strong>jobspikr.com</strong> based on your domain choice.
-                                    </p>
-                                    <div className="mt-3 flex flex-wrap gap-2 justify-center md:justify-start">
-                                        <Badge variant="outline" className="bg-white/50 dark:bg-black/50 border-blue-500/30 text-blue-700">fantastic.jobs</Badge>
-                                        <Badge variant="outline" className="bg-white/50 dark:bg-black/50 border-indigo-500/30 text-indigo-700">coresignal.com</Badge>
-                                        <Badge variant="outline" className="bg-white/50 dark:bg-black/50 border-purple-500/30 text-purple-700">jobspikr.com</Badge>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* TODO: DevOps Pipeline Integration
-                                For future scaling, replace mock external adapters with live webhook sync.
-                                Endpoints to integrate:
-                                - fantastic.jobs: /api/v1/sync/fantastic
-                                - coresignal.com: /api/v1/sync/coresignal
-                                - jobspikr.com: /api/v1/sync/jobspikr
-                                - linkedin.com (OAuth): /api/v1/sync/linkedin
-                            */}
-                        </div>
-                        
                         <StaggerContainer className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {filteredJobs.map((job) => {
                                 const applied = appliedJobs.includes(job.id);
-                                // Artificially tag some jobs as coming from external sources
-                                const isExternal = parseInt(job.id.replace(/\D/g, '') || '0') % 3 === 0;
-                                const sourceName = ['fantastic.jobs', 'jobspikr.com', 'coresignal.com'][parseInt(job.id.replace(/\D/g, '') || '0') % 3];
 
                                 return (
                                     <StaggerItem key={job.id} className="h-full">
@@ -399,7 +406,7 @@ export function StudentJobs() {
                                                 {/* Header Row: Avatar + Company */}
                                                 <div className="flex justify-between items-start mb-5 relative z-10">
                                                     <div className="flex items-center gap-3">
-                                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm ${isExternal ? 'bg-blue-500/10 text-blue-600' : 'bg-gradient-to-br from-muted to-muted/50 text-foreground border border-border/50'}`}>
+                                                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm bg-gradient-to-br from-muted to-muted/50 text-foreground border border-border/50">
                                                             <Building2 size={20} />
                                                         </div>
                                                         <div>
@@ -417,12 +424,6 @@ export function StudentJobs() {
                                                                 <CheckCircle2 size={10} /> Applied
                                                             </Badge>
                                                         )}
-                                                        {isExternal && (
-                                                            <Badge variant="outline" className="border-blue-500/30 text-blue-600 bg-blue-50/50 flex items-center gap-1 text-[10px] uppercase shadow-none">
-                                                                <ExternalLink size={10} /> {sourceName.split('.')[0]}
-                                                            </Badge>
-                                                        )}
-                                                        
                                                         {/* Relevancy score badge */}
                                                         <Badge 
                                                             variant="outline" 
@@ -447,7 +448,7 @@ export function StudentJobs() {
 
                                                 {/* Micro-Badges Row */}
                                                 <div className="flex flex-wrap gap-2 mb-6 relative z-10">
-                                                    {!isExternal && (
+                                                    {job.jobType && (
                                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted/50 text-xs font-semibold text-muted-foreground border border-border/50">
                                                             <Briefcase size={12} /> {job.jobType}
                                                         </span>
