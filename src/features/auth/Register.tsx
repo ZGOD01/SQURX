@@ -812,11 +812,7 @@ export function Register() {
                                                 </button>
                                             </div>
 
-                                            <div className="mt-6 bg-black/5 rounded-xl p-4">
-                                                <p className="text-xs leading-relaxed text-black/70 font-light italic text-center">
-                                                    <strong>Hint (Mock Backend):</strong> Student = Last 4 digits of your mobile, Recruiter = "1234".
-                                                </p>
-                                            </div>
+
                                         </div>
                                     )}
 

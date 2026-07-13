@@ -245,12 +245,6 @@ export function ForgotPassword() {
                                         {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Reset Password"}
                                     </Button>
 
-                                    <div className="mt-4 bg-black/5 rounded-xl p-4">
-                                        <p className="text-xs leading-relaxed text-black/70 font-light italic text-center">
-                                            <strong>Hint (Mock Backend):</strong> Student = Last 4 digits of mobile, Recruiter = "1234".
-                                        </p>
-                                    </div>
-
                                     <button
                                         type="button"
                                         onClick={() => setStep(0)}

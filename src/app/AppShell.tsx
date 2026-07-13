@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore, getInMemToken } from '@/features/auth/store';
-import { useStudentStore } from '@/features/student/store';
+
 import { useRecruiterStore } from '@/features/recruiter/store';
 import { LogOut, LayoutDashboard, UserSquare, Briefcase, Settings, Users, FileBarChart, Loader2, Home, ArrowLeft, ShieldAlert, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, Toast } from '@/components/ui';
-import { useNotificationStore } from '@/lib/store/notifications';
+
 import { useVerifyOtpMutation, useResendOtpMutation } from '@/lib/store/authApi';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -144,7 +144,7 @@ export function AppShell() {
     const { fetchDashboardData: fetchRecruiter, company: recruiterCompany } = useRecruiterStore();
     const fetchedRef = useRef(false);
 
-    const { sendEmail } = useNotificationStore();
+
 
     useEffect(() => {
         if (user && !fetchedRef.current) {

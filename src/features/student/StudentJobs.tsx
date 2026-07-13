@@ -21,7 +21,8 @@ import {
     ArrowRight, 
     CheckCircle2,
     AlertTriangle,
-    WifiOff
+    WifiOff,
+    ExternalLink
 } from 'lucide-react';
 import type { JobVacancy } from '@/lib/mockDb/schema';
 import { fetchJobs } from '@/lib/jobsApi';

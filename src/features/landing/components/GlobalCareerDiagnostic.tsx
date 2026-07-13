@@ -441,7 +441,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: Glo
                 gdpr: true,
                 consent: true
             };
-            console.log('PAYLOAD BEING SENT TO BACKEND:', JSON.stringify(payload, null, 2));
+
 
             const result = await consultationApi.bookConsultation(payload);
 

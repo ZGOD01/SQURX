@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getInMemToken } from '@/features/auth/store';
 import { useAuthStore } from '@/features/auth/store';
-import { Card, Badge, Button, Skeleton } from '@/components/ui';
+import { Card, Button, Skeleton } from '@/components/ui';
 import { PageTransition, StaggerContainer, StaggerItem, HoverLift } from '@/components/motion';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
