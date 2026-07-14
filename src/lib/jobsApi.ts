@@ -4,6 +4,7 @@ import { getInMemToken } from '@/features/auth/store';
 // ─── Clean API job item shape returned to UI ─────────────────────────────────
 export interface ApiJobItem {
   id: string;
+  externalId?: string;
   title: string;
   companyName?: string;
   location?: string;
@@ -183,6 +184,8 @@ export function mapApiJobToItem(job: ApiJob): ApiJobItem {
     job.externalId ||
     `job-${Math.random().toString(36).slice(2)}`;
 
+  const externalId = job.externalId || undefined;
+
   const title = extractString(job.title) || 'Untitled Role';
 
   const description = extractString(job.description || job.summary) || undefined;
@@ -257,6 +260,7 @@ export function mapApiJobToItem(job: ApiJob): ApiJobItem {
 
   return {
     id,
+    externalId,
     title,
     companyName,
     location,
@@ -350,4 +354,41 @@ export async function fetchJobs(
     page,
     limit
   };
+}
+
+/**
+ * Fetches details of a single job by external ID.
+ * Requires a valid JWT bearer token.
+ */
+export async function fetchJobDetails(id: string): Promise<ApiJobItem> {
+  const token = getInMemToken();
+  if (!token) {
+    throw new Error('Authentication required to fetch job details.');
+  }
+
+  const url = `${API_BASE_URL}/jobs/${id}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    let message = `Failed to fetch job details (HTTP ${response.status})`;
+    try {
+      const errJson = await response.json();
+      if (errJson?.message) message = errJson.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  const json = await response.json();
+  const payload = json?.data ?? json;
+  return mapApiJobToItem(payload);
 }

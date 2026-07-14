@@ -17,9 +17,10 @@ import {
     ExternalLink,
     ChevronLeft,
     ChevronRight,
-    Globe
+    Globe,
+    Loader2
 } from 'lucide-react';
-import { fetchJobs, type ApiJobItem } from '@/lib/jobsApi';
+import { fetchJobs, fetchJobDetails, type ApiJobItem } from '@/lib/jobsApi';
 import { useNotificationStore } from '@/lib/store/notifications';
 import { useStudentStore } from './store';
 import { useAuthStore } from '@/features/auth/store';
@@ -48,6 +49,8 @@ export function StudentJobs() {
 
     // Modal & UI State
     const [selectedJob, setSelectedJob] = useState<ApiJobItem | null>(null);
+    const [isDetailLoading, setIsDetailLoading] = useState(false);
+    const [detailError, setDetailError] = useState<string | null>(null);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
     const appliedJobs = applications.map(app => app.vacancyId);
@@ -121,6 +124,27 @@ export function StudentJobs() {
         setLocation('');
         setExperienceLevel('All');
         setPage(1);
+    };
+
+    // When user clicks "View Details" on a job card:
+    // 1. Show modal immediately with preview data
+    // 2. Fetch full details from GET /jobs/{externalId} in background
+    // 3. Update modal with full data once loaded
+    const handleViewDetails = async (job: ApiJobItem) => {
+        setSelectedJob(job);
+        setDetailError(null);
+        setIsDetailLoading(true);
+        try {
+            // Backend uses externalId for GET /jobs/{id}
+            const idToFetch = job.externalId || job.id;
+            const fullDetails = await fetchJobDetails(idToFetch);
+            setSelectedJob(fullDetails);
+        } catch (err: any) {
+            console.error('[StudentJobs] Failed to fetch job details:', err);
+            setDetailError('Could not load full details. Showing preview data.');
+        } finally {
+            setIsDetailLoading(false);
+        }
     };
 
     const handleApply = (job: ApiJobItem) => {
@@ -344,7 +368,7 @@ export function StudentJobs() {
                                         <HoverLift className="h-full block">
                                             <Card
                                                 className="h-full border-border/40 hover:border-primary/50 cursor-pointer shadow-md hover:shadow-xl bg-card transition-all duration-300 flex flex-col p-6 relative overflow-hidden group rounded-3xl"
-                                                onClick={() => setSelectedJob(job)}
+                                                onClick={() => handleViewDetails(job)}
                                             >
                                                 <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
@@ -490,12 +514,26 @@ export function StudentJobs() {
             {/* Central Job Detail Modal */}
             <Modal
                 isOpen={!!selectedJob}
-                onClose={() => setSelectedJob(null)}
+                onClose={() => { setSelectedJob(null); setDetailError(null); setIsDetailLoading(false); }}
                 title="Role Overview"
                 className="max-w-2xl"
             >
                 {selectedJob && (
                     <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+                        {/* Loading indicator while fetching full details */}
+                        {isDetailLoading && (
+                            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/5 border border-primary/20 text-primary text-sm font-medium">
+                                <Loader2 size={14} className="animate-spin" />
+                                Syncing full details from backend...
+                            </div>
+                        )}
+                        {/* Detail fetch error — preview data is still visible */}
+                        {detailError && !isDetailLoading && (
+                            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 text-sm font-medium">
+                                <WifiOff size={14} />
+                                {detailError}
+                            </div>
+                        )}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/50 pb-6">
                             <div className="flex items-center gap-4">
                                 <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
