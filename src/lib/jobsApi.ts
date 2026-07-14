@@ -11,6 +11,8 @@ export interface ApiJobItem {
   jobType?: string;
   experienceLevel?: string;
   salary?: string;
+  salaryMin?: number;
+  salaryMax?: number;
   skills?: string[];
   description?: string;
   applyLink?: string;
@@ -267,6 +269,8 @@ export function mapApiJobToItem(job: ApiJob): ApiJobItem {
     jobType,
     experienceLevel,
     salary: salary || undefined,
+    salaryMin: job.salaryMin,
+    salaryMax: job.salaryMax,
     skills: skills.length > 0 ? skills : undefined,
     description,
     applyLink,

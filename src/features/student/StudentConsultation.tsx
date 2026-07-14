@@ -363,6 +363,10 @@ export function StudentConsultation() {
                             setShowBookingFlow(false);
                             fetchAppointments();
                         }}
+                        onBack={() => {
+                            setShowBookingFlow(false);
+                            fetchAppointments();
+                        }}
                     />
                 </div>
             </PageTransition>

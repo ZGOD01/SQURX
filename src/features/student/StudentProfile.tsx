@@ -109,6 +109,23 @@ export function StudentProfile() {
     const [skills, setSkills] = useState<string[]>([]);
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
+    const [gender, setGender] = useState('');
+    const [dob, setDob] = useState('');
+    const [currentLocation, setCurrentLocation] = useState('');
+    const [hometown, setHometown] = useState('');
+    const [highestEducation, setHighestEducation] = useState('');
+    const [pgUniversity, setPgUniversity] = useState('');
+    const [graduationUniversity, setGraduationUniversity] = useState('');
+    const [ugUniversity, setUgUniversity] = useState('');
+    const [schoolCollegeName, setSchoolCollegeName] = useState('');
+    const [languages, setLanguages] = useState('');
+    const [certifications, setCertifications] = useState<Array<{ name: string; status: 'completed' | 'undergoing' }>>([]);
+    const [awards, setAwards] = useState('');
+    const [projects, setProjects] = useState('');
+    const [internships, setInternships] = useState<Array<{ companyName: string; duration: string; role: string }>>([]);
+    const [profileSummary, setProfileSummary] = useState('');
+    const [otherAchievements, setOtherAchievements] = useState('');
+
     // ── Autocomplete dropdowns ───────────────────
     const [showEduSuggestions, setShowEduSuggestions] = useState(false);
     const [showExpSuggestions, setShowExpSuggestions] = useState(false);
@@ -145,6 +162,22 @@ export function StudentProfile() {
         selectedDomainIds: string[];
         selectedLocationIds: string[];
         selectedJobTypeIds: string[];
+        gender: string;
+        dob: string;
+        currentLocation: string;
+        hometown: string;
+        highestEducation: string;
+        pgUniversity: string;
+        graduationUniversity: string;
+        ugUniversity: string;
+        schoolCollegeName: string;
+        languages: string;
+        certifications: Array<{ name: string; status: 'completed' | 'undergoing' }>;
+        awards: string;
+        projects: string;
+        internships: Array<{ companyName: string; duration: string; role: string }>;
+        profileSummary: string;
+        otherAchievements: string;
     } | null>(null);
 
     // ── Refs ─────────────────────────────────────
@@ -187,6 +220,24 @@ export function StudentProfile() {
             setSelectedDomainIds(profile.preferredDomainIds || []);
             setSelectedLocationIds(profile.preferredLocationIds || []);
             setSelectedJobTypeIds(profile.preferredJobTypeIds || []);
+
+            setGender(profile.gender || '');
+            setDob(profile.dob || '');
+            setCurrentLocation(profile.currentLocation || '');
+            setHometown(profile.hometown || '');
+            setHighestEducation(profile.highestEducation || '');
+            setPgUniversity(profile.pgUniversity || '');
+            setGraduationUniversity(profile.graduationUniversity || '');
+            setUgUniversity(profile.ugUniversity || '');
+            setSchoolCollegeName(profile.schoolCollegeName || '');
+            setLanguages(profile.languages || '');
+            setCertifications(profile.certifications || []);
+            setAwards(profile.awards || '');
+            setProjects(profile.projects || '');
+            setInternships(profile.internships || []);
+            setProfileSummary(profile.profileSummary || '');
+            setOtherAchievements(profile.otherAchievements || '');
+
             setProfileInitialized(true);
         }
     }, [profile, profileInitialized]);
@@ -210,8 +261,25 @@ export function StudentProfile() {
             setSelectedDomainIds(profile.preferredDomainIds || []);
             setSelectedLocationIds(profile.preferredLocationIds || []);
             setSelectedJobTypeIds(profile.preferredJobTypeIds || []);
+
+            setGender(profile.gender || '');
+            setDob(profile.dob || '');
+            setCurrentLocation(profile.currentLocation || '');
+            setHometown(profile.hometown || '');
+            setHighestEducation(profile.highestEducation || '');
+            setPgUniversity(profile.pgUniversity || '');
+            setGraduationUniversity(profile.graduationUniversity || '');
+            setUgUniversity(profile.ugUniversity || '');
+            setSchoolCollegeName(profile.schoolCollegeName || '');
+            setLanguages(profile.languages || '');
+            setCertifications(profile.certifications || []);
+            setAwards(profile.awards || '');
+            setProjects(profile.projects || '');
+            setInternships(profile.internships || []);
+            setProfileSummary(profile.profileSummary || '');
+            setOtherAchievements(profile.otherAchievements || '');
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [profile]);
 
     // ── GDPR consent ─────────────────────────────
@@ -263,6 +331,22 @@ export function StudentProfile() {
             selectedDomainIds: [...selectedDomainIds],
             selectedLocationIds: [...selectedLocationIds],
             selectedJobTypeIds: [...selectedJobTypeIds],
+            gender,
+            dob,
+            currentLocation,
+            hometown,
+            highestEducation,
+            pgUniversity,
+            graduationUniversity,
+            ugUniversity,
+            schoolCollegeName,
+            languages,
+            certifications: certifications ? [...certifications.map(c => ({ ...c }))] : [],
+            awards,
+            projects,
+            internships: internships ? [...internships.map(i => ({ ...i }))] : [],
+            profileSummary,
+            otherAchievements,
         });
         setIsEditing(true);
     };
@@ -290,6 +374,22 @@ export function StudentProfile() {
             setSelectedDomainIds(formSnapshot.selectedDomainIds);
             setSelectedLocationIds(formSnapshot.selectedLocationIds);
             setSelectedJobTypeIds(formSnapshot.selectedJobTypeIds);
+            setGender(formSnapshot.gender);
+            setDob(formSnapshot.dob);
+            setCurrentLocation(formSnapshot.currentLocation);
+            setHometown(formSnapshot.hometown);
+            setHighestEducation(formSnapshot.highestEducation);
+            setPgUniversity(formSnapshot.pgUniversity);
+            setGraduationUniversity(formSnapshot.graduationUniversity);
+            setUgUniversity(formSnapshot.ugUniversity);
+            setSchoolCollegeName(formSnapshot.schoolCollegeName);
+            setLanguages(formSnapshot.languages);
+            setCertifications(formSnapshot.certifications);
+            setAwards(formSnapshot.awards);
+            setProjects(formSnapshot.projects);
+            setInternships(formSnapshot.internships);
+            setProfileSummary(formSnapshot.profileSummary);
+            setOtherAchievements(formSnapshot.otherAchievements);
         }
         setFormErrors({});
         setIsEditing(false);
@@ -338,12 +438,28 @@ export function StudentProfile() {
                 preferredDomains: selectedDomainIds,
                 preferredLocations: selectedLocationIds.length > 0 ? selectedLocationIds : (selectedLocationId ? [selectedLocationId] : []),
                 preferredJobTypes: selectedJobTypeIds,
+                gender,
+                dob,
+                currentLocation,
+                hometown,
+                highestEducation,
+                pgUniversity: highestEducation === 'PG' ? pgUniversity : '',
+                graduationUniversity: highestEducation === 'PG' ? graduationUniversity : '',
+                ugUniversity: highestEducation === 'UG' ? ugUniversity : '',
+                schoolCollegeName: highestEducation === 'UG' ? schoolCollegeName : '',
+                languages,
+                certifications,
+                awards,
+                projects,
+                internships,
+                profileSummary,
+                otherAchievements,
             });
 
             setSaveSuccess(true);
             setIsEditing(false);
             showToast('Profile updated successfully!', 'success');
-            sendEmail('Profile Updated', 'Your profile has been updated on Squrx. Keeping your profile fresh increases your visibility!');
+            sendEmail('Profile Updated', 'Your profile has been updated on Squrex. Keeping your profile fresh increases your visibility!');
         } catch (err: any) {
             showToast(err.message || 'Failed to save profile. Please try again.', 'error');
         } finally {
@@ -650,7 +766,7 @@ export function StudentProfile() {
                                                                         nextIds = [...selectedJobTypeIds, jt._id];
                                                                     }
                                                                     setSelectedJobTypeIds(nextIds);
-                                                                    
+
                                                                     // Update the comma-separated text string
                                                                     const selectedNames = jobTypesData.data
                                                                         .filter((x: any) => nextIds.includes(x._id))
@@ -721,6 +837,347 @@ export function StudentProfile() {
                                     {isEditing && (
                                         <p className="text-[11px] text-muted-foreground">Type a skill and press <kbd className="px-1 py-0.5 rounded bg-muted border text-[10px] font-mono">Enter</kbd> or <kbd className="px-1 py-0.5 rounded bg-muted border text-[10px] font-mono">,</kbd> to add.</p>
                                     )}
+                                </div>
+
+                                {/* ── PERSONAL DETAILS SECTION ── */}
+                                <div className="pt-4 border-t border-border/60">
+                                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">Personal Details</h3>
+                                    <div className="grid sm:grid-cols-2 gap-4">
+                                        {/* Gender */}
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Gender</label>
+                                            {isEditing ? (
+                                                <select
+                                                    value={gender}
+                                                    onChange={(e) => setGender(e.target.value)}
+                                                    className="w-full h-11 bg-background border border-input focus:border-ring focus:ring-2 focus:ring-ring/20 rounded-md px-3 text-sm font-medium outline-none transition-all"
+                                                >
+                                                    <option value="">Select Gender</option>
+                                                    <option value="Male">Male</option>
+                                                    <option value="Female">Female</option>
+                                                    <option value="Other">Other</option>
+                                                </select>
+                                            ) : (
+                                                <Input value={gender || '—'} disabled className="h-11 bg-muted/30 border-border/40 text-muted-foreground font-medium cursor-not-allowed" />
+                                            )}
+                                        </div>
+
+                                        {/* DOB */}
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Date of Birth</label>
+                                            <Input
+                                                placeholder="DD/MM/YYYY"
+                                                value={dob}
+                                                onChange={(e) => setDob(e.target.value)}
+                                                disabled={!isEditing}
+                                                className={`h-11 ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : ''}`}
+                                            />
+                                        </div>
+
+                                        {/* Current Location */}
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Current Location</label>
+                                            <Input
+                                                placeholder="e.g. London, UK"
+                                                value={currentLocation}
+                                                onChange={(e) => setCurrentLocation(e.target.value)}
+                                                disabled={!isEditing}
+                                                className={`h-11 ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : ''}`}
+                                            />
+                                        </div>
+
+                                        {/* Hometown */}
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Hometown / Native Place & Country</label>
+                                            <Input
+                                                placeholder="e.g. Mumbai, India"
+                                                value={hometown}
+                                                onChange={(e) => setHometown(e.target.value)}
+                                                disabled={!isEditing}
+                                                className={`h-11 ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : ''}`}
+                                            />
+                                        </div>
+
+                                        {/* Languages */}
+                                        <div className="space-y-1.5 sm:col-span-2">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Languages Known</label>
+                                            <Input
+                                                placeholder="e.g. English, Hindi, Spanish"
+                                                value={languages}
+                                                onChange={(e) => setLanguages(e.target.value)}
+                                                disabled={!isEditing}
+                                                className={`h-11 ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : ''}`}
+                                            />
+                                        </div>
+
+                                        {/* Profile Summary */}
+                                        <div className="space-y-1.5 sm:col-span-2">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Profile Summary</label>
+                                            <textarea
+                                                placeholder="Briefly describe your professional profile and goals..."
+                                                value={profileSummary}
+                                                onChange={(e) => setProfileSummary(e.target.value)}
+                                                disabled={!isEditing}
+                                                rows={3}
+                                                className={`w-full rounded-md border px-3 py-2.5 text-sm font-medium outline-none transition-all resize-none ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : 'bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20'}`}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* ── ACADEMIC QUALIFICATIONS SECTION ── */}
+                                <div className="pt-4 border-t border-border/60">
+                                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">Academic Qualifications</h3>
+                                    <div className="grid sm:grid-cols-2 gap-4">
+                                        {/* Highest Education */}
+                                        <div className="space-y-1.5 sm:col-span-2">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Highest Education Level</label>
+                                            {isEditing ? (
+                                                <select
+                                                    value={highestEducation}
+                                                    onChange={(e) => setHighestEducation(e.target.value)}
+                                                    className="w-full h-11 bg-background border border-input focus:border-ring focus:ring-2 focus:ring-ring/20 rounded-md px-3 text-sm font-medium outline-none transition-all"
+                                                >
+                                                    <option value="">Select Level</option>
+                                                    <option value="PG">Post Graduate (PG)</option>
+                                                    <option value="UG">Under Graduate (UG)</option>
+                                                    <option value="High School">High School</option>
+                                                    <option value="Other">Other</option>
+                                                </select>
+                                            ) : (
+                                                <Input value={highestEducation || '—'} disabled className="h-11 bg-muted/30 border-border/40 text-muted-foreground font-medium cursor-not-allowed" />
+                                            )}
+                                        </div>
+
+                                        {/* PG sub-fields */}
+                                        {(highestEducation === 'PG' || (!isEditing && (pgUniversity || graduationUniversity))) && (
+                                            <>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">University Name (PG)</label>
+                                                    <Input
+                                                        placeholder="e.g. Oxford University"
+                                                        value={pgUniversity}
+                                                        onChange={(e) => setPgUniversity(e.target.value)}
+                                                        disabled={!isEditing}
+                                                        className={`h-11 ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : ''}`}
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Graduation University Name</label>
+                                                    <Input
+                                                        placeholder="e.g. Delhi University"
+                                                        value={graduationUniversity}
+                                                        onChange={(e) => setGraduationUniversity(e.target.value)}
+                                                        disabled={!isEditing}
+                                                        className={`h-11 ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : ''}`}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {/* UG sub-fields */}
+                                        {(highestEducation === 'UG' || (!isEditing && (ugUniversity || schoolCollegeName))) && (
+                                            <>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">University Name (UG)</label>
+                                                    <Input
+                                                        placeholder="e.g. Stanford University"
+                                                        value={ugUniversity}
+                                                        onChange={(e) => setUgUniversity(e.target.value)}
+                                                        disabled={!isEditing}
+                                                        className={`h-11 ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : ''}`}
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">School / College Name</label>
+                                                    <Input
+                                                        placeholder="e.g. St. Francis College"
+                                                        value={schoolCollegeName}
+                                                        onChange={(e) => setSchoolCollegeName(e.target.value)}
+                                                        disabled={!isEditing}
+                                                        className={`h-11 ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : ''}`}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* ── CERTIFICATIONS SECTION ── */}
+                                <div className="pt-4 border-t border-border/60">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Certifications</h3>
+                                        {isEditing && (
+                                            <Button
+                                                type="button"
+                                                onClick={() => setCertifications([...certifications, { name: '', status: 'undergoing' }])}
+                                                variant="outline"
+                                                className="h-7 rounded-lg text-xs font-bold px-3 border-border/60"
+                                            >
+                                                + Add
+                                            </Button>
+                                        )}
+                                    </div>
+                                    {certifications.length === 0 ? (
+                                        <p className="text-xs text-muted-foreground italic">{isEditing ? 'No certifications added. Click + Add to get started.' : 'No certifications listed.'}</p>
+                                    ) : (
+                                        <div className="space-y-2.5">
+                                            {certifications.map((cert, index) => (
+                                                <div key={index} className="flex gap-2 items-center bg-muted/20 p-2.5 rounded-xl border border-border/40">
+                                                    {isEditing ? (
+                                                        <>
+                                                            <Input
+                                                                placeholder="Certification Name"
+                                                                value={cert.name}
+                                                                onChange={(e) => {
+                                                                    const copy = [...certifications];
+                                                                    copy[index] = { ...copy[index], name: e.target.value };
+                                                                    setCertifications(copy);
+                                                                }}
+                                                                className="h-9 rounded-lg flex-1 text-sm"
+                                                            />
+                                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    id={`prof-cert-${index}`}
+                                                                    checked={cert.status === 'completed'}
+                                                                    onChange={(e) => {
+                                                                        const copy = [...certifications];
+                                                                        copy[index] = { ...copy[index], status: e.target.checked ? 'completed' : 'undergoing' };
+                                                                        setCertifications(copy);
+                                                                    }}
+                                                                    className="rounded border-gray-300 w-4 h-4 cursor-pointer"
+                                                                />
+                                                                <label htmlFor={`prof-cert-${index}`} className="text-xs font-semibold text-muted-foreground cursor-pointer select-none whitespace-nowrap">Completed</label>
+                                                            </div>
+                                                            <Button
+                                                                type="button"
+                                                                onClick={() => setCertifications(certifications.filter((_, i) => i !== index))}
+                                                                variant="outline"
+                                                                className="h-8 w-8 p-0 text-destructive border-destructive/20 hover:bg-destructive/5 rounded-lg shrink-0"
+                                                            >✕</Button>
+                                                        </>
+                                                    ) : (
+                                                        <div className="flex items-center justify-between w-full">
+                                                            <span className="text-sm font-medium">{cert.name || '—'}</span>
+                                                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${cert.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                                {cert.status === 'completed' ? 'Completed' : 'Undergoing'}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* ── INTERNSHIPS SECTION ── */}
+                                <div className="pt-4 border-t border-border/60">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Internships</h3>
+                                        {isEditing && (
+                                            <Button
+                                                type="button"
+                                                onClick={() => setInternships([...internships, { companyName: '', duration: '', role: '' }])}
+                                                variant="outline"
+                                                className="h-7 rounded-lg text-xs font-bold px-3 border-border/60"
+                                            >
+                                                + Add
+                                            </Button>
+                                        )}
+                                    </div>
+                                    {internships.length === 0 ? (
+                                        <p className="text-xs text-muted-foreground italic">{isEditing ? 'No internships added. Click + Add to get started.' : 'No internships listed.'}</p>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {internships.map((intern, index) => (
+                                                <div key={index} className="bg-muted/20 p-3 rounded-xl border border-border/40 space-y-2">
+                                                    {isEditing ? (
+                                                        <>
+                                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                                <Input
+                                                                    placeholder="Company Name"
+                                                                    value={intern.companyName}
+                                                                    onChange={(e) => { const c = [...internships]; c[index] = { ...c[index], companyName: e.target.value }; setInternships(c); }}
+                                                                    className="h-9 rounded-lg text-sm"
+                                                                />
+                                                                <Input
+                                                                    placeholder="Duration (e.g. 3 Months)"
+                                                                    value={intern.duration}
+                                                                    onChange={(e) => { const c = [...internships]; c[index] = { ...c[index], duration: e.target.value }; setInternships(c); }}
+                                                                    className="h-9 rounded-lg text-sm"
+                                                                />
+                                                                <Input
+                                                                    placeholder="Role"
+                                                                    value={intern.role}
+                                                                    onChange={(e) => { const c = [...internships]; c[index] = { ...c[index], role: e.target.value }; setInternships(c); }}
+                                                                    className="h-9 rounded-lg text-sm"
+                                                                />
+                                                            </div>
+                                                            <div className="flex justify-end">
+                                                                <Button
+                                                                    type="button"
+                                                                    onClick={() => setInternships(internships.filter((_, i) => i !== index))}
+                                                                    variant="outline"
+                                                                    className="h-7 rounded-lg text-xs font-bold text-destructive border-destructive/20 hover:bg-destructive/5 px-2"
+                                                                >Remove</Button>
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <div className="flex flex-col gap-0.5">
+                                                            <span className="text-sm font-semibold">{intern.companyName || '—'}</span>
+                                                            <span className="text-xs text-muted-foreground">{intern.role}{intern.duration ? ` · ${intern.duration}` : ''}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* ── PROJECTS & ACHIEVEMENTS SECTION ── */}
+                                <div className="pt-4 border-t border-border/60">
+                                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">Projects & Achievements</h3>
+                                    <div className="space-y-4">
+                                        {/* Projects */}
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Key Projects</label>
+                                            <textarea
+                                                placeholder="Write about major projects you worked on..."
+                                                value={projects}
+                                                onChange={(e) => setProjects(e.target.value)}
+                                                disabled={!isEditing}
+                                                rows={3}
+                                                className={`w-full rounded-md border px-3 py-2.5 text-sm font-medium outline-none transition-all resize-none ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : 'bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20'}`}
+                                            />
+                                        </div>
+
+                                        {/* Awards */}
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Awards & Recognitions</label>
+                                            <textarea
+                                                placeholder="Write about key awards and recognitions..."
+                                                value={awards}
+                                                onChange={(e) => setAwards(e.target.value)}
+                                                disabled={!isEditing}
+                                                rows={3}
+                                                className={`w-full rounded-md border px-3 py-2.5 text-sm font-medium outline-none transition-all resize-none ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : 'bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20'}`}
+                                            />
+                                        </div>
+
+                                        {/* Other Achievements */}
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Other Achievements</label>
+                                            <textarea
+                                                placeholder="Write about any other accomplishments..."
+                                                value={otherAchievements}
+                                                onChange={(e) => setOtherAchievements(e.target.value)}
+                                                disabled={!isEditing}
+                                                rows={3}
+                                                className={`w-full rounded-md border px-3 py-2.5 text-sm font-medium outline-none transition-all resize-none ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : 'bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20'}`}
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {/* Submit / Edit Toggle */}
@@ -888,7 +1345,7 @@ export function StudentProfile() {
                                 <div className="space-y-0.5 max-w-[70%]">
                                     <h4 className="font-semibold text-sm">Allow Data Processing</h4>
                                     <p className="text-xs text-muted-foreground leading-normal">
-                                        Allow SQURX to process your profile, CV, and preferences to match you with job openings.
+                                        Allow SQUREX to process your profile, CV, and preferences to match you with job openings.
                                     </p>
                                 </div>
                                 {/* When consent is already given, show a locked state — it cannot be revoked from this screen */}

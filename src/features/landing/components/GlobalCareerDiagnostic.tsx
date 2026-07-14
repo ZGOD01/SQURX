@@ -90,9 +90,10 @@ const PALETTES = [
 export interface GlobalCareerDiagnosticProps {
     directBooking?: boolean;
     onSuccess?: () => void;
+    onBack?: () => void;
 }
 
-export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: GlobalCareerDiagnosticProps = {}) {
+export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBack }: GlobalCareerDiagnosticProps = {}) {
     const navigate = useNavigate();
     const { user, setAuth } = useAuthStore();
     const [step, setStep] = useState(directBooking ? QUESTIONS.length : 0);
@@ -544,6 +545,10 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: Glo
 
     const handleBackClick = () => {
         if (isAnalyzing) return;
+        if (directBooking && onBack) {
+            onBack();
+            return;
+        }
         if (step === 0) {
             setShowOverlay(true);
             setAnswers({});
@@ -1171,6 +1176,10 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: Glo
                                     {/* Action Buttons */}
                                     <div className="flex gap-3">
                                         <Button variant="outline" className="flex-1 rounded-xl h-12 text-sm font-bold" onClick={() => {
+                                             if (directBooking && onBack) {
+                                                 onBack();
+                                                 return;
+                                             }
                                              if (user) {
                                                   // Logged in: go back to restart the diagnostic quiz
                                                   setIsBookingMode(false);
@@ -1227,7 +1236,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: Glo
                                         <div className="w-full max-w-sm mx-auto mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left">
                                             <p className="text-[11px] font-black uppercase tracking-widest text-amber-700 mb-2">Your Account Was Created</p>
                                             <p className="text-xs text-amber-800 leading-relaxed mb-3">
-                                                We automatically created a SQURX account for you using your email. Use the password below to sign in after you log out.
+                                                We automatically created a SQUREX account for you using your email. Use the password below to sign in after you log out.
                                             </p>
                                             <div className="flex items-center gap-2 bg-white rounded-xl border border-amber-200 px-3 py-2 mb-3">
                                                 <span className="flex-1 text-xs font-mono font-bold text-gray-800 select-all tracking-wider">

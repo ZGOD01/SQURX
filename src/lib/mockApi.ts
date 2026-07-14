@@ -182,6 +182,24 @@ export const mockApi = {
                         profile.gdprConsent = data.gdprConsent;
                     }
 
+                    // Map all new fields from backend
+                    profile.gender = data.gender || '';
+                    profile.dob = data.dob || '';
+                    profile.currentLocation = data.currentLocation || '';
+                    profile.hometown = data.hometown || '';
+                    profile.highestEducation = data.highestEducation || '';
+                    profile.pgUniversity = data.pgUniversity || '';
+                    profile.graduationUniversity = data.graduationUniversity || '';
+                    profile.ugUniversity = data.ugUniversity || '';
+                    profile.schoolCollegeName = data.schoolCollegeName || '';
+                    profile.languages = data.languages || '';
+                    profile.certifications = Array.isArray(data.certifications) ? data.certifications : [];
+                    profile.awards = data.awards || '';
+                    profile.projects = data.projects || '';
+                    profile.internships = Array.isArray(data.internships) ? data.internships : [];
+                    profile.profileSummary = data.profileSummary || '';
+                    profile.otherAchievements = data.otherAchievements || '';
+
                     // Persist synced data back to local MockDB cache
                     MockDB.updateStudentProfile(userId, profile);
                 }
@@ -219,6 +237,24 @@ export const mockApi = {
             if (data.skills !== undefined) payload.skills = data.skills;
             if (data.preferredLocations !== undefined) payload.preferredLocations = data.preferredLocations;
             if (data.cvUrl !== undefined) payload.resume = data.cvUrl;
+
+            // Sync new fields with backend
+            if (data.gender !== undefined) payload.gender = data.gender;
+            if (data.dob !== undefined) payload.dob = data.dob;
+            if (data.currentLocation !== undefined) payload.currentLocation = data.currentLocation;
+            if (data.hometown !== undefined) payload.hometown = data.hometown;
+            if (data.highestEducation !== undefined) payload.highestEducation = data.highestEducation;
+            if (data.pgUniversity !== undefined) payload.pgUniversity = data.pgUniversity;
+            if (data.graduationUniversity !== undefined) payload.graduationUniversity = data.graduationUniversity;
+            if (data.ugUniversity !== undefined) payload.ugUniversity = data.ugUniversity;
+            if (data.schoolCollegeName !== undefined) payload.schoolCollegeName = data.schoolCollegeName;
+            if (data.languages !== undefined) payload.languages = data.languages;
+            if (data.certifications !== undefined) payload.certifications = data.certifications;
+            if (data.awards !== undefined) payload.awards = data.awards;
+            if (data.projects !== undefined) payload.projects = data.projects;
+            if (data.internships !== undefined) payload.internships = data.internships;
+            if (data.profileSummary !== undefined) payload.profileSummary = data.profileSummary;
+            if (data.otherAchievements !== undefined) payload.otherAchievements = data.otherAchievements;
 
             await fetchWithTimeout(`${API_BASE_URL}/user/me`, {
                 method: 'PUT',

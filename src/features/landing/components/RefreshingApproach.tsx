@@ -67,7 +67,7 @@ export function RefreshingApproach() {
                           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-600"></span>
                         </span>
                         <span className="text-blue-700 text-[13px] font-extrabold tracking-widest uppercase" style={{ fontFamily: "'Outfit', sans-serif" }}>
-                            The SQURX Difference
+                            The SQUREX Difference
                         </span>
                     </motion.div>
 

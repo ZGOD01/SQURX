@@ -38,6 +38,22 @@ export interface StudentProfile {
   preferredDomainIds?: string[];
   preferredLocationIds?: string[];
   preferredJobTypeIds?: string[];
+  gender?: string;
+  dob?: string;
+  currentLocation?: string;
+  hometown?: string;
+  highestEducation?: string;
+  pgUniversity?: string;
+  graduationUniversity?: string;
+  ugUniversity?: string;
+  schoolCollegeName?: string;
+  languages?: string;
+  certifications?: Array<{ name: string; status: 'completed' | 'undergoing' }>;
+  awards?: string;
+  projects?: string;
+  internships?: Array<{ companyName: string; duration: string; role: string }>;
+  profileSummary?: string;
+  otherAchievements?: string;
 }
 
 export interface CompanyProfile {

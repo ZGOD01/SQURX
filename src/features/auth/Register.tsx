@@ -221,12 +221,12 @@ export function Register() {
                 setNewUser(true);
                 setGdprConsent(uId, true);
                 setAuth(verifyRes.data.user, verifyRes.data.token);
-                showToast('success', 'Welcome to Squrx!', 'Your account has been verified. Redirecting...');
+                showToast('success', 'Welcome to Squrex!', 'Your account has been verified. Redirecting...');
 
                 // Send welcome orientation email visually
                 setTimeout(() => {
                     sendEmail(
-                        "Welcome to Squrx!",
+                        "Welcome to Squrex!",
                         `Your account has been successfully created. We are excited to help you find your next big opportunity!`
                     );
                 }, 1000);
@@ -306,7 +306,7 @@ export function Register() {
                     >
                         <div className="flex items-center gap-3 mb-8 mx-auto lg:mx-0 justify-center lg:justify-start">
                             <img src="/squrx01.png" alt="SQURX Logo" className="w-14 h-14 object-contain drop-shadow-xl group-hover:rotate-[5deg] transition-all duration-300" />
-                            <span className="text-4xl font-black tracking-tight bg-gradient-to-r from-[#8711c1] to-[#ff007f] text-transparent bg-clip-text font-sans mt-1">SQURX</span>
+                            <span className="text-4xl font-black tracking-tight bg-gradient-to-r from-[#8711c1] to-[#ff007f] text-transparent bg-clip-text font-sans mt-1">SQUREX</span>
                         </div>
                     </Link>
                     <h1 className="text-4xl lg:text-6xl font-light tracking-tight mb-6">

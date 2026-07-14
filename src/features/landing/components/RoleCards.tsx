@@ -519,7 +519,7 @@ export function RoleCards() {
                                     <div>
                                         <h4 className="text-sm md:text-base font-bold text-gray-900">Admin Curated Insight</h4>
                                         <p className="text-xs md:text-sm text-gray-500 mt-0.5 md:mt-1 leading-relaxed">
-                                            This content has been published and curated directly by the Squrx administration team to guide your journey.
+                                            This content has been published and curated directly by the Squrex administration team to guide your journey.
                                         </p>
                                     </div>
                                 </div>

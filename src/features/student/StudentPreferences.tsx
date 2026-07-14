@@ -156,7 +156,7 @@ export function StudentPreferences() {
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <p className="text-sm text-foreground/80 leading-relaxed">
-                                Squrx uses your preferences to actively hunt the global network for matches. Trigger a simulation to see what jobs you would receive this week.
+                                Squrex uses your preferences to actively hunt the global network for matches. Trigger a simulation to see what jobs you would receive this week.
                             </p>
 
                             <Button

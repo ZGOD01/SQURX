@@ -57,6 +57,23 @@ export function Onboarding() {
     const [expectedSalary, setExpectedSalary] = useState('');
     const [currentSalary, setCurrentSalary] = useState('');
 
+    const [gender, setGender] = useState('');
+    const [dob, setDob] = useState('');
+    const [currentLocation, setCurrentLocation] = useState('');
+    const [hometown, setHometown] = useState('');
+    const [highestEducation, setHighestEducation] = useState('');
+    const [pgUniversity, setPgUniversity] = useState('');
+    const [graduationUniversity, setGraduationUniversity] = useState('');
+    const [ugUniversity, setUgUniversity] = useState('');
+    const [schoolCollegeName, setSchoolCollegeName] = useState('');
+    const [languages, setLanguages] = useState('');
+    const [certifications, setCertifications] = useState<Array<{ name: string; status: 'completed' | 'undergoing' }>>([]);
+    const [awards, setAwards] = useState('');
+    const [projects, setProjects] = useState('');
+    const [internships, setInternships] = useState<Array<{ companyName: string; duration: string; role: string }>>([]);
+    const [profileSummary, setProfileSummary] = useState('');
+    const [otherAchievements, setOtherAchievements] = useState('');
+
     const [isProfileSaving, setIsProfileSaving] = useState(false);
     const [isUploadingCV, setIsUploadingCV] = useState(false);
     const [cvName, setCvName] = useState('');
@@ -196,6 +213,23 @@ export function Onboarding() {
             setExpectedSalary(profile?.expectedSalary || '');
             setCurrentSalary(profile?.currentSalary || '');
 
+            setGender(profile?.gender || '');
+            setDob(profile?.dob || '');
+            setCurrentLocation(profile?.currentLocation || '');
+            setHometown(profile?.hometown || '');
+            setHighestEducation(profile?.highestEducation || '');
+            setPgUniversity(profile?.pgUniversity || '');
+            setGraduationUniversity(profile?.graduationUniversity || '');
+            setUgUniversity(profile?.ugUniversity || '');
+            setSchoolCollegeName(profile?.schoolCollegeName || '');
+            setLanguages(profile?.languages || '');
+            setCertifications(profile?.certifications || []);
+            setAwards(profile?.awards || '');
+            setProjects(profile?.projects || '');
+            setInternships(profile?.internships || []);
+            setProfileSummary(profile?.profileSummary || '');
+            setOtherAchievements(profile?.otherAchievements || '');
+
             if (profile?.cvUrl) {
                 const parts = profile.cvUrl.split('/');
                 setCvName(parts[parts.length - 1] || 'Resume_Document.pdf');
@@ -278,7 +312,25 @@ export function Onboarding() {
                 location,
                 jobType,
                 locations: [location],
-                jobTypes: parsedJobTypes
+                jobTypes: parsedJobTypes,
+
+                // NEW FIELDS
+                gender,
+                dob,
+                currentLocation,
+                hometown,
+                highestEducation,
+                pgUniversity: highestEducation === 'PG' ? pgUniversity : '',
+                graduationUniversity: highestEducation === 'PG' ? graduationUniversity : '',
+                ugUniversity: highestEducation === 'UG' ? ugUniversity : '',
+                schoolCollegeName: highestEducation === 'UG' ? schoolCollegeName : '',
+                languages,
+                certifications,
+                awards,
+                projects,
+                internships,
+                profileSummary,
+                otherAchievements
             });
             setOnboardingStep(1);
         } catch (err) {
@@ -357,7 +409,7 @@ export function Onboarding() {
             </div>
 
             <div className="w-full max-w-4xl relative z-10 flex flex-col items-center py-12">
-                
+
                 {/* Step Indicator */}
                 <div className="w-full max-w-2xl mx-auto mb-12 relative">
                     <div className="flex justify-between items-center relative z-10">
@@ -368,20 +420,19 @@ export function Onboarding() {
                                 <div key={idx} className="flex flex-col items-center flex-1 relative">
                                     {idx < steps.length - 1 && (
                                         <div className="absolute top-5 left-1/2 w-full h-[2px] bg-gray-200 -z-10">
-                                            <div 
+                                            <div
                                                 className="h-full bg-black transition-all duration-300"
                                                 style={{ width: onboardingStep > idx ? '100%' : '0%' }}
                                             />
                                         </div>
                                     )}
-                                    <div 
-                                        className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all border-2 duration-300 ${
-                                            isCompleted 
-                                                ? 'bg-black border-black text-white' 
-                                                : isActive 
-                                                    ? 'bg-white border-black text-black ring-4 ring-black/10' 
+                                    <div
+                                        className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all border-2 duration-300 ${isCompleted
+                                                ? 'bg-black border-black text-white'
+                                                : isActive
+                                                    ? 'bg-white border-black text-black ring-4 ring-black/10'
                                                     : 'bg-white border-gray-200 text-gray-400'
-                                        }`}
+                                            }`}
                                     >
                                         {isCompleted ? <Check className="w-5 h-5" /> : idx + 1}
                                     </div>
@@ -406,11 +457,11 @@ export function Onboarding() {
                             <div>
                                 <h2 className="text-3xl font-black text-gray-900 tracking-tight text-center">Complete Your Profile</h2>
                                 <p className="text-sm text-gray-500 mt-2 text-center leading-relaxed">
-                                    Provide your professional criteria. SQURX matches you with opportunities matching this profile.
+                                    Provide your professional criteria. SQUREX matches you with opportunities matching this profile.
                                 </p>
                             </div>
 
-                             <form onSubmit={handleProfileSubmit} className="space-y-6">
+                            <form onSubmit={handleProfileSubmit} className="space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                     {/* Full Name */}
                                     <div className="space-y-1.5">
@@ -650,7 +701,7 @@ export function Onboarding() {
                                                                         nextIds = [...selectedJobTypeIds, jt._id];
                                                                     }
                                                                     setSelectedJobTypeIds(nextIds);
-                                                                    
+
                                                                     // Update the comma-separated text string
                                                                     const selectedNames = jobTypesData.data
                                                                         .filter((x: any) => nextIds.includes(x._id))
@@ -705,6 +756,328 @@ export function Onboarding() {
                                                 ))}
                                             </div>
                                         )}
+                                    </div>
+
+                                    {/* ─── PERSONAL DETAILS ADDITIONS ─── */}
+                                    <div className="md:col-span-2 border-t border-gray-100 pt-6">
+                                        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400 mb-2">Personal Details</h3>
+                                    </div>
+
+                                    {/* Gender */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Gender</label>
+                                        <select
+                                            value={gender}
+                                            onChange={(e) => setGender(e.target.value)}
+                                            className="w-full h-12 bg-white border border-gray-200 focus:border-black focus:ring-2 focus:ring-black/10 rounded-xl px-3 text-sm font-semibold outline-none transition-all"
+                                        >
+                                            <option value="">Select Gender</option>
+                                            <option value="Male">Male</option>
+                                            <option value="Female">Female</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                    </div>
+
+                                    {/* DOB */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Date of Birth (DOB)</label>
+                                        <Input
+                                            placeholder="DD/MM/YYYY"
+                                            value={dob}
+                                            onChange={(e) => {
+                                                const digits = e.target.value.replace(/\D/g, '').slice(0, 8);
+                                                let formatted = digits;
+                                                if (digits.length > 4) {
+                                                    formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+                                                } else if (digits.length > 2) {
+                                                    formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+                                                }
+                                                setDob(formatted);
+                                            }}
+                                            maxLength={10}
+                                            className="h-12 rounded-xl"
+                                        />
+                                    </div>
+
+                                    {/* Current Location */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Current Location</label>
+                                        <Input
+                                            placeholder="e.g. London, UK"
+                                            value={currentLocation}
+                                            onChange={(e) => setCurrentLocation(e.target.value)}
+                                            className="h-12 rounded-xl"
+                                        />
+                                    </div>
+
+                                    {/* Hometown / Native Place & Country */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Hometown / Native Place & Country</label>
+                                        <Input
+                                            placeholder="e.g. Mumbai, India"
+                                            value={hometown}
+                                            onChange={(e) => setHometown(e.target.value)}
+                                            className="h-12 rounded-xl"
+                                        />
+                                    </div>
+
+                                    {/* Languages Known */}
+                                    <div className="space-y-1.5 md:col-span-2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Languages Known</label>
+                                        <Input
+                                            placeholder="e.g. English, Spanish, Hindi"
+                                            value={languages}
+                                            onChange={(e) => setLanguages(e.target.value)}
+                                            className="h-12 rounded-xl"
+                                        />
+                                    </div>
+
+                                    {/* Profile Summary */}
+                                    <div className="space-y-1.5 md:col-span-2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Profile Summary</label>
+                                        <textarea
+                                            placeholder="Briefly describe your professional profile and goals..."
+                                            value={profileSummary}
+                                            onChange={(e) => setProfileSummary(e.target.value)}
+                                            rows={3}
+                                            className="w-full bg-white border border-gray-200 focus:border-black focus:ring-2 focus:ring-black/10 rounded-xl p-3 text-sm font-semibold outline-none transition-all resize-none shadow-sm"
+                                        />
+                                    </div>
+
+                                    {/* ─── EDUCATION LEVEL DETAILED ADDITIONS ─── */}
+                                    <div className="md:col-span-2 border-t border-gray-100 pt-6">
+                                        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400 mb-2">Academic Qualifications</h3>
+                                    </div>
+
+                                    {/* Highest Education Selector */}
+                                    <div className="space-y-1.5 md:col-span-2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Highest Education Level</label>
+                                        <select
+                                            value={highestEducation}
+                                            onChange={(e) => setHighestEducation(e.target.value)}
+                                            className="w-full h-12 bg-white border border-gray-200 focus:border-black focus:ring-2 focus:ring-black/10 rounded-xl px-3 text-sm font-semibold outline-none transition-all"
+                                        >
+                                            <option value="">Select Level</option>
+                                            <option value="PG">Post Graduate (PG)</option>
+                                            <option value="UG">Under Graduate (UG)</option>
+                                            <option value="High School">High School</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Conditional fields if PG is selected */}
+                                    {highestEducation === 'PG' && (
+                                        <>
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">University Name (PG)</label>
+                                                <Input
+                                                    placeholder="e.g. Oxford University"
+                                                    value={pgUniversity}
+                                                    onChange={(e) => setPgUniversity(e.target.value)}
+                                                    className="h-12 rounded-xl"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Graduation University Name</label>
+                                                <Input
+                                                    placeholder="e.g. Delhi University"
+                                                    value={graduationUniversity}
+                                                    onChange={(e) => setGraduationUniversity(e.target.value)}
+                                                    className="h-12 rounded-xl"
+                                                />
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {/* Conditional fields if UG is selected */}
+                                    {highestEducation === 'UG' && (
+                                        <>
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">University Name (UG)</label>
+                                                <Input
+                                                    placeholder="e.g. Stanford University"
+                                                    value={ugUniversity}
+                                                    onChange={(e) => setUgUniversity(e.target.value)}
+                                                    className="h-12 rounded-xl"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">School / College Name</label>
+                                                <Input
+                                                    placeholder="e.g. St. Francis College"
+                                                    value={schoolCollegeName}
+                                                    onChange={(e) => setSchoolCollegeName(e.target.value)}
+                                                    className="h-12 rounded-xl"
+                                                />
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {/* ─── CERTIFICATIONS DYNAMIC ADD LIST ─── */}
+                                    <div className="md:col-span-2 border-t border-gray-100 pt-6">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400">Certifications</h3>
+                                            <Button
+                                                type="button"
+                                                onClick={() => setCertifications([...certifications, { name: '', status: 'undergoing' }])}
+                                                variant="outline"
+                                                className="h-8 rounded-lg text-xs font-bold px-3 border-gray-200"
+                                            >
+                                                + Add Certification
+                                            </Button>
+                                        </div>
+                                        {certifications.length === 0 ? (
+                                            <p className="text-xs text-gray-400 pl-1 italic">No certifications added yet.</p>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {certifications.map((cert, index) => (
+                                                    <div key={index} className="flex gap-3 items-center bg-gray-50/50 p-3 rounded-xl border border-gray-100">
+                                                        <Input
+                                                            placeholder="Certification Name"
+                                                            value={cert.name}
+                                                            onChange={(e) => {
+                                                                const copy = [...certifications];
+                                                                copy[index].name = e.target.value;
+                                                                setCertifications(copy);
+                                                            }}
+                                                            className="h-10 rounded-lg flex-1 bg-white"
+                                                        />
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="checkbox"
+                                                                id={`cert-status-${index}`}
+                                                                checked={cert.status === 'completed'}
+                                                                onChange={(e) => {
+                                                                    const copy = [...certifications];
+                                                                    copy[index].status = e.target.checked ? 'completed' : 'undergoing';
+                                                                    setCertifications(copy);
+                                                                }}
+                                                                className="rounded border-gray-300 text-primary w-4 h-4 cursor-pointer"
+                                                            />
+                                                            <label htmlFor={`cert-status-${index}`} className="text-xs font-semibold text-gray-600 select-none cursor-pointer">
+                                                                Completed
+                                                            </label>
+                                                        </div>
+                                                        <Button
+                                                            type="button"
+                                                            onClick={() => setCertifications(certifications.filter((_, i) => i !== index))}
+                                                            variant="outline"
+                                                            className="h-8 w-8 p-0 text-red-500 border-red-100 hover:bg-red-50 rounded-lg flex items-center justify-center"
+                                                        >
+                                                            ✕
+                                                        </Button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* ─── INTERNSHIPS DYNAMIC ADD LIST ─── */}
+                                    <div className="md:col-span-2 border-t border-gray-100 pt-6">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400">Internships</h3>
+                                            <Button
+                                                type="button"
+                                                onClick={() => setInternships([...internships, { companyName: '', duration: '', role: '' }])}
+                                                variant="outline"
+                                                className="h-8 rounded-lg text-xs font-bold px-3 border-gray-200"
+                                            >
+                                                + Add Internship
+                                            </Button>
+                                        </div>
+                                        {internships.length === 0 ? (
+                                            <p className="text-xs text-gray-400 pl-1 italic">No internships added yet.</p>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {internships.map((intern, index) => (
+                                                    <div key={index} className="space-y-2 bg-gray-50/50 p-3 rounded-xl border border-gray-100">
+                                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                            <Input
+                                                                placeholder="Company Name"
+                                                                value={intern.companyName}
+                                                                onChange={(e) => {
+                                                                    const copy = [...internships];
+                                                                    copy[index].companyName = e.target.value;
+                                                                    setInternships(copy);
+                                                                }}
+                                                                className="h-10 rounded-lg bg-white"
+                                                            />
+                                                            <Input
+                                                                placeholder="Duration (e.g. 3 Months)"
+                                                                value={intern.duration}
+                                                                onChange={(e) => {
+                                                                    const copy = [...internships];
+                                                                    copy[index].duration = e.target.value;
+                                                                    setInternships(copy);
+                                                                }}
+                                                                className="h-10 rounded-lg bg-white"
+                                                            />
+                                                            <Input
+                                                                placeholder="Role (e.g. Frontend Intern)"
+                                                                value={intern.role}
+                                                                onChange={(e) => {
+                                                                    const copy = [...internships];
+                                                                    copy[index].role = e.target.value;
+                                                                    setInternships(copy);
+                                                                }}
+                                                                className="h-10 rounded-lg bg-white"
+                                                            />
+                                                        </div>
+                                                        <div className="flex justify-end">
+                                                            <Button
+                                                                type="button"
+                                                                onClick={() => setInternships(internships.filter((_, i) => i !== index))}
+                                                                variant="outline"
+                                                                className="h-8 rounded-lg text-xs font-bold text-red-500 border-red-100 hover:bg-red-50 px-2"
+                                                            >
+                                                                Remove
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* ─── AWARDS, PROJECTS & ACHIEVEMENTS ─── */}
+                                    <div className="md:col-span-2 border-t border-gray-100 pt-6">
+                                        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400 mb-2">Projects & Achievements</h3>
+                                    </div>
+
+                                    {/* Projects */}
+                                    <div className="space-y-1.5 md:col-span-2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Key Projects</label>
+                                        <textarea
+                                            placeholder="Write about major projects you worked on..."
+                                            value={projects}
+                                            onChange={(e) => setProjects(e.target.value)}
+                                            rows={3}
+                                            className="w-full bg-white border border-gray-200 focus:border-black focus:ring-2 focus:ring-black/10 rounded-xl p-3 text-sm font-semibold outline-none transition-all resize-none shadow-sm"
+                                        />
+                                    </div>
+
+                                    {/* Awards */}
+                                    <div className="space-y-1.5 md:col-span-2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Awards & Recognitions</label>
+                                        <textarea
+                                            placeholder="Write about key awards and recognitions..."
+                                            value={awards}
+                                            onChange={(e) => setAwards(e.target.value)}
+                                            rows={3}
+                                            className="w-full bg-white border border-gray-200 focus:border-black focus:ring-2 focus:ring-black/10 rounded-xl p-3 text-sm font-semibold outline-none transition-all resize-none shadow-sm"
+                                        />
+                                    </div>
+
+                                    {/* Other Achievements */}
+                                    <div className="space-y-1.5 md:col-span-2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Other Achievements</label>
+                                        <textarea
+                                            placeholder="Write about any other key accomplishments..."
+                                            value={otherAchievements}
+                                            onChange={(e) => setOtherAchievements(e.target.value)}
+                                            rows={3}
+                                            className="w-full bg-white border border-gray-200 focus:border-black focus:ring-2 focus:ring-black/10 rounded-xl p-3 text-sm font-semibold outline-none transition-all resize-none shadow-sm"
+                                        />
                                     </div>
                                 </div>
 

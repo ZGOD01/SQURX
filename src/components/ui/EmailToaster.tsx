@@ -37,7 +37,7 @@ export function EmailToaster() {
                             )}
 
                             <div className="text-[10px] text-black/30 mt-4 font-semibold flex items-center justify-between">
-                                Just now • via Squrx Mailer
+                                Just now • via Squrex Mailer
                                 <Sparkles className="w-3 h-3 text-yellow-500 opacity-50" />
                             </div>
                         </div>

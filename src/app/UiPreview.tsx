@@ -129,7 +129,7 @@ export default function UiPreview() {
                             <div className="flex flex-wrap gap-8 items-start">
                                 <Button onClick={() => setIsModalOpen(true)}>Open Modal</Button>
 
-                                <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Welcome to Squrx">
+                                <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Welcome to Squrex">
                                     <p className="text-muted-foreground mb-6">This is a smooth, framer-motion powered modal component.</p>
                                     <div className="flex justify-end gap-3">
                                         <Button variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>

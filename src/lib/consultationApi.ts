@@ -79,15 +79,33 @@ export const consultationApi = {
     return res.json();
   },
 
-  // POST /user/me/resume — upload CV/resume (PDF only, max 5MB)
+  // POST /user/me/resume — upload CV/resume (PDF, DOC, DOCX supported, max 5MB)
   // Backend derives the user from the JWT token; no userId in URL needed.
   uploadCv: async (file: File): Promise<string> => {
     const token = getAuthToken();
     if (!token) throw new Error('Authentication required to upload CV.');
 
+    // Normalize the MIME type based on the file extension.
+    // Windows browsers sometimes report .doc/.docx as 'application/octet-stream'
+    // which causes the backend to reject the file even though it's valid.
+    const name = file.name.toLowerCase();
+    let mimeType = file.type;
+    if (!mimeType || mimeType === 'application/octet-stream') {
+      if (name.endsWith('.docx')) {
+        mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      } else if (name.endsWith('.doc')) {
+        mimeType = 'application/msword';
+      } else if (name.endsWith('.pdf')) {
+        mimeType = 'application/pdf';
+      }
+    }
+
+    // Re-wrap with the correct MIME type so the multipart field header is correct
+    const normalizedFile = new File([file], file.name, { type: mimeType });
+
     const formData = new FormData();
     // Backend expects the field to be named 'resume'
-    formData.append('resume', file);
+    formData.append('resume', normalizedFile);
 
     // Do NOT set Content-Type manually — browser sets it with the correct multipart boundary
     const res = await fetchWithTimeout(`${BASE_URL}/user/me/resume`, {
@@ -105,7 +123,7 @@ export const consultationApi = {
     }
 
     const result = await res.json();
-    // Backend returns the updated UserProfile; the resume URL lives at data.resume
-    return result?.data?.resume || '';
+    // Backend returns the updated UserProfile; resume URL may be at data.resume or data.cvUrl
+    return result?.data?.resume || result?.data?.cvUrl || result?.data?.resumeUrl || '';
   }
 };

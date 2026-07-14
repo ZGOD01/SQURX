@@ -42,6 +42,13 @@ export function StudentJobs() {
     const [q, setQ] = useState('');
     const [location, setLocation] = useState('');
     const [experienceLevel, setExperienceLevel] = useState('All');
+    const [minSalary, setMinSalary] = useState('');
+    const [maxSalary, setMaxSalary] = useState('');
+    const [industry, setIndustry] = useState('');
+    const [domain, setDomain] = useState('');
+    const [companyType, setCompanyType] = useState('');
+    const [preferredLocations, setPreferredLocations] = useState<string[]>([]);
+    const [prefLocInput, setPrefLocInput] = useState('');
 
     // Debounced values
     const [debouncedQ, setDebouncedQ] = useState('');
@@ -70,6 +77,8 @@ export function StudentJobs() {
         return () => clearTimeout(timer);
     }, [location]);
 
+    const hasCustomFilters = !!(minSalary || maxSalary || industry || domain || companyType || preferredLocations.length > 0);
+
     // Fetch jobs on filter/page change
     useEffect(() => {
         const loadData = async () => {
@@ -87,12 +96,14 @@ export function StudentJobs() {
                     q: debouncedQ || undefined,
                     location: debouncedLocation || undefined,
                     experienceLevel: apiExp,
-                    page,
-                    limit
+                    page: hasCustomFilters ? 1 : page,
+                    limit: hasCustomFilters ? 200 : limit
                 });
 
                 setJobs(response.jobs);
-                setTotal(response.total);
+                if (!hasCustomFilters) {
+                    setTotal(response.total);
+                }
             } catch (err: any) {
                 console.error('[StudentJobs] Failed to load jobs from API:', err);
                 setFetchError('Unable to load jobs. Please try again.');
@@ -101,7 +112,7 @@ export function StudentJobs() {
             }
         };
         loadData();
-    }, [debouncedQ, debouncedLocation, experienceLevel, page, limit]);
+    }, [debouncedQ, debouncedLocation, experienceLevel, page, limit, hasCustomFilters, minSalary, maxSalary, industry, domain, companyType, preferredLocations]);
 
     // Reset page to 1 when filters change
     const handleQChange = (val: string) => {
@@ -123,6 +134,13 @@ export function StudentJobs() {
         setQ('');
         setLocation('');
         setExperienceLevel('All');
+        setMinSalary('');
+        setMaxSalary('');
+        setIndustry('');
+        setDomain('');
+        setCompanyType('');
+        setPreferredLocations([]);
+        setPrefLocInput('');
         setPage(1);
     };
 
@@ -161,7 +179,7 @@ export function StudentJobs() {
         try {
             sendEmail(
                 'Your Job Application Data Received',
-                `You tracked an application for the role ${job.title} at ${job.companyName || 'your selected company'}. It is securely synced to your Squrx account.`
+                `You tracked an application for the role ${job.title} at ${job.companyName || 'your selected company'}. It is securely synced to your Squrex account.`
             );
         } catch (emailErr) {
             console.error('Failed to send email notification:', emailErr);
@@ -170,7 +188,125 @@ export function StudentJobs() {
         setSelectedJob(null);
     };
 
-    const totalPages = Math.ceil(total / limit) || 1;
+    // Apply client-side filters on jobs list
+    const filteredJobs = jobs.filter(job => {
+        // 1. Min / Max Salary
+        const minVal = minSalary ? parseFloat(minSalary) : null;
+        const maxVal = maxSalary ? parseFloat(maxSalary) : null;
+        if (minVal !== null || maxVal !== null) {
+            const jobMin = job.salaryMin;
+            const jobMax = job.salaryMax;
+            if (jobMin !== undefined && jobMax !== undefined) {
+                if (minVal !== null && jobMax < minVal) return false;
+                if (maxVal !== null && jobMin > maxVal) return false;
+            } else if (job.salary) {
+                const numbers = job.salary.replace(/,/g, '').match(/\d+/g);
+                if (numbers && numbers.length > 0) {
+                    const parsedNums = numbers.map(n => parseFloat(n));
+                    const jobEstMin = Math.min(...parsedNums);
+                    const jobEstMax = Math.max(...parsedNums);
+                    if (minVal !== null && jobEstMax < minVal) return false;
+                    if (maxVal !== null && jobEstMin > maxVal) return false;
+                }
+            }
+        }
+
+        // 2. Preferred Locations (multi-select)
+        if (preferredLocations.length > 0) {
+            if (!job.location) return false;
+            const jobLocLower = job.location.toLowerCase();
+            const matchesAny = preferredLocations.some(pref => {
+                const prefLower = pref.toLowerCase().trim();
+                return jobLocLower.includes(prefLower) || prefLower.includes(jobLocLower);
+            });
+            if (!matchesAny) return false;
+        }
+
+        // 3. Industry
+        if (industry) {
+            const text = `${job.title} ${job.description || ''} ${job.companyName || ''}`.toLowerCase();
+            let matched = false;
+            if (industry === 'IT') {
+                matched = ['software', 'developer', 'engineer', 'it ', 'technology', 'tech', 'web', 'frontend', 'backend', 'fullstack', 'programmer', 'code', 'coding', 'application'].some(kw => text.includes(kw));
+            } else if (industry === 'Finance') {
+                matched = ['finance', 'banking', 'bank', 'fintech', 'accounting', 'accountant', 'audit', 'tax', 'investment', 'trader', 'treasury', 'wealth', 'analyst'].some(kw => text.includes(kw));
+            } else if (industry === 'Healthcare') {
+                matched = ['healthcare', 'medical', 'hospital', 'doctor', 'nurse', 'clinical', 'pharma', 'pharmaceutical', 'biotech', 'health'].some(kw => text.includes(kw));
+            } else if (industry === 'Education') {
+                matched = ['education', 'teacher', 'professor', 'tutor', 'school', 'university', 'college', 'academy', 'learning', 'edtech', 'curriculum'].some(kw => text.includes(kw));
+            } else if (industry === 'Manufacturing') {
+                matched = ['manufacturing', 'factory', 'production', 'mechanical', 'industrial', 'assembly', 'supply chain', 'warehouse', 'logistics'].some(kw => text.includes(kw));
+            } else if (industry === 'Retail') {
+                matched = ['retail', 'e-commerce', 'ecommerce', 'shop', 'store', 'merchandiser', 'inventory', 'sales associate', 'cashier'].some(kw => text.includes(kw));
+            } else if (industry === 'Consulting') {
+                matched = ['consulting', 'consultant', 'advisor', 'strategy', 'management consultant', 'analyst', 'advisory'].some(kw => text.includes(kw));
+            } else if (industry === 'Media') {
+                matched = ['media', 'entertainment', 'video', 'music', 'gaming', 'film', 'television', 'radio', 'content creator', 'journalist', 'writer'].some(kw => text.includes(kw));
+            } else if (industry === 'Telecom') {
+                matched = ['telecom', 'telecommunications', 'network', 'wireless', 'broadband', 'satellite', 'routing', 'cisco'].some(kw => text.includes(kw));
+            } else if (industry === 'Other') {
+                matched = true;
+            }
+            if (!matched) return false;
+        }
+
+        // 4. Domain
+        if (domain) {
+            const text = `${job.title} ${job.description || ''} ${(job.skills || []).join(' ')}`.toLowerCase();
+            let matched = false;
+            if (domain === 'Engineering') {
+                matched = ['engineer', 'engineering', 'developer', 'qa', 'test', 'automation', 'devops', 'sysadmin', 'cloud', 'architecture'].some(kw => text.includes(kw));
+            } else if (domain === 'Data Science') {
+                matched = ['data science', 'data scientist', 'machine learning', 'ml ', 'ai ', 'artificial intelligence', 'data analyst', 'business intelligence', 'bi analyst', 'deep learning'].some(kw => text.includes(kw));
+            } else if (domain === 'Design') {
+                matched = ['design', 'designer', 'ux', 'ui ', 'product design', 'graphic design', 'illustrator', 'creative', 'art director', 'photoshop', 'figma'].some(kw => text.includes(kw));
+            } else if (domain === 'Marketing') {
+                matched = ['marketing', 'seo', 'social media', 'advertising', 'brand', 'content writer', 'copywriter', 'pr ', 'public relations', 'growth hacker'].some(kw => text.includes(kw));
+            } else if (domain === 'Sales') {
+                matched = ['sales', 'account executive', 'business development', 'bde', 'telesales', 'cold calling', 'sales manager', 'account manager'].some(kw => text.includes(kw));
+            } else if (domain === 'HR') {
+                matched = ['hr', 'human resources', 'recruiter', 'talent acquisition', 'payroll', 'onboarding', 'employee relations'].some(kw => text.includes(kw));
+            } else if (domain === 'Operations') {
+                matched = ['operations', 'ops', 'project manager', 'program manager', 'scrum master', 'coordinator', 'logistics', 'supply chain'].some(kw => text.includes(kw));
+            } else if (domain === 'Legal') {
+                matched = ['legal', 'lawyer', 'counsel', 'attorney', 'paralegal', 'compliance', 'regulatory'].some(kw => text.includes(kw));
+            } else if (domain === 'Product') {
+                matched = ['product manager', 'product owner', 'pm ', 'product associate', 'product management'].some(kw => text.includes(kw));
+            } else if (domain === 'Other') {
+                matched = true;
+            }
+            if (!matched) return false;
+        }
+
+        // 5. Company Type
+        if (companyType) {
+            const text = `${job.companyName || ''} ${job.description || ''}`.toLowerCase();
+            let matched = false;
+            if (companyType === 'Startup') {
+                matched = ['startup', 'labs', 'technologies', 'studio', 'innovations', 'ventures'].some(kw => text.includes(kw));
+            } else if (companyType === 'MNC') {
+                matched = ['corporation', 'corp', 'limited', 'ltd', 'inc', 'google', 'amazon', 'microsoft', 'netflix', 'meta', 'apple', 'global', 'solutions'].some(kw => text.includes(kw));
+            } else if (companyType === 'SME') {
+                matched = ['agency', 'local', 'consultancy', 'firm', 'shop', 'boutique'].some(kw => text.includes(kw));
+            } else if (companyType === 'Government') {
+                matched = ['government', 'ministry', 'department', 'public sector', 'municipal', 'state'].some(kw => text.includes(kw));
+            } else if (companyType === 'NGO') {
+                matched = ['ngo', 'non-profit', 'foundation', 'charity', 'association', 'trust'].some(kw => text.includes(kw));
+            } else if (companyType === 'Freelance') {
+                matched = ['freelance', 'contract', 'gig', 'independent'].some(kw => text.includes(kw));
+            }
+            if (!matched) return false;
+        }
+
+        return true;
+    });
+
+    const displayJobsList = hasCustomFilters
+        ? filteredJobs.slice((page - 1) * limit, page * limit)
+        : jobs;
+
+    const displayTotalCount = hasCustomFilters ? filteredJobs.length : total;
+    const totalPages = Math.ceil(displayTotalCount / limit) || 1;
 
     return (
         <PageTransition className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -237,7 +373,7 @@ export function StudentJobs() {
                         <div className="relative flex items-center bg-white/10 border border-white/20 rounded-2xl backdrop-blur-xl shadow-inner-light overflow-hidden transition-all focus-within:bg-white/15 focus-within:border-white/30">
                             <Search className="absolute left-4 text-white/50 w-5 h-5 pointer-events-none" />
                             <input
-                                placeholder="Search by job title or keyword..."
+                                placeholder="Search by keyword, designation or title..."
                                 className="w-full h-14 pl-12 pr-4 bg-transparent text-white placeholder:text-white/40 focus:outline-none text-lg"
                                 value={q}
                                 onChange={(e) => handleQChange(e.target.value)}
@@ -306,7 +442,7 @@ export function StudentJobs() {
                             </div>
                         </div>
 
-                        {(q || location || experienceLevel !== 'All') && (
+                        {(q || location || experienceLevel !== 'All' || minSalary || maxSalary || industry || domain || companyType || preferredLocations.length > 0) && (
                             <Button 
                                 variant="outline" 
                                 className="rounded-xl font-bold h-11 border-dashed hover:bg-muted"
@@ -316,6 +452,148 @@ export function StudentJobs() {
                             </Button>
                         )}
                     </div>
+
+                    <div className="h-px w-full bg-border/40" />
+
+                    {/* Salary Range */}
+                    <div>
+                        <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Salary Range
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-3 max-w-md">
+                            <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors flex-1">
+                                <IndianRupee className="absolute left-3 text-muted-foreground w-4 h-4 pointer-events-none" />
+                                <input
+                                    type="number"
+                                    placeholder="Min Salary"
+                                    className="w-full h-11 pl-9 pr-3 bg-transparent text-sm focus:outline-none"
+                                    value={minSalary}
+                                    onChange={(e) => { setMinSalary(e.target.value); setPage(1); }}
+                                />
+                            </div>
+                            <span className="hidden sm:flex items-center text-muted-foreground text-sm font-medium">to</span>
+                            <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors flex-1">
+                                <IndianRupee className="absolute left-3 text-muted-foreground w-4 h-4 pointer-events-none" />
+                                <input
+                                    type="number"
+                                    placeholder="Max Salary"
+                                    className="w-full h-11 pl-9 pr-3 bg-transparent text-sm focus:outline-none"
+                                    value={maxSalary}
+                                    onChange={(e) => { setMaxSalary(e.target.value); setPage(1); }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="h-px w-full bg-border/40" />
+
+                    {/* Industry, Domain, Company Type */}
+                    <div className="grid sm:grid-cols-3 gap-4">
+                        <div>
+                            <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Industry
+                            </p>
+                            <select
+                                value={industry}
+                                onChange={(e) => { setIndustry(e.target.value); setPage(1); }}
+                                className="w-full h-11 bg-background border border-border/60 rounded-xl px-3 text-sm font-medium outline-none focus:border-primary/50 transition-colors cursor-pointer"
+                            >
+                                <option value="">All Industries</option>
+                                <option value="IT">IT / Software</option>
+                                <option value="Finance">Finance / Banking</option>
+                                <option value="Healthcare">Healthcare</option>
+                                <option value="Education">Education</option>
+                                <option value="Manufacturing">Manufacturing</option>
+                                <option value="Retail">Retail / E-Commerce</option>
+                                <option value="Consulting">Consulting</option>
+                                <option value="Media">Media / Entertainment</option>
+                                <option value="Telecom">Telecom</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div>
+                            <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" /> Domain
+                            </p>
+                            <select
+                                value={domain}
+                                onChange={(e) => { setDomain(e.target.value); setPage(1); }}
+                                className="w-full h-11 bg-background border border-border/60 rounded-xl px-3 text-sm font-medium outline-none focus:border-primary/50 transition-colors cursor-pointer"
+                            >
+                                <option value="">All Domains</option>
+                                <option value="Engineering">Engineering</option>
+                                <option value="Data Science">Data Science</option>
+                                <option value="Design">Design / UX</option>
+                                <option value="Marketing">Marketing</option>
+                                <option value="Sales">Sales</option>
+                                <option value="HR">Human Resources</option>
+                                <option value="Operations">Operations</option>
+                                <option value="Legal">Legal</option>
+                                <option value="Product">Product Management</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div>
+                            <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Company Type
+                            </p>
+                            <select
+                                value={companyType}
+                                onChange={(e) => { setCompanyType(e.target.value); setPage(1); }}
+                                className="w-full h-11 bg-background border border-border/60 rounded-xl px-3 text-sm font-medium outline-none focus:border-primary/50 transition-colors cursor-pointer"
+                            >
+                                <option value="">All Types</option>
+                                <option value="Startup">Startup</option>
+                                <option value="MNC">MNC</option>
+                                <option value="SME">SME</option>
+                                <option value="Government">Government</option>
+                                <option value="NGO">NGO / Non-Profit</option>
+                                <option value="Freelance">Freelance / Contract</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="h-px w-full bg-border/40" />
+
+                    {/* Preferred Locations (Multi-Select Tags) */}
+                    <div>
+                        <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Preferred Locations
+                        </p>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                            {preferredLocations.map((loc, i) => (
+                                <span key={i} className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-500/10 text-indigo-700 border border-indigo-500/20 rounded-lg text-xs font-semibold">
+                                    {loc}
+                                    <button
+                                        type="button"
+                                        onClick={() => { setPreferredLocations(preferredLocations.filter((_, idx) => idx !== i)); setPage(1); }}
+                                        className="ml-0.5 hover:text-destructive transition-colors font-bold"
+                                    >×</button>
+                                </span>
+                            ))}
+                        </div>
+                        <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors max-w-md">
+                            <MapPin className="absolute left-3 text-muted-foreground w-4 h-4 pointer-events-none" />
+                            <input
+                                placeholder="Type a location and press Enter..."
+                                className="w-full h-11 pl-9 pr-3 bg-transparent text-sm focus:outline-none"
+                                value={prefLocInput}
+                                onChange={(e) => setPrefLocInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if ((e.key === 'Enter' || e.key === ',') && prefLocInput.trim()) {
+                                        e.preventDefault();
+                                        const val = prefLocInput.trim().replace(/,$/,'');
+                                        if (val && !preferredLocations.includes(val)) {
+                                            setPreferredLocations([...preferredLocations, val]);
+                                            setPage(1);
+                                        }
+                                        setPrefLocInput('');
+                                    }
+                                }}
+                            />
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-1.5">Press <kbd className="px-1 py-0.5 rounded bg-muted border text-[10px] font-mono">Enter</kbd> or <kbd className="px-1 py-0.5 rounded bg-muted border text-[10px] font-mono">,</kbd> to add a location.</p>
+                    </div>
                 </div>
             </div>
 
@@ -323,7 +601,7 @@ export function StudentJobs() {
             <div className="flex items-center justify-between mb-4 pb-4 border-b border-border/40">
                 <div className="text-sm font-bold text-muted-foreground flex items-center gap-2">
                     <span className="flex items-center justify-center bg-primary/10 text-primary rounded-full px-2.5 py-0.5 text-xs font-black">
-                        {total}
+                        {displayTotalCount}
                     </span>
                     Jobs Available
                 </div>
@@ -349,7 +627,7 @@ export function StudentJobs() {
                             </Card>
                         ))}
                     </div>
-                ) : jobs.length === 0 ? (
+                ) : displayJobsList.length === 0 ? (
                     <div className="flex flex-col items-center justify-center p-16 text-center bg-muted/20 border border-dashed border-border/60 rounded-[2rem] shadow-sm relative overflow-hidden">
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-primary/5 blur-[100px] rounded-full"></div>
                         <Filter className="w-16 h-16 text-muted-foreground opacity-30 mb-6 drop-shadow-sm" />
@@ -360,7 +638,7 @@ export function StudentJobs() {
                 ) : (
                     <>
                         <StaggerContainer className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {jobs.map((job) => {
+                            {displayJobsList.map((job) => {
                                 const applied = appliedJobs.includes(job.id);
 
                                 return (
@@ -590,7 +868,7 @@ export function StudentJobs() {
                         {/* Skills Display in Detail Modal */}
                         {selectedJob.skills && selectedJob.skills.length > 0 && (
                             <div>
-                                <h3 className="font-bold mb-2 text-sm uppercase tracking-wider text-muted-foreground">Required Skills</h3>
+                                <h3 className="font-bold mb-2 text-sm uppercase tracking-wider text-muted-foreground">Keywords / Designation</h3>
                                 <div className="flex flex-wrap gap-1.5">
                                     {selectedJob.skills.map((skill, index) => (
                                         <Badge 

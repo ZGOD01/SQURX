@@ -76,7 +76,7 @@ export function Footer() {
                 </div>
 
                 <div className="pt-8 border-t border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6 font-sans font-normal text-[14px] text-[#999]">
-                    <p>© 2026 Squrx. All rights reserved.</p>
+                    <p>© 2026 Squrex. All rights reserved.</p>
                     <div className="flex gap-6">
                         <a href="#" className="hover:text-gray-900 transition-colors uppercase tracking-wider text-[12px]">Twitter</a>
                         <a href="#" className="hover:text-gray-900 transition-colors uppercase tracking-wider text-[12px]">LinkedIn</a>
