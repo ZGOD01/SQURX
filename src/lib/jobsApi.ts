@@ -1,20 +1,33 @@
 import { API_BASE_URL } from './config';
 import { getInMemToken } from '@/features/auth/store';
-import type { JobVacancy } from './mockDb/schema';
+
+// ─── Clean API job item shape returned to UI ─────────────────────────────────
+export interface ApiJobItem {
+  id: string;
+  title: string;
+  companyName?: string;
+  location?: string;
+  jobType?: string;
+  experienceLevel?: string;
+  salary?: string;
+  skills?: string[];
+  description?: string;
+  applyLink?: string;
+  createdAt: string;
+  source?: string;
+  status?: string;
+  visaSponsorship?: string;
+}
 
 // ─── Raw API job shape returned by GET /jobs ─────────────────────────────────
-// The backend syncs from Fantastic.jobs so field names can vary; we handle
-// multiple possible names defensively.
 export interface ApiJob {
   _id?: string;
   id?: string;
   externalId?: string;
-
   title?: string;
-
   description?: string;
   summary?: string;
-
+  
   // Location
   location?: string;
   locationText?: string;
@@ -27,7 +40,7 @@ export interface ApiJob {
   company?: string;
   organizationSlug?: string;
 
-  // Job meta
+  // Job Type
   jobType?: string;
   type?: string;
   employmentType?: string;
@@ -43,12 +56,12 @@ export interface ApiJob {
   salaryRange?: string;
   compensation?: string;
 
-  // Skills / tags
+  // Skills
   skills?: string[];
   tags?: string[];
   keywords?: string[];
 
-  // Apply link
+  // Apply Link
   applyUrl?: string;
   applyLink?: string;
   url?: string;
@@ -62,6 +75,20 @@ export interface ApiJob {
   // Source
   source?: string;
   status?: string;
+
+  // Real backend fields from sync
+  organization?: string;
+  locationsDerived?: string[];
+  citiesDerived?: string[];
+  countriesDerived?: string[];
+  workArrangement?: string;
+  salaryMin?: number;
+  salaryMax?: number;
+  salaryCurrency?: string;
+  keySkills?: string[];
+  datePosted?: string;
+  dateValidThrough?: string;
+  visaSponsorship?: string | boolean;
 }
 
 export interface FetchJobsParams {
@@ -72,6 +99,13 @@ export interface FetchJobsParams {
   source?: string;
   page?: number;
   limit?: number;
+}
+
+export interface FetchJobsResponse {
+  jobs: ApiJobItem[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 // Helper to extract a string from various possible representations (string, object, array)
@@ -101,8 +135,7 @@ function extractStringArray(val: any): string[] {
 }
 
 /**
- * Normalises job-type strings from the API (e.g. FULL_TIME, full_time, Full Time)
- * to the labels expected by the UI filter buttons.
+ * Normalises job-type strings from the API to the labels expected by the UI.
  */
 function normalizeJobType(raw: string): string {
   const v = raw.toLowerCase().replace(/[_\s-]+/g, ' ').trim();
@@ -112,7 +145,6 @@ function normalizeJobType(raw: string): string {
   if (v.includes('hybrid')) return 'Hybrid';
   if (v.includes('contract') || v.includes('freelance')) return 'Contract';
   if (v.includes('intern')) return 'Internship';
-  // Title-case any remaining value as a safe fallback
   return raw
     .split(/[_\s-]+/)
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
@@ -120,37 +152,31 @@ function normalizeJobType(raw: string): string {
 }
 
 /**
- * Normalises experience-level strings from the API (e.g. senior, MID, junior, FRESHER)
- * to the labels expected by the UI career-stage filter buttons.
+ * Normalises experience-level strings from the API to UI-friendly labels.
  */
 function normalizeExperienceLevel(raw: string): string {
   const v = raw.toLowerCase().trim();
-  // Fresher / Entry
   if (v === 'fresher' || v === 'entry' || v === 'entry level' || v === 'entry-level' || v.includes('0-1') || v === '0') {
     return 'Fresher';
   }
-  // Junior / 1-3
   if (v === 'junior' || v.includes('1-3') || v.includes('1 to 3') || v.includes('0-2') || v.includes('0-3')) {
     return '1-3 Years';
   }
-  // Mid / 3-5
   if (v === 'mid' || v === 'middle' || v.includes('3-5') || v.includes('2-5') || v.includes('mid level') || v.includes('mid-level')) {
     return '3-5 Years';
   }
-  // Senior / 5+
   if (v === 'senior' || v === 'lead' || v === 'staff' || v === 'principal' || v === 'expert' || v.includes('5+') || v.includes('5 ') || v.includes('+5') || v.includes('senior')) {
     return '5+ Years';
   }
-  // Return as-is if no match (will simply not match any filter button, which is fine)
   return raw;
 }
 
 // ─── Mapper ──────────────────────────────────────────────────────────────────
 /**
- * Adapts a raw API job object to the `JobVacancy` shape used across the
- * frontend. Handles various possible field names defensively.
+ * Adapts a raw API job object to the clean ApiJobItem shape.
+ * Preserves actual API data, using optional fields rather than mock fallbacks.
  */
-export function mapApiJobToVacancy(job: ApiJob): JobVacancy {
+export function mapApiJobToItem(job: ApiJob): ApiJobItem {
   const id =
     job._id ||
     job.id ||
@@ -159,84 +185,102 @@ export function mapApiJobToVacancy(job: ApiJob): JobVacancy {
 
   const title = extractString(job.title) || 'Untitled Role';
 
-  const description = extractString(job.description || job.summary);
+  const description = extractString(job.description || job.summary) || undefined;
 
   const location = extractString(
+    job.locationsDerived ||
     job.location ||
     job.locationText ||
     (job.city && job.country ? `${job.city}, ${job.country}` : null) ||
     job.city
-  ) || 'Remote';
+  ) || undefined;
 
   const companyName = extractString(
     job.organizationName ||
+    job.organization ||
     job.companyName ||
     job.company
-  ) || 'Company';
+  ) || undefined;
 
-  const applyLink = extractString(job.applyUrl || job.applyLink || job.url);
+  const applyLink = extractString(job.applyUrl || job.applyLink || job.url) || undefined;
 
   const rawJobType = extractString(
     job.jobType ||
     job.type ||
     job.employmentType ||
     job.taxonomy ||
-    job.category
-  ) || 'Full-Time';
-  // Normalize to UI label (FULL_TIME → Full-Time, etc.)
-  const jobType = normalizeJobType(rawJobType);
+    job.category ||
+    job.workArrangement
+  );
+  const jobType = rawJobType ? normalizeJobType(rawJobType) : undefined;
 
   const rawExperienceLevel = extractString(
     job.experienceLevel || job.seniority
   );
-  // Normalize to UI label (senior → 5+ Years, mid → 3-5 Years, etc.)
-  const experienceLevel = rawExperienceLevel ? normalizeExperienceLevel(rawExperienceLevel) : '';
+  const experienceLevel = rawExperienceLevel ? normalizeExperienceLevel(rawExperienceLevel) : undefined;
 
-  const salary = extractString(
+  let salary = extractString(
     job.salary || job.salaryRange || job.compensation
-  ) || 'Competitive';
+  );
+  if (!salary && (job.salaryMin !== undefined || job.salaryMax !== undefined)) {
+    const currency = job.salaryCurrency || 'USD';
+    const formatter = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency,
+      maximumFractionDigits: 0
+    });
+    if (job.salaryMin !== undefined && job.salaryMax !== undefined) {
+      salary = `${formatter.format(job.salaryMin)} - ${formatter.format(job.salaryMax)}`;
+    } else if (job.salaryMin !== undefined) {
+      salary = `${formatter.format(job.salaryMin)}+`;
+    } else if (job.salaryMax !== undefined) {
+      salary = `Up to ${formatter.format(job.salaryMax)}`;
+    }
+  }
 
   const skills = extractStringArray(
+    job.keySkills ||
     job.skills ||
     job.tags ||
     job.keywords
   );
 
   const createdAt = extractString(
+    job.datePosted ||
     job.createdAt ||
     job.publishedAt ||
     job.postedAt ||
     job.updatedAt
   ) || new Date().toISOString();
 
+  const visaSponsorship = job.visaSponsorship !== undefined ? String(job.visaSponsorship) : undefined;
+
   return {
     id,
-    recruiterId: 'api',
-    companyName,
     title,
-    degree: '',
+    companyName,
     location,
-    skills,
     jobType,
     experienceLevel,
-    salary,
+    salary: salary || undefined,
+    skills: skills.length > 0 ? skills : undefined,
     description,
     applyLink,
-    status: 'Active',
     createdAt,
-    views: 0,
-    clicks: 0,
+    source: job.source || undefined,
+    status: job.status || undefined,
+    visaSponsorship
   };
 }
 
 // ─── API call ─────────────────────────────────────────────────────────────────
 /**
  * Fetches active jobs from the real Squrx backend (`GET /jobs`).
- * Requires a valid JWT bearer token — the student must be logged in.
+ * Requires a valid JWT bearer token. Returns paginated list of jobs.
  */
 export async function fetchJobs(
   params: FetchJobsParams = {}
-): Promise<JobVacancy[]> {
+): Promise<FetchJobsResponse> {
   const token = getInMemToken();
   if (!token) {
     throw new Error('Authentication required to fetch jobs.');
@@ -277,16 +321,17 @@ export async function fetchJobs(
 
   const json = await response.json();
 
-  // ── Normalise the response — the backend may wrap data in several ways ──
   let rawJobs: ApiJob[] = [];
+  let total = 0;
+  let page = 1;
+  let limit = 10;
 
   const payload = json?.data ?? json;
 
   if (Array.isArray(payload)) {
-    // data is directly an array
     rawJobs = payload;
+    total = payload.length;
   } else if (payload && typeof payload === 'object') {
-    // data is an object with a nested array
     if (Array.isArray(payload.jobs)) {
       rawJobs = payload.jobs;
     } else if (Array.isArray(payload.data)) {
@@ -294,7 +339,15 @@ export async function fetchJobs(
     } else if (Array.isArray(payload.results)) {
       rawJobs = payload.results;
     }
+    total = payload.total !== undefined ? payload.total : rawJobs.length;
+    page = payload.page !== undefined ? payload.page : 1;
+    limit = payload.limit !== undefined ? payload.limit : 10;
   }
 
-  return rawJobs.map(mapApiJobToVacancy);
+  return {
+    jobs: rawJobs.map(mapApiJobToItem),
+    total,
+    page,
+    limit
+  };
 }

@@ -10,7 +10,7 @@ import {
     ShieldCheck, Scale, GraduationCap,
     TrendingUp, Home, Microscope, Handshake, 
     HelpCircle, Calculator, Star, Map, CheckCircle2,
-    CalendarDays, LogIn, ArrowRight, Clock, Loader2,
+    CalendarDays, LogIn, ArrowRight, ArrowLeft, Clock, Loader2,
     Eye, EyeOff
 } from 'lucide-react';
 import { Button } from '@/components/ui';
@@ -307,9 +307,10 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: Glo
             }
 
             // Sanitize mobile to ensure it's exactly 10 digits
-            let sanitizedMobile = leadData.mobile ? leadData.mobile.replace(/\D/g, '') : '9999999999';
+            let sanitizedMobile = leadData.mobile ? leadData.mobile.replace(/\D/g, '') : '';
             if (sanitizedMobile.length !== 10) {
-                sanitizedMobile = '9999999999';
+                // Generate a random unique 10-digit number starting with 9 to avoid database uniqueness conflicts
+                sanitizedMobile = '9' + Math.floor(100000000 + Math.random() * 900000000).toString();
             }
 
             // Silent signup & login flow to ensure user document exists and has gdprConsent verified,
@@ -412,7 +413,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: Glo
                             setInMemToken(activeToken);
                         } else if (loginRes.status === 401) {
                             setPasswordRequired(true);
-                            authError = "This email/mobile is already registered. Please enter your password below to confirm booking.";
+                            authError = "This email or mobile number is already associated with an account. Please enter your password below to confirm your booking, or use different details.";
                         } else if (loginRes.status === 403) {
                             authError = "This account is registered but unverified. Please Sign In to verify and book, or use a new email/mobile.";
                         } else {
@@ -429,6 +430,22 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: Glo
 
             if (authError) {
                 throw new Error(authError);
+            }
+
+            // Sync gdprConsent to true on the backend if we have a token to prevent validation errors
+            if (activeToken) {
+                try {
+                    await fetch(`${API_BASE_URL}/user/me`, {
+                        method: 'PUT',
+                        headers: { 
+                            'Authorization': `Bearer ${activeToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ gdprConsent: true }),
+                    });
+                } catch (e) {
+                    console.warn("Failed to sync gdprConsent to user profile:", e);
+                }
             }
 
             const payload = {
@@ -525,6 +542,22 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: Glo
         }
     };
 
+    const handleBackClick = () => {
+        if (isAnalyzing) return;
+        if (step === 0) {
+            setShowOverlay(true);
+            setAnswers({});
+        } else if (step === questions.length) {
+            setStep(questions.length - 1);
+            setIsLeadFormMode(false);
+            setIsLeadFormSubmitted(false);
+            setIsBookingMode(false);
+            setIsBookingConfirmed(false);
+        } else {
+            setStep(step - 1);
+        }
+    };
+
     const progressPercentage = (step / questions.length) * 100;
 
     return (
@@ -559,10 +592,10 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: Glo
                                         <Compass size={14} strokeWidth={3} /> Select Path
                                     </motion.div>
                                     <h3 className="text-4xl md:text-5xl font-black text-gray-900 mb-4 tracking-tighter leading-none">
-                                        Tailor Your Experience.
+                                        Select Path.
                                     </h3>
                                     <p className="text-lg text-gray-500 font-medium max-w-lg mx-auto">
-                                        Whether you're seeking expert advice or immediate career moves, we have the right architecture for you.
+                                        Whether you are seeking expert advice and consulting for your study abroad journey or already studying abroad and want to find jobs, we have right solutions for you.
                                     </p>
                                 </div>
 
@@ -584,7 +617,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: Glo
                                         
                                         <h4 className="text-2xl font-black text-gray-900 mb-3 tracking-tight group-hover:text-blue-600 transition-colors">Book Consultation</h4>
                                         <p className="text-gray-500 font-medium leading-relaxed mb-8 flex-1">
-                                            Schedule a quick chat with our advisors to find the best career options and job search strategies for you.
+                                            Schedule a quick and free counselling session with our consultants to find the best study abroad solutions and information.
                                         </p>
                                         
                                         <div className="flex items-center gap-2 text-blue-600 font-black text-xs uppercase tracking-widest group-hover:gap-4 transition-all">
@@ -609,7 +642,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: Glo
                                         
                                         <h4 className="text-2xl font-black text-gray-900 mb-3 tracking-tight group-hover:text-purple-600 transition-colors">Explore Jobs</h4>
                                         <p className="text-gray-500 font-medium leading-relaxed mb-8 flex-1">
-                                            Bypass the diagnostic and dive straight into high-impact global job opportunities.
+                                            Already studying abroad sign in and apply to most relevant and high impact job opportunities.
                                         </p>
                                         
                                         <div className="flex items-center gap-2 text-purple-600 font-black text-xs uppercase tracking-widest group-hover:gap-4 transition-all">
@@ -694,6 +727,16 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: Glo
                                     transition={{ duration: 0.3, ease: "easeInOut" }}
                                     className="w-full max-w-lg mx-auto"
                                 >
+                                    <div className="mb-6 flex items-center justify-start">
+                                        <button
+                                            onClick={handleBackClick}
+                                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gray-50 hover:bg-gray-100 border border-gray-200/70 text-gray-600 hover:text-gray-900 text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer hover:shadow-md"
+                                        >
+                                            <ArrowLeft size={13} strokeWidth={2.5} />
+                                            <span>{step === 0 ? "Back to Selection" : "Go Back"}</span>
+                                        </button>
+                                    </div>
+
                                     <div className="flex flex-col gap-3">
                                         {questions[step].options.map((opt: any, idx: number) => {
                                             const Icon = opt.icon;
@@ -752,6 +795,16 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: Glo
                                     transition={{ duration: 0.4, ease: "easeOut" }}
                                     className="flex flex-col justify-center w-full relative z-20"
                                 >
+                                    <div className="mb-6 flex items-center justify-start">
+                                        <button
+                                            type="button"
+                                            onClick={handleBackClick}
+                                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gray-50 hover:bg-gray-100 border border-gray-200/70 text-gray-600 hover:text-gray-900 text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer hover:shadow-md"
+                                        >
+                                            <ArrowLeft size={13} strokeWidth={2.5} />
+                                            <span>Go Back</span>
+                                        </button>
+                                    </div>
                                     <div className="absolute -top-10 left-12 w-40 h-40 bg-blue-400/20 rounded-full blur-[50px] pointer-events-none"></div>
                                     <h3 className="text-2xl md:text-3xl font-black text-gray-900 mb-2 tracking-tight">Connect with an Advisor</h3>
                                     <p className="text-sm text-gray-500 mb-8 leading-relaxed font-medium">
@@ -980,6 +1033,16 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: Glo
                                     transition={{ duration: 0.4, ease: "easeOut" }}
                                     className="flex flex-col justify-center w-full"
                                 >
+                                    <div className="mb-6 flex items-center justify-start">
+                                        <button
+                                            type="button"
+                                            onClick={handleBackClick}
+                                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gray-50 hover:bg-gray-100 border border-gray-200/70 text-gray-600 hover:text-gray-900 text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer hover:shadow-md"
+                                        >
+                                            <ArrowLeft size={13} strokeWidth={2.5} />
+                                            <span>Go Back</span>
+                                        </button>
+                                    </div>
                                     <h3 className="text-xl md:text-2xl font-black text-gray-900 mb-2 tracking-tight">Select Date & Time</h3>
                                     <p className="text-sm text-gray-500 mb-6 leading-relaxed">Book a fast-track 1-on-1 session with our experts to review your customized roadmap.</p>
                                     
@@ -1155,8 +1218,8 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess }: Glo
                                     <h3 className="text-2xl font-black text-gray-900 mb-3 tracking-tight">
                                         Slot Confirmed!
                                     </h3>
-                                    <p className="text-sm text-gray-500 max-w-sm mx-auto mb-6 font-medium">
-                                        Your consultation session has been reserved. Our mentorship team will contact you shortly via email and phone.
+                                    <p className="text-sm text-gray-500 max-w-sm mx-auto mb-6 font-medium leading-relaxed">
+                                        Your consultation session has been reserved. A confirmation email with details has been sent to <strong className="text-black font-semibold break-all">{user?.email || leadData.email || 'your email'}</strong>. Our mentorship team will contact you shortly.
                                     </p>
 
                                     {/* ── Guest account notice ─────────────────────── */}

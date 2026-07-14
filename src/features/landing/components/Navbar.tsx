@@ -34,7 +34,7 @@ export function Navbar() {
                             alt="SQURX Logo" 
                             className="h-12 w-auto object-contain group-hover:rotate-[5deg] group-hover:scale-105 group-active:scale-95 transition-all duration-300 drop-shadow-sm"
                         />
-                        <span className="text-[20px] md:text-[24px] font-black tracking-tight bg-gradient-to-r from-[#8711c1] to-[#ff007f] text-transparent bg-clip-text font-sans mt-0.5" style={{ fontFamily: "'Outfit', sans-serif" }}>SQURX</span>
+                        <span className="text-[20px] md:text-[24px] font-black tracking-tight bg-gradient-to-r from-[#8711c1] to-[#ff007f] text-transparent bg-clip-text font-sans mt-0.5" style={{ fontFamily: "'Outfit', sans-serif" }}>SQUREX</span>
                     </Link>
                 </div>
 

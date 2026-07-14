@@ -52,6 +52,7 @@ export function Onboarding() {
     const [jobType, setJobType] = useState('Full-Time');
     const [jobTypeQuery, setJobTypeQuery] = useState('Full-Time');
     const [showJobTypeSuggestions, setShowJobTypeSuggestions] = useState(false);
+    const [selectedJobTypeIds, setSelectedJobTypeIds] = useState<string[]>([]);
 
     const [expectedSalary, setExpectedSalary] = useState('');
     const [currentSalary, setCurrentSalary] = useState('');
@@ -74,7 +75,7 @@ export function Onboarding() {
 
     const { data: educationsData } = useGetEducationsQuery({ search: educationQuery });
     const { data: skillsData } = useGetSkillsQuery({ search: lastSkillPart });
-    const { data: jobTypesData } = useGetJobTypesQuery({ search: jobTypeQuery });
+    const { data: jobTypesData } = useGetJobTypesQuery(undefined);
     const { data: experienceLevelsData } = useGetExperienceLevelsQuery({ search: experienceLevelQuery });
     const { data: locationsData } = useGetLocationsQuery({ search: lastLocationPart });
     const { data: domainsData } = useGetDomainsQuery({ search: lastDomainPart });
@@ -204,6 +205,20 @@ export function Onboarding() {
         }
     }, [user, profile, isInitialized]);
 
+    useEffect(() => {
+        if (profile?.preferredJobTypeIds && profile.preferredJobTypeIds.length > 0) {
+            setSelectedJobTypeIds(profile.preferredJobTypeIds);
+        } else if (jobTypesData?.data && jobType) {
+            const parsedNames = jobType.split(',').map(j => j.trim()).filter(Boolean);
+            const matchingIds = parsedNames
+                .map(name => jobTypesData.data.find((x: any) => x.name.toLowerCase() === name.toLowerCase())?._id)
+                .filter(Boolean);
+            if (matchingIds.length > 0) {
+                setSelectedJobTypeIds(matchingIds);
+            }
+        }
+    }, [profile, jobTypesData, jobType]);
+
 
 
     const handleProfileSubmit = async (e: React.FormEvent) => {
@@ -230,7 +245,6 @@ export function Onboarding() {
 
             const eduMatch = educationsData?.data?.find((e: any) => e.name === education);
             const expMatch = experienceLevelsData?.data?.find((e: any) => e.name === experienceLevel);
-            const jobTypeMatch = jobTypesData?.data?.find((j: any) => j.name === jobType);
 
             // Use pre-captured IDs (populated at selection time) to avoid stale-cache race condition.
             // Fall back to re-resolution only if the user typed locations manually without selecting from dropdown.
@@ -247,6 +261,8 @@ export function Onboarding() {
                 .map(s => skillsData?.data?.find((sd: any) => sd.name.toLowerCase() === s.toLowerCase())?._id)
                 .filter(Boolean);
 
+            const parsedJobTypes = jobType.split(',').map(j => j.trim()).filter(Boolean);
+
             await updateProfile(user.id, {
                 fullName,
                 education: eduMatch?._id || education,
@@ -256,13 +272,13 @@ export function Onboarding() {
                 preferredDomains: domainIds,
                 skills: skillIds,
                 preferredLocations: locationIds,
-                preferredJobTypes: jobTypeMatch?._id ? [jobTypeMatch._id] : [],
+                preferredJobTypes: selectedJobTypeIds,
                 // Local state compatibility
                 careerGoal,
                 location,
                 jobType,
                 locations: [location],
-                jobTypes: [jobType]
+                jobTypes: parsedJobTypes
             });
             setOnboardingStep(1);
         } catch (err) {
@@ -282,8 +298,10 @@ export function Onboarding() {
             event.target.value = '';
             return;
         }
+        const fileName = file.name.toLowerCase();
+        const isValidExtension = fileName.endsWith('.pdf') || fileName.endsWith('.doc') || fileName.endsWith('.docx');
         const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-        if (!validTypes.includes(file.type)) {
+        if (!validTypes.includes(file.type) && !isValidExtension) {
             alert('Invalid format. PDF, DOC or DOCX only.');
             event.target.value = '';
             return;
@@ -610,21 +628,50 @@ export function Onboarding() {
                                             className="h-12 rounded-xl"
                                         />
                                         {showJobTypeSuggestions && jobTypesData?.data && jobTypesData.data.length > 0 && (
-                                            <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto p-1.5 flex flex-col gap-0.5">
-                                                {jobTypesData.data.map((jt: any) => (
-                                                    <button
-                                                        key={jt._id || jt.name}
-                                                        type="button"
-                                                        onMouseDown={() => {
-                                                            setJobType(jt.name);
-                                                            setJobTypeQuery(jt.name);
-                                                            setShowJobTypeSuggestions(false);
-                                                        }}
-                                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded-lg transition-colors cursor-pointer text-black"
-                                                    >
-                                                        {jt.name}
-                                                    </button>
-                                                ))}
+                                            <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-56 overflow-y-auto p-1.5 flex flex-col gap-0.5">
+                                                {jobTypesData.data
+                                                    .filter((jt: any) => {
+                                                        const lastQueryPart = jobTypeQuery.split(',').pop()?.trim() || '';
+                                                        return jt.name.toLowerCase().includes(lastQueryPart.toLowerCase());
+                                                    })
+                                                    .map((jt: any) => {
+                                                        const isChecked = selectedJobTypeIds.includes(jt._id);
+                                                        return (
+                                                            <div
+                                                                key={jt._id || jt.name}
+                                                                onMouseDown={(e) => {
+                                                                    e.preventDefault(); // Prevent input blur from closing the dropdown
+                                                                }}
+                                                                onClick={() => {
+                                                                    let nextIds: string[];
+                                                                    if (isChecked) {
+                                                                        nextIds = selectedJobTypeIds.filter(id => id !== jt._id);
+                                                                    } else {
+                                                                        nextIds = [...selectedJobTypeIds, jt._id];
+                                                                    }
+                                                                    setSelectedJobTypeIds(nextIds);
+                                                                    
+                                                                    // Update the comma-separated text string
+                                                                    const selectedNames = jobTypesData.data
+                                                                        .filter((x: any) => nextIds.includes(x._id))
+                                                                        .map((x: any) => x.name);
+                                                                    const commaSeparated = selectedNames.join(', ');
+                                                                    setJobType(commaSeparated);
+                                                                    setJobTypeQuery(commaSeparated);
+                                                                }}
+                                                                className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded-lg transition-colors cursor-pointer select-none text-black font-semibold"
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isChecked}
+                                                                    readOnly
+                                                                    className="rounded border-gray-300 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                                                                />
+                                                                <span>{jt.name}</span>
+                                                            </div>
+                                                        );
+                                                    })
+                                                }
                                             </div>
                                         )}
                                     </div>

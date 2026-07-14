@@ -3,9 +3,9 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore, getInMemToken } from '@/features/auth/store';
 
 import { useRecruiterStore } from '@/features/recruiter/store';
-import { LogOut, LayoutDashboard, UserSquare, Briefcase, Settings, Users, FileBarChart, Loader2, Home, ArrowLeft, ShieldAlert, Calendar } from 'lucide-react';
+import { LogOut, LayoutDashboard, UserSquare, Briefcase, Settings, Users, FileBarChart, Loader2, Home, ArrowLeft, ShieldAlert, Calendar, ShoppingBag } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Button, Toast } from '@/components/ui';
+import { Button, Toast, Modal } from '@/components/ui';
 
 import { useVerifyOtpMutation, useResendOtpMutation } from '@/lib/store/authApi';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -20,6 +20,7 @@ export function AppShell() {
     const [verifyError, setVerifyError] = useState<string | null>(null);
     const [resendTimer, setResendTimer] = useState(0);
     const [toast, setToast] = useState<{ open: boolean; type: 'success' | 'error' | 'info'; title: string; message: string }>({ open: false, type: 'success', title: '', message: '' });
+    const [showHomeLogoutModal, setShowHomeLogoutModal] = useState(false);
 
     const [verifyOtp, { isLoading: isVerifying }] = useVerifyOtpMutation();
     const [resendOtp, { isLoading: isResending }] = useResendOtpMutation();
@@ -128,17 +129,7 @@ export function AppShell() {
     };
 
     const handleHomeClick = () => {
-        if (!user) {
-            navigate('/');
-            return;
-        }
-        const role = String(user.role).toUpperCase();
-        switch (role) {
-            case 'STUDENT': navigate('/student'); break;
-            case 'RECRUITER': navigate('/recruiter'); break;
-            case 'ADMIN': navigate('/admin'); break;
-            default: navigate('/student'); break;
-        }
+        setShowHomeLogoutModal(true);
     };
 
     const { fetchDashboardData: fetchRecruiter, company: recruiterCompany } = useRecruiterStore();
@@ -166,6 +157,7 @@ export function AppShell() {
                     { to: '/student/jobs', label: 'Jobs', icon: Briefcase },
                     { to: '/student/consultations', label: 'Consultations', icon: Calendar },
                     { to: '/student/preferences', label: 'Preferences', icon: Settings },
+                    { to: '/student/services', label: 'Services', icon: ShoppingBag },
                 ];
             case 'RECRUITER':
                 return [
@@ -402,6 +394,36 @@ export function AppShell() {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            <Modal
+                isOpen={showHomeLogoutModal}
+                onClose={() => setShowHomeLogoutModal(false)}
+                title="Confirm Return to Homepage"
+            >
+                <div className="space-y-6">
+                    <p className="text-sm text-muted-foreground leading-relaxed font-semibold text-gray-700">
+                        To return to the main homepage, you will need to log out of your current session. Do you wish to proceed?
+                    </p>
+                    <div className="flex justify-end gap-3 pt-2">
+                        <Button 
+                            variant="outline" 
+                            onClick={() => setShowHomeLogoutModal(false)}
+                            className="rounded-xl px-5 font-bold hover:bg-gray-100"
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            onClick={() => {
+                                setShowHomeLogoutModal(false);
+                                handleLogout();
+                            }}
+                            className="rounded-xl px-5 bg-red-600 hover:bg-red-700 text-white font-bold shadow-lg shadow-red-600/20"
+                        >
+                            Log Out & Proceed
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
 
             <div className="fixed bottom-4 right-4 z-[300] flex flex-col pointer-events-none">
                 <AnimatePresence>

@@ -154,7 +154,7 @@ export function StudentProfile() {
     // ── API queries for autocomplete ─────────────
     const { data: educationsData } = useGetEducationsQuery({ search: educationQuery });
     const { data: experienceLevelsData } = useGetExperienceLevelsQuery({ search: experienceLevelQuery });
-    const { data: jobTypesData } = useGetJobTypesQuery({ search: jobTypeQuery });
+    const { data: jobTypesData } = useGetJobTypesQuery(undefined);
     const { data: domainsData } = useGetDomainsQuery({ search: careerGoal.split(',').pop()?.trim() || '' });
     const { data: locationsData } = useGetLocationsQuery({ search: locationQuery });
     const { data: skillsData } = useGetSkillsQuery({ search: '' });
@@ -356,8 +356,10 @@ export function StudentProfile() {
         const file = event.target.files?.[0];
         if (!file) return;
         if (file.size > 5 * 1024 * 1024) { showToast('File too large. Max 5MB.', 'error'); return; }
+        const fileName = file.name.toLowerCase();
+        const isValidExtension = fileName.endsWith('.pdf') || fileName.endsWith('.doc') || fileName.endsWith('.docx');
         const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-        if (!validTypes.includes(file.type)) { showToast('Invalid format. PDF/DOC/DOCX only.', 'error'); return; }
+        if (!validTypes.includes(file.type) && !isValidExtension) { showToast('Invalid format. PDF/DOC/DOCX only.', 'error'); return; }
         if (!user) return;
 
         setIsUploadingCV(true);
@@ -626,13 +628,50 @@ export function StudentProfile() {
                                             className={`h-11 ${formErrors.jobType ? 'border-destructive' : ''}`}
                                         />
                                         {isEditing && showJobTypeSuggestions && jobTypesData?.data && jobTypesData.data.length > 0 && (
-                                            <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-1.5 flex flex-col gap-0.5">
-                                                {jobTypesData.data.map((jt: any) => (
-                                                    <button key={jt._id} type="button"
-                                                        onMouseDown={() => { setJobType(jt.name); setJobTypeQuery(jt.name); setShowJobTypeSuggestions(false); setSelectedJobTypeIds([jt._id].filter(Boolean)); }}
-                                                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-lg transition-colors"
-                                                    >{jt.name}</button>
-                                                ))}
+                                            <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-56 overflow-y-auto p-1.5 flex flex-col gap-0.5 bg-white">
+                                                {jobTypesData.data
+                                                    .filter((jt: any) => {
+                                                        const lastQueryPart = jobTypeQuery.split(',').pop()?.trim() || '';
+                                                        return jt.name.toLowerCase().includes(lastQueryPart.toLowerCase());
+                                                    })
+                                                    .map((jt: any) => {
+                                                        const isChecked = selectedJobTypeIds.includes(jt._id);
+                                                        return (
+                                                            <div
+                                                                key={jt._id}
+                                                                onMouseDown={(e) => {
+                                                                    e.preventDefault(); // Prevent input blur from closing the dropdown
+                                                                }}
+                                                                onClick={() => {
+                                                                    let nextIds: string[];
+                                                                    if (isChecked) {
+                                                                        nextIds = selectedJobTypeIds.filter(id => id !== jt._id);
+                                                                    } else {
+                                                                        nextIds = [...selectedJobTypeIds, jt._id];
+                                                                    }
+                                                                    setSelectedJobTypeIds(nextIds);
+                                                                    
+                                                                    // Update the comma-separated text string
+                                                                    const selectedNames = jobTypesData.data
+                                                                        .filter((x: any) => nextIds.includes(x._id))
+                                                                        .map((x: any) => x.name);
+                                                                    const commaSeparated = selectedNames.join(', ');
+                                                                    setJobType(commaSeparated);
+                                                                    setJobTypeQuery(commaSeparated);
+                                                                }}
+                                                                className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-lg transition-colors cursor-pointer select-none text-black font-semibold"
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isChecked}
+                                                                    readOnly
+                                                                    className="rounded border-gray-300 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                                                                />
+                                                                <span>{jt.name}</span>
+                                                            </div>
+                                                        );
+                                                    })
+                                                }
                                             </div>
                                         )}
                                         {formErrors.jobType && <p className="text-destructive text-xs">{formErrors.jobType}</p>}

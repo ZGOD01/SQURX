@@ -5,14 +5,13 @@ import { useAuthStore } from '../auth/store';
 import { Card, Button, Badge } from '@/components/ui';
 import { PageTransition, StaggerContainer, StaggerItem, HoverLift } from '@/components/motion';
 import { Building2, MapPin, ExternalLink, Loader2, Sparkles, IndianRupee, WifiOff } from 'lucide-react';
-import { fetchJobs } from '@/lib/jobsApi';
-import type { JobVacancy } from '@/lib/mockDb/schema';
+import { fetchJobs, type ApiJobItem } from '@/lib/jobsApi';
 
 export function StudentDashboard() {
     const { user } = useAuthStore();
     const { profile } = useStudentStore();
 
-    const [jobs, setJobs] = useState<JobVacancy[]>([]);
+    const [jobs, setJobs] = useState<ApiJobItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -23,7 +22,7 @@ export function StudentDashboard() {
             try {
                 // Fetch up to 200 jobs from the real backend
                 const data = await fetchJobs({ limit: 200 });
-                setJobs(data);
+                setJobs(data.jobs);
             } catch (err: any) {
                 console.error('[StudentDashboard] Failed to load jobs:', err);
                 setFetchError(err?.message ?? 'Unable to load jobs.');
@@ -39,7 +38,7 @@ export function StudentDashboard() {
 
     const personalizedJobs = jobs.filter(j => {
         if (!preferredDomain) return true;
-        const text = (j.title + ' ' + j.description + ' ' + (j.skills || []).join(' ')).toLowerCase();
+        const text = (j.title + ' ' + (j.description || '') + ' ' + (j.skills || []).join(' ')).toLowerCase();
         const keywords = preferredDomain.toLowerCase().split(/\s+/).filter(k => k.length > 2);
         return keywords.length === 0 || keywords.some(k => text.includes(k));
     });
@@ -85,7 +84,7 @@ export function StudentDashboard() {
                             setFetchError(null);
                             try {
                                 const data = await fetchJobs({ limit: 200 });
-                                setJobs(data);
+                                setJobs(data.jobs);
                             } catch (err: any) {
                                 setFetchError(err?.message ?? 'Unable to load jobs.');
                             } finally {
@@ -125,17 +124,21 @@ export function StudentDashboard() {
                                     <h3 className="text-lg font-bold leading-tight mb-1 group-hover:text-black/80 transition-colors line-clamp-2">
                                         {job.title}
                                     </h3>
-                                    <p className="text-sm font-medium text-black/50 mb-4">{job.companyName}</p>
+                                    {job.companyName && <p className="text-sm font-medium text-black/50 mb-4">{job.companyName}</p>}
 
                                     <div className="space-y-2 mt-auto text-sm text-foreground/80 mb-6">
-                                        <div className="flex items-center gap-2">
-                                            <MapPin size={16} className="opacity-50 shrink-0" />
-                                            <span className="truncate">{job.location}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <IndianRupee size={16} className="opacity-50 shrink-0" />
-                                            <span className="truncate">{job.salary}</span>
-                                        </div>
+                                        {job.location && (
+                                            <div className="flex items-center gap-2">
+                                                <MapPin size={16} className="opacity-50 shrink-0" />
+                                                <span className="truncate">{job.location}</span>
+                                            </div>
+                                        )}
+                                        {job.salary && (
+                                            <div className="flex items-center gap-2">
+                                                <IndianRupee size={16} className="opacity-50 shrink-0" />
+                                                <span className="truncate">{job.salary}</span>
+                                            </div>
+                                        )}
                                     </div>
 
                                     <Link to="/student/jobs" className="mt-auto block">
