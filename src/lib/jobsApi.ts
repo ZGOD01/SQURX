@@ -95,9 +95,14 @@ export interface ApiJob {
 }
 
 export interface FetchJobsParams {
+  keywords?: string;
   q?: string;
   taxonomy?: string;
+  domain?: string;
   location?: string;
+  minSalary?: number | string;
+  maxSalary?: number | string;
+  industry?: string;
   experienceLevel?: string;
   source?: string;
   page?: number;
@@ -296,11 +301,25 @@ export async function fetchJobs(
 
   // Build query string from non-empty params only
   const query = new URLSearchParams();
-  if (params.q) query.set('q', params.q);
-  if (params.taxonomy) query.set('taxonomy', params.taxonomy);
+  
+  if (params.keywords) {
+    query.set('keywords', params.keywords);
+  } else if (params.q) {
+    query.set('keywords', params.q);
+  }
+
+  if (params.taxonomy) {
+    query.set('taxonomy', params.taxonomy);
+  } else if (params.domain) {
+    query.set('taxonomy', params.domain);
+  }
+
   if (params.location) query.set('location', params.location);
   if (params.experienceLevel) query.set('experienceLevel', params.experienceLevel);
   if (params.source) query.set('source', params.source);
+  if (params.minSalary !== undefined && params.minSalary !== '') query.set('minSalary', String(params.minSalary));
+  if (params.maxSalary !== undefined && params.maxSalary !== '') query.set('maxSalary', String(params.maxSalary));
+  if (params.industry) query.set('industry', params.industry);
   if (params.page !== undefined) query.set('page', String(params.page));
   if (params.limit !== undefined) query.set('limit', String(params.limit));
 

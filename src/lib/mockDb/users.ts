@@ -8,7 +8,7 @@ export interface MockUser {
 }
 
 export const getMockUsers = (): MockUser[] => [
-  { id: 'usr-101', name: 'Admin User', email: 'admin@squrx.com', role: 'ADMIN', status: 'Active', lastLogin: '2 hours ago' },
+  { id: 'usr-101', name: 'Admin User', email: 'admin@squrex.com', role: 'ADMIN', status: 'Active', lastLogin: '2 hours ago' },
   { id: 'usr-201', name: 'John Doe', email: 'john@student.edu', role: 'STUDENT', status: 'Active', lastLogin: 'Yesterday' },
   { id: 'usr-202', name: 'Alexandra Chen', email: 'alex@student.edu', role: 'STUDENT', status: 'Active', lastLogin: '3 days ago' },
   { id: 'usr-203', name: 'Marcus Johnson', email: 'marcus@student.edu', role: 'STUDENT', status: 'Suspended', lastLogin: '1 week ago' },

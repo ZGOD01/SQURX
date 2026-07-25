@@ -195,7 +195,7 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
 
     // ── Fallback: local calculation when backend hasn't synced yet ──
     let score = 10; // Base score for registration
-    if (p.education && p.education.trim().length > 0) score += 10;
+    if (p.educationHistory && p.educationHistory.length > 0) score += 10;
     if (p.experienceLevel && p.experienceLevel.trim().length > 0) score += 10;
     if (p.expectedSalary && p.expectedSalary.trim().length > 0) score += 10;
     if (p.location && p.location.trim().length > 0) score += 10;

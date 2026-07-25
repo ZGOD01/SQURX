@@ -10,6 +10,22 @@ export interface User {
   createdAt: string;
 }
 
+export interface EducationHistoryItem {
+  _id?: string;
+  education?: string; // Degree ID
+  university?: string; // University ID
+  course?: string; // Course ID
+  specialization?: string; // Specialization ID
+  customUniversity?: string;
+  customCourse?: string;
+  customSpecialization?: string;
+  courseType?: string; // e.g. Full-time, Part-time
+  startYear?: string | number;
+  endYear?: string | number;
+  gradingSystem?: string;
+  gradingValue?: string | number;
+}
+
 export interface StudentProfile {
   userId: string;
   fullName?: string;
@@ -22,9 +38,6 @@ export interface StudentProfile {
   cvUrl: string | null;
   documentUrl?: string | null;
   alertCount: number;
-  // Extended onboarding fields
-  education?: string;
-  educationId?: string;
   experienceLevel?: string;
   experienceLevelId?: string;
   expectedSalary?: string;
@@ -42,12 +55,8 @@ export interface StudentProfile {
   dob?: string;
   currentLocation?: string;
   hometown?: string;
-  highestEducation?: string;
-  pgUniversity?: string;
-  graduationUniversity?: string;
-  ugUniversity?: string;
-  schoolCollegeName?: string;
   languages?: string;
+  educationHistory?: EducationHistoryItem[];
   certifications?: Array<{ name: string; status: 'completed' | 'undergoing' }>;
   awards?: string;
   projects?: string;

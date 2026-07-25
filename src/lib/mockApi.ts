@@ -107,13 +107,10 @@ export const mockApi = {
                             .map((d: any) => (typeof d === 'string' ? d : (d._id || null)))
                             .filter(Boolean);
                     }
-
-                    // Education
-                    if (data.education?.name) {
-                        profile.education = data.education.name;
-                        profile.educationId = data.education._id || '';
-                    } else if (typeof data.education === 'string' && data.education) {
-                        profile.education = data.education;
+                    if (Array.isArray(data.educationHistory)) {
+                        profile.educationHistory = data.educationHistory;
+                    } else {
+                        profile.educationHistory = [];
                     }
 
                     // Experience level
@@ -133,9 +130,17 @@ export const mockApi = {
 
                     // Preferred locations — store IDs directly in profile (no sessionStorage)
                     if (Array.isArray(data.preferredLocations) && data.preferredLocations.length > 0) {
-                        const locNames = data.preferredLocations.map((l: any) =>
-                            typeof l === 'string' ? l : (l.name || '')
-                        ).filter(Boolean);
+                        const locNames = data.preferredLocations.map((l: any) => {
+                            if (typeof l === 'string') return l;
+                            const city = l.name || '';
+                            let country = '';
+                            if (l.country) {
+                                country = typeof l.country === 'object' ? (l.country.name || '') : String(l.country);
+                            } else if (l.countryName) {
+                                country = String(l.countryName);
+                            }
+                            return country ? `${city} (${country})` : city;
+                        }).filter(Boolean);
                         if (locNames.length > 0) {
                             profile.locations = locNames;
                             profile.location = locNames.join(', ');
@@ -187,11 +192,6 @@ export const mockApi = {
                     profile.dob = data.dob || '';
                     profile.currentLocation = data.currentLocation || '';
                     profile.hometown = data.hometown || '';
-                    profile.highestEducation = data.highestEducation || '';
-                    profile.pgUniversity = data.pgUniversity || '';
-                    profile.graduationUniversity = data.graduationUniversity || '';
-                    profile.ugUniversity = data.ugUniversity || '';
-                    profile.schoolCollegeName = data.schoolCollegeName || '';
                     profile.languages = data.languages || '';
                     profile.certifications = Array.isArray(data.certifications) ? data.certifications : [];
                     profile.awards = data.awards || '';
@@ -229,10 +229,11 @@ export const mockApi = {
             if (data.expectedSalary !== undefined) payload.expectedSalary = data.expectedSalary;
             if (data.currentSalary !== undefined) payload.currentSalary = data.currentSalary;
             if (data.preferredDomains !== undefined) payload.preferredDomains = data.preferredDomains;
-            if (data.education !== undefined) payload.education = data.education;
-            if (data.educationId !== undefined) payload.education = data.educationId;
+            
+            if (data.educationHistory !== undefined) payload.educationHistory = data.educationHistory;
+
             if (data.experienceLevel !== undefined) payload.experienceLevel = data.experienceLevel;
-            if (data.experienceLevelId !== undefined) payload.experienceLevel = data.experienceLevelId;
+            if (data.experienceLevelId) payload.experienceLevel = data.experienceLevelId;
             if (data.preferredJobTypes !== undefined) payload.preferredJobTypes = data.preferredJobTypes;
             if (data.skills !== undefined) payload.skills = data.skills;
             if (data.preferredLocations !== undefined) payload.preferredLocations = data.preferredLocations;
@@ -243,11 +244,6 @@ export const mockApi = {
             if (data.dob !== undefined) payload.dob = data.dob;
             if (data.currentLocation !== undefined) payload.currentLocation = data.currentLocation;
             if (data.hometown !== undefined) payload.hometown = data.hometown;
-            if (data.highestEducation !== undefined) payload.highestEducation = data.highestEducation;
-            if (data.pgUniversity !== undefined) payload.pgUniversity = data.pgUniversity;
-            if (data.graduationUniversity !== undefined) payload.graduationUniversity = data.graduationUniversity;
-            if (data.ugUniversity !== undefined) payload.ugUniversity = data.ugUniversity;
-            if (data.schoolCollegeName !== undefined) payload.schoolCollegeName = data.schoolCollegeName;
             if (data.languages !== undefined) payload.languages = data.languages;
             if (data.certifications !== undefined) payload.certifications = data.certifications;
             if (data.awards !== undefined) payload.awards = data.awards;
@@ -270,6 +266,29 @@ export const mockApi = {
         console.error("Failed to sync profile update with backend", e);
     }
   },
+
+  /**
+   * Upload a CV/resume PDF to the backend via POST /user/me/resume (multipart/form-data).
+   * Returns the updated user profile data.resume (S3 URL) on success.
+   */
+  uploadResume: async (file: File): Promise<string | null> => {
+    const token = getInMemToken();
+    if (!token) throw new Error('Not authenticated');
+    const formData = new FormData();
+    formData.append('resume', file);
+    const res = await fetch(`${API_BASE_URL}/user/me/resume`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `Resume upload failed (${res.status})`);
+    }
+    const json = await res.json();
+    return json.data?.resume || null;
+  },
+
   deleteStudentAccount: async (userId: string): Promise<void> => {
     await delay(1000); // give it a mock delay for realism
     MockDB.deleteStudentAccount(userId);

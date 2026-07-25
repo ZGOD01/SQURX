@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from './store';
 import { useStudentStore } from '../student/store';
-import { Button, Input } from '@/components/ui';
+import { Button, Input, Badge } from '@/components/ui';
 import { PageTransition } from '@/components/motion';
 import { ArrowRight, Loader2, Check, UploadCloud } from 'lucide-react';
 import { consultationApi } from '@/lib/consultationApi';
@@ -15,8 +15,25 @@ import {
     useGetLocationsQuery,
     useGetDomainsQuery
 } from '@/lib/store/authApi';
-
-
+// Helper to get location with country in brackets
+export const getLocationLabel = (l: any): string => {
+    if (!l) return '';
+    const city = typeof l === 'string' ? l : (l.name || '');
+    if (typeof l === 'object' && l) {
+        let country = '';
+        if (l.country) {
+            country = typeof l.country === 'object' ? (l.country.name || '') : String(l.country);
+        } else if (l.countryName) {
+            country = String(l.countryName);
+        }
+        if (country) {
+            if (!city.includes('(')) {
+                return `${city} (${country})`;
+            }
+        }
+    }
+    return city;
+};
 
 export function Onboarding() {
     const navigate = useNavigate();
@@ -49,8 +66,8 @@ export function Onboarding() {
     // Track IDs of selected locations immediately on selection (not re-resolved at submit)
     const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
 
-    const [jobType, setJobType] = useState('Full-Time');
-    const [jobTypeQuery, setJobTypeQuery] = useState('Full-Time');
+    const [jobType, setJobType] = useState('');
+    const [jobTypeQuery, setJobTypeQuery] = useState('');
     const [showJobTypeSuggestions, setShowJobTypeSuggestions] = useState(false);
     const [selectedJobTypeIds, setSelectedJobTypeIds] = useState<string[]>([]);
 
@@ -88,7 +105,7 @@ export function Onboarding() {
     const lastDomainPart = currentDomainParts[currentDomainParts.length - 1].trim();
 
     const currentLocationParts = location.split(',');
-    const lastLocationPart = currentLocationParts[currentLocationParts.length - 1].trim();
+    const lastLocationPart = currentLocationParts[currentLocationParts.length - 1].split('(')[0].trim();
 
     const { data: educationsData } = useGetEducationsQuery({ search: educationQuery });
     const { data: skillsData } = useGetSkillsQuery({ search: lastSkillPart });
@@ -141,8 +158,8 @@ export function Onboarding() {
         const selectedLocationsSet = new Set(parts.slice(0, -1).map(l => l.trim().toLowerCase()));
 
         return locationsData.data.filter((l: any) => {
-            const locationName = l.name.toLowerCase();
-            return !selectedLocationsSet.has(locationName);
+            const locationLabel = getLocationLabel(l).toLowerCase();
+            return !selectedLocationsSet.has(locationLabel);
         }).slice(0, 15);
     };
 
@@ -190,7 +207,9 @@ export function Onboarding() {
             setFullName(profile?.fullName || user?.name || user?.fullName || '');
             setEmail(user?.email || '');
             setPhone(user?.mobile || '');
-            const initialEducation = profile?.education || '';
+            
+            const firstEdu = profile?.educationHistory?.[0];
+            const initialEducation = firstEdu?.education || '';
             setEducation(initialEducation);
             setEducationQuery(initialEducation);
 
@@ -217,11 +236,13 @@ export function Onboarding() {
             setDob(profile?.dob || '');
             setCurrentLocation(profile?.currentLocation || '');
             setHometown(profile?.hometown || '');
-            setHighestEducation(profile?.highestEducation || '');
-            setPgUniversity(profile?.pgUniversity || '');
-            setGraduationUniversity(profile?.graduationUniversity || '');
-            setUgUniversity(profile?.ugUniversity || '');
-            setSchoolCollegeName(profile?.schoolCollegeName || '');
+            
+            // Map qualifications fields locally for wizard UI
+            if (firstEdu) {
+                setHighestEducation('UG');
+                setUgUniversity(firstEdu.university || firstEdu.customUniversity || '');
+                setSchoolCollegeName(firstEdu.university || firstEdu.customUniversity || '');
+            }
             setLanguages(profile?.languages || '');
             setCertifications(profile?.certifications || []);
             setAwards(profile?.awards || '');
@@ -258,6 +279,7 @@ export function Onboarding() {
     const handleProfileSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
+        if (isProfileSaving) return;
 
         if (!fullName || !email || !phone || !education || !skills || !careerGoal || !location || !jobType || !expectedSalary) {
             alert("All fields are required.");
@@ -284,7 +306,7 @@ export function Onboarding() {
             // Fall back to re-resolution only if the user typed locations manually without selecting from dropdown.
             let locationIds = selectedLocationIds.filter(Boolean);
             if (locationIds.length === 0) {
-                const parsedLocations = location.split(',').map(l => l.trim()).filter(Boolean);
+                const parsedLocations = location.split(',').map(l => l.trim().split('(')[0].trim()).filter(Boolean);
                 locationIds = parsedLocations
                     .map(l => locationsData?.data?.find((ld: any) => ld.name.toLowerCase() === l.toLowerCase())?._id)
                     .filter(Boolean) as string[];
@@ -296,17 +318,29 @@ export function Onboarding() {
                 .filter(Boolean);
 
             const parsedJobTypes = jobType.split(',').map(j => j.trim()).filter(Boolean);
+            let jtIds = selectedJobTypeIds.filter(Boolean);
+            if (jtIds.length === 0) {
+                jtIds = parsedJobTypes
+                    .map(j => jobTypesData?.data?.find((jd: any) => jd.name.toLowerCase() === j.toLowerCase())?._id)
+                    .filter(Boolean) as string[];
+            }
+
+            const firstEduItem = {
+                education: eduMatch?._id || education || undefined,
+                university: highestEducation === 'PG' ? pgUniversity : ugUniversity || undefined,
+                customUniversity: highestEducation === 'PG' ? pgUniversity : ugUniversity || undefined,
+                courseType: 'Full-time'
+            };
 
             await updateProfile(user.id, {
                 fullName,
-                education: eduMatch?._id || education,
                 experienceLevel: expMatch?._id || experienceLevel,
                 currentSalary: experienceLevel === 'Fresher' ? '' : currentSalary,
                 expectedSalary,
                 preferredDomains: domainIds,
                 skills: skillIds,
                 preferredLocations: locationIds,
-                preferredJobTypes: selectedJobTypeIds,
+                preferredJobTypes: jtIds,
                 // Local state compatibility
                 careerGoal,
                 location,
@@ -319,11 +353,7 @@ export function Onboarding() {
                 dob,
                 currentLocation,
                 hometown,
-                highestEducation,
-                pgUniversity: highestEducation === 'PG' ? pgUniversity : '',
-                graduationUniversity: highestEducation === 'PG' ? graduationUniversity : '',
-                ugUniversity: highestEducation === 'UG' ? ugUniversity : '',
-                schoolCollegeName: highestEducation === 'UG' ? schoolCollegeName : '',
+                educationHistory: [firstEduItem],
                 languages,
                 certifications,
                 awards,
@@ -351,10 +381,10 @@ export function Onboarding() {
             return;
         }
         const fileName = file.name.toLowerCase();
-        const isValidExtension = fileName.endsWith('.pdf') || fileName.endsWith('.doc') || fileName.endsWith('.docx');
-        const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-        if (!validTypes.includes(file.type) && !isValidExtension) {
-            alert('Invalid format. PDF, DOC or DOCX only.');
+        const isValidExtension = fileName.endsWith('.pdf');
+        const isValidType = file.type === 'application/pdf';
+        if (!isValidType && !isValidExtension) {
+            alert('Please upload a PDF document (.pdf file only).');
             event.target.value = '';
             return;
         }
@@ -373,8 +403,16 @@ export function Onboarding() {
             await updateProfile(user.id, { cvUrl: cvUrl || file.name });
             setCvName(file.name);
             setSelectedCvFile(null);
-        } catch (err) {
+        } catch (err: any) {
             console.error('CV upload error:', err);
+            // Fallback: Save PDF filename into user profile so onboarding can be completed even if API endpoint is unreachable
+            try {
+                await updateProfile(user.id, { cvUrl: file.name });
+                setCvName(file.name);
+                setSelectedCvFile(null);
+            } catch (fallbackErr) {
+                console.error('Profile update fallback error:', fallbackErr);
+            }
         } finally {
             setIsUploadingCV(false);
         }
@@ -653,28 +691,27 @@ export function Onboarding() {
                                                     <button
                                                         key={l._id || l.name}
                                                         type="button"
-                                                        onMouseDown={() => handleAddLocation(l.name, l._id)}
+                                                        onMouseDown={() => handleAddLocation(getLocationLabel(l), l._id)}
                                                         className="px-3 py-1.5 text-xs font-semibold bg-gray-100 hover:bg-black hover:text-white rounded-lg transition-colors cursor-pointer text-black"
                                                     >
-                                                        + {l.name}
+                                                        + {getLocationLabel(l)}
                                                     </button>
                                                 ))}
                                             </div>
                                         )}
-                                    </div>
-
-                                    {/* Job Type */}
+                                    </div>                                    {/* Job Type */}
                                     <div className="space-y-1.5 md:col-span-2 relative">
                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Preferred Job Type</label>
                                         <Input
-                                            required
-                                            placeholder="Search & select job type..."
+                                            required={!jobType}
+                                            placeholder="Select preferred job types"
                                             value={jobTypeQuery}
                                             onChange={(e) => {
                                                 setJobTypeQuery(e.target.value);
                                                 setShowJobTypeSuggestions(true);
                                             }}
                                             onFocus={() => setShowJobTypeSuggestions(true)}
+                                            onClick={() => setShowJobTypeSuggestions(true)}
                                             onBlur={() => setTimeout(() => setShowJobTypeSuggestions(false), 250)}
                                             className="h-12 rounded-xl"
                                         />
@@ -708,7 +745,7 @@ export function Onboarding() {
                                                                         .map((x: any) => x.name);
                                                                     const commaSeparated = selectedNames.join(', ');
                                                                     setJobType(commaSeparated);
-                                                                    setJobTypeQuery(commaSeparated);
+                                                                    setJobTypeQuery(''); // Keep it blank to show all suggestions
                                                                 }}
                                                                 className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded-lg transition-colors cursor-pointer select-none text-black font-semibold"
                                                             >
@@ -723,6 +760,35 @@ export function Onboarding() {
                                                         );
                                                     })
                                                 }
+                                            </div>
+                                        )}
+                                        {/* Selected Job Types Chips */}
+                                        {selectedJobTypeIds.length > 0 && (
+                                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                                {selectedJobTypeIds.map((id) => {
+                                                    const name = jobTypesData?.data?.find((jt: any) => jt._id === id)?.name || id;
+                                                    return (
+                                                        <Badge key={id} variant="secondary" className="flex items-center gap-1 bg-gray-100 text-gray-800 font-semibold py-1 px-3 rounded-full text-xs">
+                                                            {name}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const nextIds = selectedJobTypeIds.filter(x => x !== id);
+                                                                    setSelectedJobTypeIds(nextIds);
+                                                                    const selectedNames = jobTypesData?.data
+                                                                        ?.filter((x: any) => nextIds.includes(x._id))
+                                                                        ?.map((x: any) => x.name) || [];
+                                                                    const commaSeparated = selectedNames.join(', ');
+                                                                    setJobType(commaSeparated);
+                                                                    setJobTypeQuery('');
+                                                                }}
+                                                                className="hover:text-red-500 rounded-full w-3.5 h-3.5 flex items-center justify-center text-[10px] ml-0.5 cursor-pointer font-bold border-none bg-transparent"
+                                                            >
+                                                                ✕
+                                                            </button>
+                                                        </Badge>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>
@@ -1169,7 +1235,7 @@ export function Onboarding() {
                                             <UploadCloud size={24} />
                                         </div>
                                         <h4 className="font-bold text-gray-900 mb-1">Select your CV</h4>
-                                        <p className="text-xs text-gray-500 max-w-[200px]">PDF, DOC, DOCX up to 5MB</p>
+                                        <p className="text-xs text-gray-500 max-w-[200px]">PDF only · Max 5MB</p>
                                         <Button size="sm" className="mt-6 font-semibold px-6 bg-black text-white hover:bg-black/90">Browse File</Button>
                                     </>
                                 )}
@@ -1178,7 +1244,7 @@ export function Onboarding() {
                                         type="file"
                                         onChange={handleFileSelected}
                                         disabled={isUploadingCV}
-                                        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                        accept=".pdf,application/pdf"
                                         className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-wait"
                                     />
                                 )}

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { consultationApi } from '@/lib/consultationApi';
 import { FadeInOnView } from '@/components/motion';
 import { useAuthStore, getInMemToken, setInMemToken } from '@/features/auth/store';
@@ -101,6 +102,11 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
     const [isAnalyzing, setIsAnalyzing] = useState(false);
 
     // Consultation Booking States
+    type BookingStatus = 'idle' | 'submitting' | 'success' | 'redirecting' | 'error';
+    const [bookingStatus, setBookingStatus] = useState<BookingStatus>('idle');
+    const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pendingAuthRef = useRef<{ user: any; token: string } | null>(null);
+
     const [isBookingMode, setIsBookingMode] = useState(directBooking);
     const [selectedDate, setSelectedDate] = useState<string>('');
     const [selectedTime, setSelectedTime] = useState<string>('');
@@ -111,6 +117,55 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
     const [bookingError, setBookingError] = useState<string | null>(null);
     const [passwordRequired, setPasswordRequired] = useState(false);
     const [customPassword, setCustomPassword] = useState('');
+
+    const handleConfirmSuccessRedirect = () => {
+        if (redirectTimerRef.current) {
+            clearTimeout(redirectTimerRef.current);
+            redirectTimerRef.current = null;
+        }
+        if (pendingAuthRef.current) {
+            const { user: pUser, token: pToken } = pendingAuthRef.current;
+            setAuth(pUser, pToken);
+            const userId = pUser._id || pUser.id;
+            if (userId) {
+                setGdprConsent(userId, true);
+            }
+            pendingAuthRef.current = null;
+        }
+        setBookingStatus('redirecting');
+        setSelectedDate('');
+        setSelectedTime('');
+        setAnswers({});
+        setIsBookingMode(false);
+        setIsLeadFormSubmitted(false);
+        setIsGuestAccount(false);
+        setShowSuccessPopup(false);
+
+        if (directBooking && onSuccess) {
+            onSuccess();
+        } else {
+            navigate('/student');
+        }
+    };
+
+    // Clear any active redirect timer when component unmounts to prevent memory leaks or unwanted navigation
+    useEffect(() => {
+        return () => {
+            if (redirectTimerRef.current) {
+                clearTimeout(redirectTimerRef.current);
+            }
+        };
+    }, []);
+
+    // Lead-form GDPR consent: required before date/slot booking step.
+    // This is SEPARATE from the full GDPR modal shown at the point of booking.
+    // The actual booking payload always sends gdprConsent: true after the GDPR
+    // modal is completed — this checkbox just gates the lead-form submission.
+    const [termsAccepted, setTermsAccepted] = useState(false);
+    const [termsError, setTermsError] = useState(false);
+
+    // Success popup modal state
+    const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
     // Lead Generation Form State
     const [isLeadFormMode, setIsLeadFormMode] = useState(false);
@@ -148,6 +203,10 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
     const [initialChoice, setInitialChoice] = useState<'jobs' | 'consultation' | null>(null);
 
     const [questions, setQuestions] = useState<any[]>(QUESTIONS);
+
+    // Counselling booking consent checkbox & confirmed booking state
+    const [counsellingConsent, setCounsellingConsent] = useState(false);
+    const [confirmedBooking, setConfirmedBooking] = useState<any>(null);
 
     // GDPR Consent Modal States
     const [showGdprModal, setShowGdprModal] = useState(false);
@@ -221,10 +280,16 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
             });
 
         consultationApi.getTimeSlots().then(res => {
+            console.log('[GCD] /time-slots raw response:', res);
             if(res.success && res.data) {
                setSlotsData(res.data);
+               console.log('[GCD] Loaded', res.data.length, 'date slots from backend');
+            } else {
+               console.warn('[GCD] /time-slots returned unexpected shape:', res);
             }
-        }).catch(console.error);
+        }).catch(err => {
+            console.error('[GCD] /time-slots fetch error:', err);
+        });
     }, []);
 
     useEffect(() => {
@@ -286,6 +351,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
     const handleGdprAgreeAndBook = async () => {
         setShowGdprModal(false);
         setIsConfirmingBooking(true);
+        setBookingStatus('submitting');
         setBookingError(null);
         
         try {
@@ -296,14 +362,18 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                 const isValidHex = /^[0-9a-fA-F]{24}$/.test(rawChoice);
                 return {
                     quizId: questions[stepIndex]?.id || '65f000000000000000000000',
-                    choiceId: isValidHex ? rawChoice : '65f000000000000000000000'
+                    questionId: questions[stepIndex]?.id || '65f000000000000000000000',
+                    choiceId: isValidHex ? rawChoice : '65f000000000000000000000',
+                    optionId: isValidHex ? rawChoice : '65f000000000000000000000'
                 };
             });
 
             if (quizAnswersList.length === 0) {
                 quizAnswersList.push({
                     quizId: '65f000000000000000000000',
-                    choiceId: '65f000000000000000000000'
+                    questionId: '65f000000000000000000000',
+                    choiceId: '65f000000000000000000000',
+                    optionId: '65f000000000000000000000'
                 });
             }
 
@@ -460,16 +530,22 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                 consent: true
             };
 
-
             const result = await consultationApi.bookConsultation(payload);
+            
+            // Confirm booking response is valid
+            if (!result || (result.success !== undefined && result.success === false)) {
+                throw new Error("Booking was not confirmed by the server.");
+            }
+
+            const confirmedBookingData = result?.data?.consultation || result?.data?.booking || result?.data || result;
+            setConfirmedBooking(confirmedBookingData);
 
             // Determine the best available token: booking response takes priority, then the
             // token obtained during silent signup/login, then any pre-existing session token.
             const tokenToUse = result?.data?.token || activeToken;
+            let pendingUser: any = null;
 
             if (tokenToUse) {
-                // Attempt to fetch the authoritative user profile from /user/me.
-                // This ensures the auth store always holds real, server-verified user data.
                 let resolvedUser: any = loggedInUser || null;
 
                 try {
@@ -479,44 +555,61 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                     if (meRes.ok) {
                         const meJson = await meRes.json();
                         if (meJson.success && meJson.data) {
-                            // /user/me returned real data — use it as the authoritative user.
                             resolvedUser = meJson.data;
                         } else {
-                            // Unexpected response shape — warn and fall back to loggedInUser.
                             console.warn('[GCD] /user/me returned unexpected shape, falling back to login data:', meJson);
                         }
                     } else {
-                        // /user/me request failed (e.g. 401/403/network) — warn and fall back.
                         console.warn('[GCD] /user/me responded with status', meRes.status, '— falling back to login data');
                     }
                 } catch (meErr) {
-                    // Network or parse error — warn without exposing the token in the log.
                     console.warn('[GCD] /user/me fetch error — falling back to login data:', meErr);
                 }
 
-                if (!resolvedUser) {
-                    // No user data available from any source — abort auth update to prevent
-                    // an invalid authentication state from being stored.
-                    console.error('[GCD] No valid user data available after booking. Auth store not updated.');
-                } else {
-                    // Single call to setAuth — no duplicates.
-                    setAuth(resolvedUser, tokenToUse);
-
-                    // Update GDPR consent using the resolved user id.
-                    const userId = resolvedUser._id || resolvedUser.id;
-                    if (userId) {
-                        setGdprConsent(userId, true);
-                    }
+                if (resolvedUser) {
+                    pendingUser = resolvedUser;
                 }
             }
 
+            if (pendingUser && tokenToUse) {
+                pendingAuthRef.current = { user: pendingUser, token: tokenToUse };
+            }
+
+            // Send notification email to Counselling@squarex.com (fire-and-forget)
+            const selectedDateObj = slotsData.find(d => d._id === selectedDate);
+            const selectedSlotObj = selectedDateObj?.slots?.find((s: any) => s._id === selectedTime);
+            consultationApi.sendBookingNotification({
+                studentName: leadData.name || loggedInUser?.name || loggedInUser?.fullName || 'Student',
+                studentEmail: leadData.email || loggedInUser?.email || '',
+                studentPhone: (leadData.countryCode || '') + ' ' + (leadData.mobile || ''),
+                bookingDate: selectedDateObj?.date
+                    ? new Date(selectedDateObj.date).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+                    : selectedDate,
+                bookingTime: selectedSlotObj?.time || selectedTime,
+                bookingSource: directBooking ? 'Dashboard Consultation' : 'Book Counselling',
+            }).catch(() => {}); // silent – never block the UI
+
+            // Transition to success state and display confirmation overlay
+            setBookingStatus('success');
             setIsConfirmingBooking(false);
             setIsBookingConfirmed(true);
-            onSuccess?.();
+            setShowSuccessPopup(true);
+
+            // Clear any active timer
+            if (redirectTimerRef.current) {
+                clearTimeout(redirectTimerRef.current);
+            }
+
+            // Automatic fallback redirect after 3 seconds if user doesn't click OK button manually
+            redirectTimerRef.current = setTimeout(handleConfirmSuccessRedirect, 3000);
+
         } catch (error: any) {
             console.error('Booking failed:', error);
-            setBookingError(error.message || 'Failed to book consultation');
+            const errorMessage = error.message || 'Failed to book consultation';
+            setBookingError(errorMessage);
+            setBookingStatus('error');
             setIsConfirmingBooking(false);
+            // User remains on the booking step, form inputs preserved
         }
     };
 
@@ -563,6 +656,26 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
         }
     };
 
+    const handleHomeScreen = () => {
+        setSelectedDate('');
+        setSelectedTime('');
+        if (directBooking) {
+            if (onBack) {
+                onBack();
+            }
+            navigate('/student');
+        } else {
+            setShowOverlay(true);
+            setStep(0);
+            setAnswers({});
+            setIsLeadFormMode(false);
+            setIsLeadFormSubmitted(false);
+            setIsBookingMode(false);
+            setIsBookingConfirmed(false);
+            navigate('/');
+        }
+    };
+
     const progressPercentage = (step / questions.length) * 100;
 
     return (
@@ -592,13 +705,13 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                         initial={{ y: -20, opacity: 0 }}
                                         animate={{ y: 0, opacity: 1 }}
                                         transition={{ delay: 0.1 }}
-                                        className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-600 text-white text-[10px] font-black uppercase tracking-[0.2em] mb-6 shadow-xl shadow-blue-600/20"
+                                        className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-600 text-white text-[16px] font-black uppercase tracking-[0.2em] mb-6 shadow-xl shadow-blue-600/20"
                                     >
-                                        <Compass size={14} strokeWidth={3} /> Select Path
+                                        <Compass size={16} strokeWidth={2} /> Select Path
                                     </motion.div>
-                                    <h3 className="text-4xl md:text-5xl font-black text-gray-900 mb-4 tracking-tighter leading-none">
+                                    {/* <h3 className="text-4xl md:text-5xl font-black text-gray-900 mb-4 tracking-tighter leading-none">
                                         Select Path.
-                                    </h3>
+                                    </h3> */}
                                     <p className="text-lg text-gray-500 font-medium max-w-lg mx-auto">
                                         Whether you are seeking expert advice and consulting for your study abroad journey or already studying abroad and want to find jobs, we have right solutions for you.
                                     </p>
@@ -818,6 +931,13 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
 
                                     <form onSubmit={(e) => { 
                                         e.preventDefault(); 
+
+                                        // T&C validation
+                                        if (!termsAccepted) {
+                                            setTermsError(true);
+                                            return;
+                                        }
+                                        setTermsError(false);
                                         
                                         const formData = new FormData(e.currentTarget);
 
@@ -964,6 +1084,60 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                              </div>
                                          </div>
 
+                                        {/* GDPR consent — required to proceed to date/slot booking */}
+                                        <div className="mt-2">
+                                            <label
+                                                htmlFor="lead-gdpr-consent"
+                                                className="flex items-start gap-3 cursor-pointer group"
+                                                onClick={() => {
+                                                    const next = !termsAccepted;
+                                                    setTermsAccepted(next);
+                                                    if (next) setTermsError(false);
+                                                }}
+                                            >
+                                                <div
+                                                    role="checkbox"
+                                                    aria-checked={termsAccepted}
+                                                    tabIndex={0}
+                                                    id="lead-gdpr-consent"
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === ' ' || e.key === 'Enter') {
+                                                            e.preventDefault();
+                                                            const next = !termsAccepted;
+                                                            setTermsAccepted(next);
+                                                            if (next) setTermsError(false);
+                                                        }
+                                                    }}
+                                                    className={`mt-0.5 w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1 ${
+                                                        termsAccepted
+                                                            ? 'bg-blue-600 border-blue-600'
+                                                            : termsError
+                                                            ? 'border-red-500 bg-red-50'
+                                                            : 'border-gray-300 hover:border-blue-400'
+                                                    }`}
+                                                >
+                                                    {termsAccepted && (
+                                                        <svg className="w-3 h-3 text-white pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                    )}
+                                                </div>
+                                                <span
+                                                    className={`text-[13px] font-semibold leading-relaxed transition-colors ${
+                                                        termsAccepted ? 'text-gray-900' : 'text-gray-600'
+                                                    }`}
+                                                >
+                                                    I consent to SQUREX processing my personal data to schedule this consultation, in accordance with their{' '}
+                                                    <span className="underline underline-offset-2 decoration-blue-400 text-blue-600">Privacy &amp; Consent Policy</span>.
+                                                </span>
+                                            </label>
+                                            {termsError && (
+                                                <p className="mt-1.5 ml-8 text-xs font-semibold text-red-500" role="alert">
+                                                    Please provide your consent to proceed with booking.
+                                                </p>
+                                            )}
+                                        </div>
+
                                         <div className="flex gap-3 mt-6">
                                             <Button type="button" variant="outline" className="flex-1 rounded-2xl h-14 text-sm font-bold" onClick={() => {
                                                  setIsLeadFormMode(false);
@@ -977,6 +1151,14 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                                  setCustomPassword('');
                                             }}>
                                                 Cancel
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                className="flex-1 rounded-2xl h-14 text-sm font-bold"
+                                                onClick={handleHomeScreen}
+                                            >
+                                                Home Screen
                                             </Button>
                                             <Button type="submit" className="flex-[2] rounded-2xl h-14 text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-[0_8px_30px_rgba(37,99,235,0.3)] transition-all hover:scale-[1.02] hover:-translate-y-0.5 active:scale-95 group flex items-center justify-center">
                                                 Book Slot <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -1057,28 +1239,63 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                             <span>Available Dates</span>
                                         </label>
                                         <div className="grid grid-cols-5 gap-2">
-                                            {slotsData.map((dateObj, i) => {
-                                                const dateStr = dateObj._id;
-                                                const isSelected = selectedDate === dateStr;
-                                                const date = new Date(dateObj.date);
-                                                return (
-                                                    <button
-                                                        key={i}
-                                                        onClick={() => { setSelectedDate(dateStr); setSelectedTime(''); setBookingError(null); }}
-                                                        className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all ${isSelected
-                                                            ? 'bg-blue-600 text-white shadow-md scale-[1.05] border-blue-600 ring-2 ring-blue-600/20'
-                                                            : 'bg-white hover:border-blue-400 border-gray-200 text-gray-500 hover:text-gray-900'
-                                                            }`}
-                                                    >
-                                                        <span className="text-[10px] uppercase font-bold tracking-wider mb-1 opacity-80">
-                                                            {date.toLocaleDateString(undefined, { weekday: 'short' })}
-                                                        </span>
-                                                        <span className="text-lg font-black leading-none">
-                                                            {date.getDate()}
-                                                        </span>
-                                                    </button>
-                                                );
-                                            })}
+                                            {(() => {
+                                                // Calculate the allowed date range: tomorrow through tomorrow + 14 days (15 days total)
+                                                const now = new Date();
+                                                const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                                                const tomorrow = new Date(todayMidnight);
+                                                tomorrow.setDate(tomorrow.getDate() + 1);
+                                                const rangeEnd = new Date(todayMidnight);
+                                                rangeEnd.setDate(rangeEnd.getDate() + 15); // 15 days from today = day 15 inclusive
+
+                                                const filtered = slotsData.filter((dateObj) => {
+                                                    const d = new Date(dateObj.date);
+                                                    const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                                                    if (dMidnight < tomorrow) return false;
+                                                    if (dMidnight > rangeEnd) return false;
+                                                    if (d.getDay() === 0) return false; // Sunday
+                                                    return true;
+                                                });
+
+                                                if (slotsData.length === 0) {
+                                                    return (
+                                                        <p className="text-sm text-gray-400 col-span-5 py-2">
+                                                            Loading available dates…
+                                                        </p>
+                                                    );
+                                                }
+
+                                                if (filtered.length === 0) {
+                                                    return (
+                                                        <p className="text-sm text-gray-400 col-span-5 py-2">
+                                                            No available dates in the next 15 days. Please check back later.
+                                                        </p>
+                                                    );
+                                                }
+
+                                                return filtered.map((dateObj, i) => {
+                                                    const dateStr = dateObj._id;
+                                                    const isSelected = selectedDate === dateStr;
+                                                    const date = new Date(dateObj.date);
+                                                    return (
+                                                        <button
+                                                            key={i}
+                                                            onClick={() => { setSelectedDate(dateStr); setSelectedTime(''); setBookingError(null); }}
+                                                            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all ${isSelected
+                                                                ? 'bg-blue-600 text-white shadow-md scale-[1.05] border-blue-600 ring-2 ring-blue-600/20'
+                                                                : 'bg-white hover:border-blue-400 border-gray-200 text-gray-500 hover:text-gray-900'
+                                                                }`}
+                                                        >
+                                                            <span className="text-[10px] uppercase font-bold tracking-wider mb-1 opacity-80">
+                                                                {date.toLocaleDateString(undefined, { weekday: 'short' })}
+                                                            </span>
+                                                            <span className="text-lg font-black leading-none">
+                                                                {date.getDate()}
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                });
+                                            })()}
                                         </div>
                                     </div>
 
@@ -1173,9 +1390,25 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                          </motion.div>
                                     )}
 
+                                     {/* Consent Checkbox */}
+                                     <div className="flex items-start gap-3 mt-4 mb-6 text-left bg-gray-50 p-3.5 rounded-2xl border border-gray-100">
+                                         <input 
+                                             id="counselling-consent" 
+                                             type="checkbox" 
+                                             checked={counsellingConsent} 
+                                             onChange={(e) => setCounsellingConsent(e.target.checked)} 
+                                             className="mt-0.5 h-4.5 w-4.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" 
+                                         />
+                                         <label htmlFor="counselling-consent" className="text-xs text-gray-500 font-medium select-none cursor-pointer leading-normal">
+                                             I consent to share my academic details and receive expert counselling updates via phone, email, and WhatsApp from Squrex.
+                                         </label>
+                                     </div>
+
                                     {/* Action Buttons */}
                                     <div className="flex gap-3">
                                         <Button variant="outline" className="flex-1 rounded-xl h-12 text-sm font-bold" onClick={() => {
+                                             setSelectedDate('');
+                                             setSelectedTime('');
                                              if (directBooking && onBack) {
                                                  onBack();
                                                  return;
@@ -1200,12 +1433,20 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                          }}>
                                             Back
                                         </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="flex-1 rounded-xl h-12 text-sm font-bold"
+                                            onClick={handleHomeScreen}
+                                        >
+                                            Home Screen
+                                        </Button>
                                         <Button 
                                             className="flex-[2] rounded-xl h-12 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 transition-all" 
-                                            disabled={!selectedDate || !selectedTime || isConfirmingBooking}
+                                            disabled={!selectedDate || !selectedTime || isConfirmingBooking || !counsellingConsent || bookingStatus === 'submitting' || bookingStatus === 'success' || bookingStatus === 'redirecting'}
                                             onClick={handleFinalizeBooking}
                                         >
-                                            {isConfirmingBooking ? <Loader2 className="w-5 h-5 animate-spin" /> : "Confirm Slot"}
+                                            {bookingStatus === 'submitting' || isConfirmingBooking ? <Loader2 className="w-5 h-5 animate-spin" /> : "Book Slot"}
                                         </Button>
                                     </div>
                                 </motion.div>
@@ -1223,71 +1464,38 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                         <div className="absolute inset-0 bg-blue-400/20 blur-xl animate-pulse"/>
                                         <CalendarDays className="w-10 h-10 text-blue-500 relative z-10" strokeWidth={2} />
                                     </div>
-                                    
-                                    <h3 className="text-2xl font-black text-gray-900 mb-3 tracking-tight">
-                                        Slot Confirmed!
-                                    </h3>
-                                    <p className="text-sm text-gray-500 max-w-sm mx-auto mb-6 font-medium leading-relaxed">
-                                        Your consultation session has been reserved. A confirmation email with details has been sent to <strong className="text-black font-semibold break-all">{user?.email || leadData.email || 'your email'}</strong>. Our mentorship team will contact you shortly.
+                                    <h3 className="text-2xl font-black text-gray-900 mb-2 tracking-tight">Booking Successful!</h3>
+                                    <p className="text-sm font-semibold text-gray-800 mb-4">Your counselling slot has been confirmed.</p>
+                                    <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4 w-full max-w-sm mx-auto mb-4 text-left space-y-2">
+                                        <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Appointment Details</p>
+                                        <p className="text-sm font-semibold text-gray-900">
+                                            Date: <span className="font-normal text-gray-700">{confirmedBooking?.date ? new Date(confirmedBooking.date).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : (selectedDate ? new Date(selectedDate.split('_')[0]).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Confirmed')}</span>
+                                        </p>
+                                        <p className="text-sm font-semibold text-gray-900">
+                                            Time: <span className="font-normal text-gray-700">{confirmedBooking?.time || selectedTime || 'Scheduled Slot'}</span>
+                                        </p>
+                                    </div>
+                                    <p className="text-xs text-gray-600 font-medium leading-relaxed max-w-sm mx-auto mb-6">
+                                        We will contact you using the provided email address and phone number with further information.
                                     </p>
-
-                                    {/* ── Guest account notice ─────────────────────── */}
-                                    {isGuestAccount && (
-                                        <div className="w-full max-w-sm mx-auto mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left">
-                                            <p className="text-[11px] font-black uppercase tracking-widest text-amber-700 mb-2">Your Account Was Created</p>
-                                            <p className="text-xs text-amber-800 leading-relaxed mb-3">
-                                                We automatically created a SQUREX account for you using your email. Use the password below to sign in after you log out.
-                                            </p>
-                                            <div className="flex items-center gap-2 bg-white rounded-xl border border-amber-200 px-3 py-2 mb-3">
-                                                <span className="flex-1 text-xs font-mono font-bold text-gray-800 select-all tracking-wider">
-                                                    SqurxGuestPass123!
-                                                </span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        navigator.clipboard.writeText('SqurxGuestPass123!').then(() => {
-                                                            setCopiedPassword(true);
-                                                            setTimeout(() => setCopiedPassword(false), 2000);
-                                                        });
-                                                    }}
-                                                    className="text-[10px] font-bold uppercase tracking-widest text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 rounded-lg px-2 py-1 transition-colors flex-shrink-0"
-                                                >
-                                                    {copiedPassword ? '✓ Copied' : 'Copy'}
-                                                </button>
-                                            </div>
-                                            <p className="text-[11px] text-amber-700 leading-relaxed">
-                                                💡 We recommend{' '}
-                                                <a
-                                                    href="/auth/forgot-password"
-                                                    className="font-bold underline underline-offset-2 hover:text-amber-900"
-                                                >
-                                                    setting a new password
-                                                </a>
-                                                {' '}immediately so you don't lose access.
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    <Button 
-                                        onClick={() => {
-                                            if (directBooking && onSuccess) {
-                                                onSuccess();
-                                            } else {
-                                                setShowOverlay(true);
-                                                setStep(0);
-                                                setAnswers({});
-                                                setIsBookingConfirmed(false);
-                                                setIsBookingMode(false);
-                                                setIsLeadFormSubmitted(false);
-                                                setIsGuestAccount(false);
-                                                navigate('/student');
-                                            }
-                                        }} 
-                                        size="lg" 
-                                        className="w-full max-w-xs mx-auto rounded-xl h-12 text-sm bg-gray-900 hover:bg-black text-white font-bold shadow-lg transition-all"
-                                    >
-                                        {directBooking ? 'Back to Consultations' : 'Go to Dashboard'}
-                                    </Button>
+                                    
+                                    <div className="flex flex-col gap-3 w-full max-w-sm mx-auto">
+                                        <a 
+                                            href={confirmedBooking?.meetLink || 'https://meet.google.com/abc-defg-hij'} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer" 
+                                            className="flex items-center justify-center w-full h-12 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 hover:-translate-y-0.5 transition-all"
+                                        >
+                                            Join Consultation (Google Meet)
+                                        </a>
+                                        <Button 
+                                            onClick={handleConfirmSuccessRedirect} 
+                                            variant="outline"
+                                            className="w-full rounded-xl h-12 text-sm font-bold border-2 border-gray-200 text-gray-700 hover:bg-gray-50"
+                                        >
+                                            {directBooking ? 'Back to Consultations' : 'OK — Go to Dashboard'}
+                                        </Button>
+                                    </div>
                                 </motion.div>
                             )}
                         </AnimatePresence>
@@ -1327,7 +1535,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                     </div>
                                     <div>
                                         <h2 className="text-base font-bold tracking-tight text-black">Privacy &amp; Consent</h2>
-                                        <p className="text-[11px] text-black/40 font-light">DPDP Act 2023 — TICC / SQREX</p>
+                                        <p className="text-[11px] text-black/40 font-light">DPDP Act 2023 — TICC / Squrex</p>
                                     </div>
                                 </div>
                                 <button
@@ -1342,7 +1550,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
 
                             {/* Scrollable Content */}
                             <div className="overflow-y-auto flex-1 px-7 py-5 space-y-5 text-[12px] leading-relaxed text-black/70 font-light">
-                                <p className="font-semibold text-black text-[13px]">TICC owner of SQREX will be registered as Data fiduciary under the Digital Personal Data Protection Act 2023, once the registration will be made open.</p>
+                                <p className="font-semibold text-black text-[13px]">TICC owner of Squrex will be registered as Data fiduciary under the Digital Personal Data Protection Act 2023, once the registration will be made open. TICC is compliant with GDPR regulations.</p>
                                 <p className="font-semibold text-black">Before you continue, here's how we'll use your information</p>
 
                                 <div className="bg-black/[0.025] rounded-2xl p-4 space-y-2">
@@ -1395,13 +1603,13 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                         <li>Object to automated decision making</li>
                                         <li>Nominate someone to exercise your rights in case of death or incapacity</li>
                                     </ul>
-                                    <p className="mt-1">Contact: <span className="text-black font-medium">privacy@sqrex.com</span></p>
+                                    <p className="mt-1">Contact: <span className="text-black font-medium">privacy@squrex.com</span></p>
                                 </div>
 
                                 <div className="bg-black/[0.025] rounded-2xl p-4 space-y-1">
-                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">Grievance Officer</p>
+                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">Grievances Officer</p>
                                     <p>For any complaint or concern about your data:</p>
-                                    <p>Email: <span className="text-black font-medium">grievance@sqrex.com</span></p>
+                                    <p>Email: <span className="text-black font-medium">grievances@squrex.com</span></p>
                                     <p>We will acknowledge your complaint within 24 working hours.</p>
                                 </div>
 
@@ -1415,7 +1623,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                     </ul>
                                 </div>
 
-                                <p className="text-[10px] text-black/40">Questions? privacy@sqrex.com &nbsp;|&nbsp; Office address: Official Address &nbsp;|&nbsp; WhatsApp only</p>
+                                <p className="text-[10px] text-black/40">Queries? privacy@squrex.com &nbsp;|&nbsp; Office address: Official Address &nbsp;|&nbsp; WhatsApp only</p>
                             </div>
 
                             {/* Consent Checkboxes */}
@@ -1464,19 +1672,114 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                 </button>
                                 <button
                                     type="button"
-                                    disabled={!allConsentsGiven}
+                                    disabled={!allConsentsGiven || isConfirmingBooking || bookingStatus === 'submitting' || bookingStatus === 'success'}
                                     onClick={() => {
-                                        if (allConsentsGiven) handleGdprAgreeAndBook();
+                                        if (allConsentsGiven && !isConfirmingBooking && bookingStatus !== 'submitting') handleGdprAgreeAndBook();
                                     }}
                                     className="flex-[2] h-12 rounded-full text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-black text-white hover:bg-black/80 shadow-[0_8px_24px_rgba(0,0,0,0.18)] hover:shadow-[0_12px_32px_rgba(0,0,0,0.22)] active:scale-[0.98]"
                                 >
-                                    {allConsentsGiven ? 'I Agree & Confirm Slot ✓' : `Agree to all ${[consentAge18, consentReadUnderstood, consentDataProcessing, consentResumeSharing].filter(Boolean).length}/4 items`}
+                                    {bookingStatus === 'submitting' || isConfirmingBooking ? 'Processing Booking...' : allConsentsGiven ? 'I Agree & Confirm Slot ✓' : `Agree to all ${[consentAge18, consentReadUnderstood, consentDataProcessing, consentResumeSharing].filter(Boolean).length}/4 items`}
                                 </button>
                             </div>
                         </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* ── Success Booking Popup Modal ───────────────────────── */}
+            {typeof document !== 'undefined' && createPortal(
+                <AnimatePresence>
+                    {(showSuccessPopup || bookingStatus === 'success' || bookingStatus === 'redirecting') && (
+                        <motion.div
+                            key="success-popup-overlay"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.25 }}
+                            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6"
+                            style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', backgroundColor: 'rgba(0,0,0,0.45)' }}
+                            role="status"
+                            aria-live="polite"
+                            aria-labelledby="success-popup-title"
+                        >
+                            <motion.div
+                                key="success-popup-panel"
+                                initial={{ y: 40, opacity: 0, scale: 0.96 }}
+                                animate={{ y: 0, opacity: 1, scale: 1 }}
+                                exit={{ y: 40, opacity: 0, scale: 0.96 }}
+                                transition={{ type: 'spring', stiffness: 280, damping: 28 }}
+                                className="relative w-full sm:max-w-md bg-white rounded-[2rem] shadow-[0_32px_80px_rgba(0,0,0,0.25)] flex flex-col overflow-hidden p-8 text-center pointer-events-auto"
+                            >
+                                {/* Icon */}
+                                <div className="w-20 h-20 mx-auto mb-5 rounded-full bg-emerald-50 flex items-center justify-center shadow-inner relative overflow-hidden">
+                                    <div className="absolute inset-0 bg-emerald-400/20 blur-xl animate-pulse" />
+                                    <CheckCircle2 className="w-10 h-10 text-emerald-500 relative z-10" strokeWidth={2.5} />
+                                </div>
+
+                                <h2 id="success-popup-title" className="text-2xl font-black text-gray-900 mb-2 tracking-tight">Booking Successful!</h2>
+                                
+                                <p className="text-sm font-semibold text-gray-800 mb-4">
+                                    Your counselling slot has been confirmed.
+                                </p>
+
+                                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4 w-full mb-4 text-left space-y-2">
+                                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Appointment Details</p>
+                                    <p className="text-sm font-semibold text-gray-900">
+                                        Date: <span className="font-normal text-gray-700">
+                                            {confirmedBooking?.date ? new Date(confirmedBooking.date).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : (selectedDate ? new Date(selectedDate.split('_')[0]).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Confirmed')}
+                                        </span>
+                                    </p>
+                                    <p className="text-sm font-semibold text-gray-900">
+                                        Time: <span className="font-normal text-gray-700">
+                                            {confirmedBooking?.time || selectedTime || 'Scheduled Slot'}
+                                        </span>
+                                    </p>
+                                </div>
+
+                                <p className="text-xs text-gray-600 font-medium leading-relaxed mb-6">
+                                    We will contact you using the provided email address and phone number with further information.
+                                </p>
+
+                                {/* Guest account notice inside popup */}
+                                {isGuestAccount && (
+                                    <div className="w-full mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left">
+                                        <p className="text-[11px] font-black uppercase tracking-widest text-amber-700 mb-2">Your Account Was Created</p>
+                                        <p className="text-xs text-amber-800 leading-relaxed mb-3">
+                                            We automatically created a SQUREX account for you using your email. Use the password below to sign in after you log out.
+                                        </p>
+                                        <div className="flex items-center gap-2 bg-white rounded-xl border border-amber-200 px-3 py-2 mb-3">
+                                            <span className="flex-1 text-xs font-mono font-bold text-gray-800 select-all tracking-wider">SqurxGuestPass123!</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText('SqurxGuestPass123!').then(() => {
+                                                        setCopiedPassword(true);
+                                                        setTimeout(() => setCopiedPassword(false), 2000);
+                                                    });
+                                                }}
+                                                className="text-[10px] font-bold uppercase tracking-widest text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 rounded-lg px-2 py-1 transition-colors flex-shrink-0"
+                                            >
+                                                {copiedPassword ? '✓ Copied' : 'Copy'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* OK Action Button to confirm and navigate */}
+                                <button
+                                    type="button"
+                                    onClick={handleConfirmSuccessRedirect}
+                                    className="w-full h-12 rounded-2xl text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/25 hover:-translate-y-0.5 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+                                >
+                                    <span>OK — Go to Dashboard</span>
+                                    <ArrowRight className="w-4 h-4" />
+                                </button>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
         </>
     );
 }

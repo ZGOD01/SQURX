@@ -305,7 +305,7 @@ export function Register() {
                         className="inline-block hover:scale-105 transition-transform duration-300 group"
                     >
                         <div className="flex items-center gap-3 mb-8 mx-auto lg:mx-0 justify-center lg:justify-start">
-                            <img src="/squrx01.png" alt="SQURX Logo" className="w-14 h-14 object-contain drop-shadow-xl group-hover:rotate-[5deg] transition-all duration-300" />
+                            <img src="/squrx01.png" alt="Squrex Logo" className="w-14 h-14 object-contain drop-shadow-xl group-hover:rotate-[5deg] transition-all duration-300" />
                             <span className="text-4xl font-black tracking-tight bg-gradient-to-r from-[#8711c1] to-[#ff007f] text-transparent bg-clip-text font-sans mt-1">SQUREX</span>
                         </div>
                     </Link>
@@ -695,6 +695,24 @@ export function Register() {
                                                 </div>
                                             </div>
 
+                                            {/* Under-18 parental consent declaration — UI disclosure only.
+                                                No backend field exists for parental consent yet; this is a
+                                                mandatory legal declaration shown to all registrants.
+                                                Backend dependency: requires a dedicated field to be persisted. */}
+                                            {/* <div className="bg-amber-50/60 rounded-2xl p-4 border border-amber-200/60">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-600">
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                                                        </svg>
+                                                    </div>
+                                                    <p className="text-xs leading-relaxed text-amber-800 font-light">
+                                                        <strong className="font-semibold text-amber-900 block mb-0.5">Parental Consent Notice</strong>
+                                                        I am below 18; therefore, my parent or guardian will provide consent.
+                                                    </p>
+                                                </div>
+                                            </div> */}
+
                                             {/* Privacy & Consent Button */}
                                             <button
                                                 type="button"
@@ -926,7 +944,7 @@ export function Register() {
                                     </div>
                                     <div>
                                         <h2 className="text-base font-bold tracking-tight text-black">Privacy &amp; Consent</h2>
-                                        <p className="text-[11px] text-black/40 font-light">DPDP Act 2023 — TICC / SQREX</p>
+                                        <p className="text-[11px] text-black/40 font-light">DPDP Act 2023 — TICC / Squrex</p>
                                     </div>
                                 </div>
                                 <button
@@ -941,7 +959,7 @@ export function Register() {
 
                             {/* Scrollable Content */}
                             <div className="overflow-y-auto flex-1 px-7 py-5 space-y-5 text-[12px] leading-relaxed text-black/70 font-light">
-                                <p className="font-semibold text-black text-[13px]">TICC owner of SQREX will be registered as Data fiduciary under the Digital Personal Data Protection Act 2023, once the registration will be made open.</p>
+                                <p className="font-semibold text-black text-[13px]">TICC owner of Squrex will be registered as Data fiduciary under the Digital Personal Data Protection Act 2023, once the registration will be made open. TICC is compliant with GDPR regulations.</p>
                                 <p className="font-semibold text-black">Before you continue, here's how we'll use your information</p>
 
                                 <div className="bg-black/[0.025] rounded-2xl p-4 space-y-2">
@@ -949,7 +967,7 @@ export function Register() {
                                     <p>When you upload your resume and create a profile, we collect:</p>
                                     <ul className="list-disc list-inside pl-2 space-y-1">
                                         <li>Your name, email, and phone number</li>
-                                        <li>Your resume (education, experience, skills and included details)</li>
+                                        <li>Your resume (education, experience, skills, and included details)</li>
                                         <li>Your responses to our quiz and job preferences</li>
                                     </ul>
                                 </div>
@@ -972,7 +990,7 @@ export function Register() {
                                     <p className="font-medium text-black/80 mt-2">To keep you informed:</p>
                                     <ul className="list-disc list-inside pl-2 space-y-1">
                                         <li>Job opportunities matching your profile</li>
-                                        <li>Updates about Sqrex features and services</li>
+                                        <li>Updates about Squrex features and services</li>
                                         <li>Job market, study abroad programs and career tips</li>
                                     </ul>
                                 </div>
@@ -1002,13 +1020,13 @@ export function Register() {
                                         <li>Object to automated decision making</li>
                                         <li>Nominate someone to exercise your rights in case of death or incapacity</li>
                                     </ul>
-                                    <p className="mt-1">Contact: <span className="text-black font-medium">privacy@sqrex.com</span></p>
+                                    <p className="mt-1">Contact: <span className="text-black font-medium">privacy@squrex.com</span></p>
                                 </div>
 
                                 <div className="bg-black/[0.025] rounded-2xl p-4 space-y-1">
-                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">Grievance Officer</p>
+                                    <p className="font-bold text-black uppercase tracking-wide text-[11px]">Grievances Officer</p>
                                     <p>For any complaint or concern about your data:</p>
-                                    <p>Email: <span className="text-black font-medium">grievance@sqrex.com</span></p>
+                                    <p>Email: <span className="text-black font-medium">grievances@squrex.com</span></p>
                                     <p>We will acknowledge your complaint within 24 working hours.</p>
                                 </div>
 
@@ -1022,7 +1040,7 @@ export function Register() {
                                     </ul>
                                 </div>
 
-                                <p className="text-[10px] text-black/40">Questions? privacy@sqrex.com &nbsp;|&nbsp; Office address: Official Address &nbsp;|&nbsp; WhatsApp only</p>
+                                <p className="text-[10px] text-black/40">Queries? privacy@squrex.com &nbsp;|&nbsp; Office address: Official Address &nbsp;|&nbsp; WhatsApp only</p>
                             </div>
 
                             {/* Consent Checkboxes */}

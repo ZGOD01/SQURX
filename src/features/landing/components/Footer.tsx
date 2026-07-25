@@ -37,7 +37,7 @@ export function Footer() {
                     <div className="col-span-2 lg:col-span-2 pr-8">
                         <Link to="/" className="flex items-center gap-2 mb-6 group w-fit">
                             <img src="/squrx01.png" alt="SQURX Logo" className="w-8 h-8 object-contain drop-shadow-sm group-hover:rotate-[5deg] group-hover:scale-105 transition-all duration-300" />
-                            <span className="text-2xl font-black tracking-tight bg-gradient-to-r from-[#8711c1] to-[#ff007f] text-transparent bg-clip-text font-sans mt-0.5">SQURX</span>
+                            <span className="text-2xl font-black tracking-tight bg-gradient-to-r from-[#8711c1] to-[#ff007f] text-transparent bg-clip-text font-sans mt-0.5">SQUREX</span>
                         </Link>
                         <p className="font-['Outfit'] font-light text-[#666] text-lg max-w-sm leading-relaxed">
                             The premier career strategy firm for individuals who refuse to leave their professional success to chance.

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { API_BASE_URL } from '@/lib/config';
 import { getInMemToken } from '@/features/auth/store';
 import { useAuthStore } from '@/features/auth/store';
 import { Card, Button, Skeleton } from '@/components/ui';
@@ -22,7 +23,7 @@ import {
 } from 'lucide-react';
 import { GlobalCareerDiagnostic } from '@/features/landing/components/GlobalCareerDiagnostic';
 
-const API_BASE = 'https://squrx-backend.onrender.com/api/v1';
+
 
 type TabType = 'active' | 'past';
 
@@ -289,7 +290,7 @@ export function StudentConsultation() {
             return;
         }
 
-        fetch(`${API_BASE}/consultations/my-appointments`, {
+        fetch(`${API_BASE_URL}/consultations/my-appointments`, {
             headers: { Authorization: `Bearer ${token}` },
         })
             .then((res) => res.json())

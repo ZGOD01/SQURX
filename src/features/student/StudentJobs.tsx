@@ -46,13 +46,14 @@ export function StudentJobs() {
     const [maxSalary, setMaxSalary] = useState('');
     const [industry, setIndustry] = useState('');
     const [domain, setDomain] = useState('');
-    const [companyType, setCompanyType] = useState('');
     const [preferredLocations, setPreferredLocations] = useState<string[]>([]);
     const [prefLocInput, setPrefLocInput] = useState('');
 
     // Debounced values
     const [debouncedQ, setDebouncedQ] = useState('');
     const [debouncedLocation, setDebouncedLocation] = useState('');
+    const [debouncedMinSalary, setDebouncedMinSalary] = useState('');
+    const [debouncedMaxSalary, setDebouncedMaxSalary] = useState('');
 
     // Modal & UI State
     const [selectedJob, setSelectedJob] = useState<ApiJobItem | null>(null);
@@ -77,10 +78,23 @@ export function StudentJobs() {
         return () => clearTimeout(timer);
     }, [location]);
 
-    const hasCustomFilters = !!(minSalary || maxSalary || industry || domain || companyType || preferredLocations.length > 0);
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedMinSalary(minSalary);
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [minSalary]);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedMaxSalary(maxSalary);
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [maxSalary]);
 
     // Fetch jobs on filter/page change
     useEffect(() => {
+        let active = true;
         const loadData = async () => {
             setIsLoading(true);
             setFetchError(null);
@@ -92,27 +106,40 @@ export function StudentJobs() {
                 else if (experienceLevel === '3-5 Years') apiExp = 'mid';
                 else if (experienceLevel === '5+ Years') apiExp = 'senior';
 
+                const locQuery = preferredLocations.length > 0 ? preferredLocations.join(',') : (debouncedLocation || undefined);
+
                 const response = await fetchJobs({
-                    q: debouncedQ || undefined,
-                    location: debouncedLocation || undefined,
+                    keywords: debouncedQ || undefined,
+                    taxonomy: domain || undefined,
+                    location: locQuery,
+                    minSalary: debouncedMinSalary || undefined,
+                    maxSalary: debouncedMaxSalary || undefined,
+                    industry: industry || undefined,
                     experienceLevel: apiExp,
-                    page: hasCustomFilters ? 1 : page,
-                    limit: hasCustomFilters ? 200 : limit
+                    page: page,
+                    limit: limit
                 });
 
-                setJobs(response.jobs);
-                if (!hasCustomFilters) {
+                if (active) {
+                    setJobs(response.jobs);
                     setTotal(response.total);
                 }
             } catch (err: any) {
-                console.error('[StudentJobs] Failed to load jobs from API:', err);
-                setFetchError('Unable to load jobs. Please try again.');
+                if (active) {
+                    console.error('[StudentJobs] Failed to load jobs from API:', err);
+                    setFetchError('Unable to load jobs. Please try again.');
+                }
             } finally {
-                setIsLoading(false);
+                if (active) {
+                    setIsLoading(false);
+                }
             }
         };
         loadData();
-    }, [debouncedQ, debouncedLocation, experienceLevel, page, limit, hasCustomFilters, minSalary, maxSalary, industry, domain, companyType, preferredLocations]);
+        return () => {
+            active = false;
+        };
+    }, [debouncedQ, debouncedLocation, experienceLevel, page, limit, debouncedMinSalary, debouncedMaxSalary, industry, domain, preferredLocations]);
 
     // Reset page to 1 when filters change
     const handleQChange = (val: string) => {
@@ -138,7 +165,6 @@ export function StudentJobs() {
         setMaxSalary('');
         setIndustry('');
         setDomain('');
-        setCompanyType('');
         setPreferredLocations([]);
         setPrefLocInput('');
         setPage(1);
@@ -188,124 +214,8 @@ export function StudentJobs() {
         setSelectedJob(null);
     };
 
-    // Apply client-side filters on jobs list
-    const filteredJobs = jobs.filter(job => {
-        // 1. Min / Max Salary
-        const minVal = minSalary ? parseFloat(minSalary) : null;
-        const maxVal = maxSalary ? parseFloat(maxSalary) : null;
-        if (minVal !== null || maxVal !== null) {
-            const jobMin = job.salaryMin;
-            const jobMax = job.salaryMax;
-            if (jobMin !== undefined && jobMax !== undefined) {
-                if (minVal !== null && jobMax < minVal) return false;
-                if (maxVal !== null && jobMin > maxVal) return false;
-            } else if (job.salary) {
-                const numbers = job.salary.replace(/,/g, '').match(/\d+/g);
-                if (numbers && numbers.length > 0) {
-                    const parsedNums = numbers.map(n => parseFloat(n));
-                    const jobEstMin = Math.min(...parsedNums);
-                    const jobEstMax = Math.max(...parsedNums);
-                    if (minVal !== null && jobEstMax < minVal) return false;
-                    if (maxVal !== null && jobEstMin > maxVal) return false;
-                }
-            }
-        }
-
-        // 2. Preferred Locations (multi-select)
-        if (preferredLocations.length > 0) {
-            if (!job.location) return false;
-            const jobLocLower = job.location.toLowerCase();
-            const matchesAny = preferredLocations.some(pref => {
-                const prefLower = pref.toLowerCase().trim();
-                return jobLocLower.includes(prefLower) || prefLower.includes(jobLocLower);
-            });
-            if (!matchesAny) return false;
-        }
-
-        // 3. Industry
-        if (industry) {
-            const text = `${job.title} ${job.description || ''} ${job.companyName || ''}`.toLowerCase();
-            let matched = false;
-            if (industry === 'IT') {
-                matched = ['software', 'developer', 'engineer', 'it ', 'technology', 'tech', 'web', 'frontend', 'backend', 'fullstack', 'programmer', 'code', 'coding', 'application'].some(kw => text.includes(kw));
-            } else if (industry === 'Finance') {
-                matched = ['finance', 'banking', 'bank', 'fintech', 'accounting', 'accountant', 'audit', 'tax', 'investment', 'trader', 'treasury', 'wealth', 'analyst'].some(kw => text.includes(kw));
-            } else if (industry === 'Healthcare') {
-                matched = ['healthcare', 'medical', 'hospital', 'doctor', 'nurse', 'clinical', 'pharma', 'pharmaceutical', 'biotech', 'health'].some(kw => text.includes(kw));
-            } else if (industry === 'Education') {
-                matched = ['education', 'teacher', 'professor', 'tutor', 'school', 'university', 'college', 'academy', 'learning', 'edtech', 'curriculum'].some(kw => text.includes(kw));
-            } else if (industry === 'Manufacturing') {
-                matched = ['manufacturing', 'factory', 'production', 'mechanical', 'industrial', 'assembly', 'supply chain', 'warehouse', 'logistics'].some(kw => text.includes(kw));
-            } else if (industry === 'Retail') {
-                matched = ['retail', 'e-commerce', 'ecommerce', 'shop', 'store', 'merchandiser', 'inventory', 'sales associate', 'cashier'].some(kw => text.includes(kw));
-            } else if (industry === 'Consulting') {
-                matched = ['consulting', 'consultant', 'advisor', 'strategy', 'management consultant', 'analyst', 'advisory'].some(kw => text.includes(kw));
-            } else if (industry === 'Media') {
-                matched = ['media', 'entertainment', 'video', 'music', 'gaming', 'film', 'television', 'radio', 'content creator', 'journalist', 'writer'].some(kw => text.includes(kw));
-            } else if (industry === 'Telecom') {
-                matched = ['telecom', 'telecommunications', 'network', 'wireless', 'broadband', 'satellite', 'routing', 'cisco'].some(kw => text.includes(kw));
-            } else if (industry === 'Other') {
-                matched = true;
-            }
-            if (!matched) return false;
-        }
-
-        // 4. Domain
-        if (domain) {
-            const text = `${job.title} ${job.description || ''} ${(job.skills || []).join(' ')}`.toLowerCase();
-            let matched = false;
-            if (domain === 'Engineering') {
-                matched = ['engineer', 'engineering', 'developer', 'qa', 'test', 'automation', 'devops', 'sysadmin', 'cloud', 'architecture'].some(kw => text.includes(kw));
-            } else if (domain === 'Data Science') {
-                matched = ['data science', 'data scientist', 'machine learning', 'ml ', 'ai ', 'artificial intelligence', 'data analyst', 'business intelligence', 'bi analyst', 'deep learning'].some(kw => text.includes(kw));
-            } else if (domain === 'Design') {
-                matched = ['design', 'designer', 'ux', 'ui ', 'product design', 'graphic design', 'illustrator', 'creative', 'art director', 'photoshop', 'figma'].some(kw => text.includes(kw));
-            } else if (domain === 'Marketing') {
-                matched = ['marketing', 'seo', 'social media', 'advertising', 'brand', 'content writer', 'copywriter', 'pr ', 'public relations', 'growth hacker'].some(kw => text.includes(kw));
-            } else if (domain === 'Sales') {
-                matched = ['sales', 'account executive', 'business development', 'bde', 'telesales', 'cold calling', 'sales manager', 'account manager'].some(kw => text.includes(kw));
-            } else if (domain === 'HR') {
-                matched = ['hr', 'human resources', 'recruiter', 'talent acquisition', 'payroll', 'onboarding', 'employee relations'].some(kw => text.includes(kw));
-            } else if (domain === 'Operations') {
-                matched = ['operations', 'ops', 'project manager', 'program manager', 'scrum master', 'coordinator', 'logistics', 'supply chain'].some(kw => text.includes(kw));
-            } else if (domain === 'Legal') {
-                matched = ['legal', 'lawyer', 'counsel', 'attorney', 'paralegal', 'compliance', 'regulatory'].some(kw => text.includes(kw));
-            } else if (domain === 'Product') {
-                matched = ['product manager', 'product owner', 'pm ', 'product associate', 'product management'].some(kw => text.includes(kw));
-            } else if (domain === 'Other') {
-                matched = true;
-            }
-            if (!matched) return false;
-        }
-
-        // 5. Company Type
-        if (companyType) {
-            const text = `${job.companyName || ''} ${job.description || ''}`.toLowerCase();
-            let matched = false;
-            if (companyType === 'Startup') {
-                matched = ['startup', 'labs', 'technologies', 'studio', 'innovations', 'ventures'].some(kw => text.includes(kw));
-            } else if (companyType === 'MNC') {
-                matched = ['corporation', 'corp', 'limited', 'ltd', 'inc', 'google', 'amazon', 'microsoft', 'netflix', 'meta', 'apple', 'global', 'solutions'].some(kw => text.includes(kw));
-            } else if (companyType === 'SME') {
-                matched = ['agency', 'local', 'consultancy', 'firm', 'shop', 'boutique'].some(kw => text.includes(kw));
-            } else if (companyType === 'Government') {
-                matched = ['government', 'ministry', 'department', 'public sector', 'municipal', 'state'].some(kw => text.includes(kw));
-            } else if (companyType === 'NGO') {
-                matched = ['ngo', 'non-profit', 'foundation', 'charity', 'association', 'trust'].some(kw => text.includes(kw));
-            } else if (companyType === 'Freelance') {
-                matched = ['freelance', 'contract', 'gig', 'independent'].some(kw => text.includes(kw));
-            }
-            if (!matched) return false;
-        }
-
-        return true;
-    });
-
-    const displayJobsList = hasCustomFilters
-        ? filteredJobs.slice((page - 1) * limit, page * limit)
-        : jobs;
-
-    const displayTotalCount = hasCustomFilters ? filteredJobs.length : total;
+    const displayJobsList = jobs;
+    const displayTotalCount = total;
     const totalPages = Math.ceil(displayTotalCount / limit) || 1;
 
     return (
@@ -329,12 +239,17 @@ export function StudentJobs() {
                                 else if (experienceLevel === '3-5 Years') apiExp = 'mid';
                                 else if (experienceLevel === '5+ Years') apiExp = 'senior';
 
+                                const locQuery = preferredLocations.length > 0 ? preferredLocations.join(',') : (debouncedLocation || undefined);
                                 const response = await fetchJobs({
-                                    q: debouncedQ || undefined,
-                                    location: debouncedLocation || undefined,
+                                    keywords: debouncedQ || undefined,
+                                    taxonomy: domain || undefined,
+                                    location: locQuery,
+                                    minSalary: debouncedMinSalary || undefined,
+                                    maxSalary: debouncedMaxSalary || undefined,
+                                    industry: industry || undefined,
                                     experienceLevel: apiExp,
-                                    page,
-                                    limit
+                                    page: page,
+                                    limit: limit
                                 });
                                 setJobs(response.jobs);
                                 setTotal(response.total);
@@ -442,7 +357,7 @@ export function StudentJobs() {
                             </div>
                         </div>
 
-                        {(q || location || experienceLevel !== 'All' || minSalary || maxSalary || industry || domain || companyType || preferredLocations.length > 0) && (
+                        {(q || location || experienceLevel !== 'All' || minSalary || maxSalary || industry || domain || preferredLocations.length > 0) && (
                             <Button 
                                 variant="outline" 
                                 className="rounded-xl font-bold h-11 border-dashed hover:bg-muted"
@@ -487,8 +402,8 @@ export function StudentJobs() {
 
                     <div className="h-px w-full bg-border/40" />
 
-                    {/* Industry, Domain, Company Type */}
-                    <div className="grid sm:grid-cols-3 gap-4">
+                    {/* Industry & Domain */}
+                    <div className="grid sm:grid-cols-2 gap-4">
                         <div>
                             <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
                                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Industry
@@ -531,24 +446,6 @@ export function StudentJobs() {
                                 <option value="Legal">Legal</option>
                                 <option value="Product">Product Management</option>
                                 <option value="Other">Other</option>
-                            </select>
-                        </div>
-                        <div>
-                            <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Company Type
-                            </p>
-                            <select
-                                value={companyType}
-                                onChange={(e) => { setCompanyType(e.target.value); setPage(1); }}
-                                className="w-full h-11 bg-background border border-border/60 rounded-xl px-3 text-sm font-medium outline-none focus:border-primary/50 transition-colors cursor-pointer"
-                            >
-                                <option value="">All Types</option>
-                                <option value="Startup">Startup</option>
-                                <option value="MNC">MNC</option>
-                                <option value="SME">SME</option>
-                                <option value="Government">Government</option>
-                                <option value="NGO">NGO / Non-Profit</option>
-                                <option value="Freelance">Freelance / Contract</option>
                             </select>
                         </div>
                     </div>

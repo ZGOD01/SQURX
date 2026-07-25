@@ -4,9 +4,10 @@ import { Card, CardHeader, CardTitle, CardContent, Button, Input, Toast, Modal, 
 import { PageTransition } from '@/components/motion';
 import { useAuthStore } from '../auth/store';
 import { useNavigate } from 'react-router-dom';
-import { useNotificationStore } from '@/lib/store/notifications';
 import { Loader2, UploadCloud, FileText, Trash2, ShieldCheck, Plus, X, Check, Eye, Lock } from 'lucide-react';
-import { consultationApi } from '@/lib/consultationApi';
+import { mockApi } from '@/lib/mockApi';
+import { useNotificationStore } from '@/lib/store/notifications';
+import type { EducationHistoryItem } from '@/lib/mockDb/schema';
 import {
     useGetEducationsQuery,
     useGetSkillsQuery,
@@ -14,6 +15,12 @@ import {
     useGetExperienceLevelsQuery,
     useGetLocationsQuery,
     useGetDomainsQuery,
+    useGetLanguagesQuery,
+    useGetLanguageProficienciesQuery,
+    useGetUniversitiesQuery,
+    useGetCoursesQuery,
+    useGetSpecializationsQuery,
+    useGetRolesQuery,
 } from '@/lib/store/authApi';
 
 // ─────────────────────────────────────────────
@@ -84,6 +91,26 @@ function SkillTagEditor({ skills, onChange, disabled }: { skills: string[]; onCh
     );
 }
 
+// Helper to get location with country in brackets
+export const getLocationLabel = (l: any): string => {
+    if (!l) return '';
+    const city = typeof l === 'string' ? l : (l.name || '');
+    if (typeof l === 'object' && l) {
+        let country = '';
+        if (l.country) {
+            country = typeof l.country === 'object' ? (l.country.name || '') : String(l.country);
+        } else if (l.countryName) {
+            country = String(l.countryName);
+        }
+        if (country) {
+            if (!city.includes('(')) {
+                return `${city} (${country})`;
+            }
+        }
+    }
+    return city;
+};
+
 // ─────────────────────────────────────────────
 // Main Profile Component
 // ─────────────────────────────────────────────
@@ -98,9 +125,6 @@ export function StudentProfile() {
     const [jobType, setJobType] = useState('');
     const [jobTypeQuery, setJobTypeQuery] = useState('');
     const [careerGoal, setCareerGoal] = useState('');
-    const [education, setEducation] = useState('');
-    const [educationQuery, setEducationQuery] = useState('');
-    const [educationId, setEducationId] = useState('');
     const [experienceLevel, setExperienceLevel] = useState('');
     const [experienceLevelQuery, setExperienceLevelQuery] = useState('');
     const [experienceLevelId, setExperienceLevelId] = useState('');
@@ -113,12 +137,8 @@ export function StudentProfile() {
     const [dob, setDob] = useState('');
     const [currentLocation, setCurrentLocation] = useState('');
     const [hometown, setHometown] = useState('');
-    const [highestEducation, setHighestEducation] = useState('');
-    const [pgUniversity, setPgUniversity] = useState('');
-    const [graduationUniversity, setGraduationUniversity] = useState('');
-    const [ugUniversity, setUgUniversity] = useState('');
-    const [schoolCollegeName, setSchoolCollegeName] = useState('');
     const [languages, setLanguages] = useState('');
+    const [educationHistory, setEducationHistory] = useState<EducationHistoryItem[]>([]);
     const [certifications, setCertifications] = useState<Array<{ name: string; status: 'completed' | 'undergoing' }>>([]);
     const [awards, setAwards] = useState('');
     const [projects, setProjects] = useState('');
@@ -127,7 +147,6 @@ export function StudentProfile() {
     const [otherAchievements, setOtherAchievements] = useState('');
 
     // ── Autocomplete dropdowns ───────────────────
-    const [showEduSuggestions, setShowEduSuggestions] = useState(false);
     const [showExpSuggestions, setShowExpSuggestions] = useState(false);
     const [showJobTypeSuggestions, setShowJobTypeSuggestions] = useState(false);
     const [showDomainSuggestions, setShowDomainSuggestions] = useState(false);
@@ -138,6 +157,9 @@ export function StudentProfile() {
     const [selectedDomainIds, setSelectedDomainIds] = useState<string[]>([]);
     const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
     const [selectedJobTypeIds, setSelectedJobTypeIds] = useState<string[]>([]);
+    const [selectedLanguageIds, setSelectedLanguageIds] = useState<string[]>([]);
+    const [showLanguageSuggestions, setShowLanguageSuggestions] = useState(false);
+    const [languageQuery, setLanguageQuery] = useState('');
 
     // ── Status states ────────────────────────────
     const [isSaving, setIsSaving] = useState(false);
@@ -155,23 +177,19 @@ export function StudentProfile() {
         location: string; locationQuery: string; selectedLocationId: string;
         jobType: string; jobTypeQuery: string;
         careerGoal: string;
-        education: string; educationQuery: string; educationId: string;
         experienceLevel: string; experienceLevelQuery: string; experienceLevelId: string;
         expectedSalary: string; currentSalary: string;
         skills: string[];
         selectedDomainIds: string[];
         selectedLocationIds: string[];
         selectedJobTypeIds: string[];
+        selectedLanguageIds: string[];
         gender: string;
         dob: string;
         currentLocation: string;
         hometown: string;
-        highestEducation: string;
-        pgUniversity: string;
-        graduationUniversity: string;
-        ugUniversity: string;
-        schoolCollegeName: string;
         languages: string;
+        educationHistory: EducationHistoryItem[];
         certifications: Array<{ name: string; status: 'completed' | 'undergoing' }>;
         awards: string;
         projects: string;
@@ -185,12 +203,21 @@ export function StudentProfile() {
     const fetchedRef = useRef(false);
 
     // ── API queries for autocomplete ─────────────
-    const { data: educationsData } = useGetEducationsQuery({ search: educationQuery });
+    const { data: educationsData } = useGetEducationsQuery(undefined);
     const { data: experienceLevelsData } = useGetExperienceLevelsQuery({ search: experienceLevelQuery });
     const { data: jobTypesData } = useGetJobTypesQuery(undefined);
     const { data: domainsData } = useGetDomainsQuery({ search: careerGoal.split(',').pop()?.trim() || '' });
     const { data: locationsData } = useGetLocationsQuery({ search: locationQuery });
     const { data: skillsData } = useGetSkillsQuery({ search: '' });
+    // New lookup hooks — fetched on mount; used for Languages, Universities, Courses, Specializations, Roles
+    const { data: languagesData } = useGetLanguagesQuery(undefined);
+    const { data: languageProficienciesData } = useGetLanguageProficienciesQuery(undefined);
+    const { data: universitiesData } = useGetUniversitiesQuery(undefined);
+    const { data: coursesData } = useGetCoursesQuery(undefined);
+    const { data: specializationsData } = useGetSpecializationsQuery(undefined);
+    const { data: rolesData } = useGetRolesQuery(undefined);
+    // Suppress unused-variable warnings for new lookups until their UI sections are built
+    void languageProficienciesData; void universitiesData; void coursesData; void specializationsData; void rolesData;
 
     // ── Fetch profile on mount ────────────────────
     useEffect(() => {
@@ -208,9 +235,6 @@ export function StudentProfile() {
             setJobType(profile.jobType || '');
             setJobTypeQuery(profile.jobType || '');
             setCareerGoal(profile.careerGoal || '');
-            setEducation(profile.education || '');
-            setEducationQuery(profile.education || '');
-            setEducationId(profile.educationId || '');
             setExperienceLevel(profile.experienceLevel || '');
             setExperienceLevelQuery(profile.experienceLevel || '');
             setExperienceLevelId(profile.experienceLevelId || '');
@@ -225,12 +249,8 @@ export function StudentProfile() {
             setDob(profile.dob || '');
             setCurrentLocation(profile.currentLocation || '');
             setHometown(profile.hometown || '');
-            setHighestEducation(profile.highestEducation || '');
-            setPgUniversity(profile.pgUniversity || '');
-            setGraduationUniversity(profile.graduationUniversity || '');
-            setUgUniversity(profile.ugUniversity || '');
-            setSchoolCollegeName(profile.schoolCollegeName || '');
             setLanguages(profile.languages || '');
+            setEducationHistory(profile.educationHistory || []);
             setCertifications(profile.certifications || []);
             setAwards(profile.awards || '');
             setProjects(profile.projects || '');
@@ -249,9 +269,6 @@ export function StudentProfile() {
             setJobType(profile.jobType || '');
             setJobTypeQuery(profile.jobType || '');
             setCareerGoal(profile.careerGoal || '');
-            setEducation(profile.education || '');
-            setEducationQuery(profile.education || '');
-            setEducationId(profile.educationId || '');
             setExperienceLevel(profile.experienceLevel || '');
             setExperienceLevelQuery(profile.experienceLevel || '');
             setExperienceLevelId(profile.experienceLevelId || '');
@@ -266,12 +283,8 @@ export function StudentProfile() {
             setDob(profile.dob || '');
             setCurrentLocation(profile.currentLocation || '');
             setHometown(profile.hometown || '');
-            setHighestEducation(profile.highestEducation || '');
-            setPgUniversity(profile.pgUniversity || '');
-            setGraduationUniversity(profile.graduationUniversity || '');
-            setUgUniversity(profile.ugUniversity || '');
-            setSchoolCollegeName(profile.schoolCollegeName || '');
             setLanguages(profile.languages || '');
+            setEducationHistory(profile.educationHistory || []);
             setCertifications(profile.certifications || []);
             setAwards(profile.awards || '');
             setProjects(profile.projects || '');
@@ -293,7 +306,7 @@ export function StudentProfile() {
         if (!user) return;
         // Prevent disabling consent that has already been accepted
         if (!checked && isConsentEnabled) {
-            showToast('Consent has been accepted and cannot be withdrawn from this screen. Contact privacy@sqrex.com for inquiries.', 'error');
+            showToast('Consent has been accepted and cannot be withdrawn from this screen. Contact privacy@squrex.com for inquiries.', 'error');
             return;
         }
         setIsConsentEnabled(checked);
@@ -324,23 +337,19 @@ export function StudentProfile() {
             location, locationQuery, selectedLocationId,
             jobType, jobTypeQuery,
             careerGoal,
-            education, educationQuery, educationId,
             experienceLevel, experienceLevelQuery, experienceLevelId,
             expectedSalary, currentSalary,
             skills: [...skills],
             selectedDomainIds: [...selectedDomainIds],
             selectedLocationIds: [...selectedLocationIds],
             selectedJobTypeIds: [...selectedJobTypeIds],
+            selectedLanguageIds: [...selectedLanguageIds],
             gender,
             dob,
             currentLocation,
             hometown,
-            highestEducation,
-            pgUniversity,
-            graduationUniversity,
-            ugUniversity,
-            schoolCollegeName,
             languages,
+            educationHistory: educationHistory ? [...educationHistory.map(eh => ({ ...eh }))] : [],
             certifications: certifications ? [...certifications.map(c => ({ ...c }))] : [],
             awards,
             projects,
@@ -362,9 +371,6 @@ export function StudentProfile() {
             setJobType(formSnapshot.jobType);
             setJobTypeQuery(formSnapshot.jobTypeQuery);
             setCareerGoal(formSnapshot.careerGoal);
-            setEducation(formSnapshot.education);
-            setEducationQuery(formSnapshot.educationQuery);
-            setEducationId(formSnapshot.educationId);
             setExperienceLevel(formSnapshot.experienceLevel);
             setExperienceLevelQuery(formSnapshot.experienceLevelQuery);
             setExperienceLevelId(formSnapshot.experienceLevelId);
@@ -374,16 +380,13 @@ export function StudentProfile() {
             setSelectedDomainIds(formSnapshot.selectedDomainIds);
             setSelectedLocationIds(formSnapshot.selectedLocationIds);
             setSelectedJobTypeIds(formSnapshot.selectedJobTypeIds);
+            setSelectedLanguageIds(formSnapshot.selectedLanguageIds);
             setGender(formSnapshot.gender);
             setDob(formSnapshot.dob);
             setCurrentLocation(formSnapshot.currentLocation);
             setHometown(formSnapshot.hometown);
-            setHighestEducation(formSnapshot.highestEducation);
-            setPgUniversity(formSnapshot.pgUniversity);
-            setGraduationUniversity(formSnapshot.graduationUniversity);
-            setUgUniversity(formSnapshot.ugUniversity);
-            setSchoolCollegeName(formSnapshot.schoolCollegeName);
             setLanguages(formSnapshot.languages);
+            setEducationHistory(formSnapshot.educationHistory);
             setCertifications(formSnapshot.certifications);
             setAwards(formSnapshot.awards);
             setProjects(formSnapshot.projects);
@@ -398,11 +401,22 @@ export function StudentProfile() {
     };
 
     // ── Validate form ─────────────────────────────
+    // Only validates truly required fields. Matches Swagger-documented required fields for PUT /user/me.
+    // Optional arrays (job types, locations) are preferred via IDs but gracefully fall back to text.
     const validate = (): boolean => {
         const errs: Record<string, string> = {};
-        if (!location.trim() || location.trim().length < 2) errs.location = 'Location is required (min 2 chars)';
-        if (!jobType.trim() || jobType.trim().length < 2) errs.jobType = 'Job type is required';
-        if (!careerGoal.trim() || careerGoal.trim().length < 3) errs.careerGoal = 'Career goal / domain is required';
+
+        // Location: prefer selectedLocationIds (chip-selected), fall back to free-typed text
+        const hasLocation = selectedLocationIds.length > 0 || (location.trim().length >= 2);
+        if (!hasLocation) errs.location = 'Please select or enter a preferred location.';
+
+        // Job type: prefer selectedJobTypeIds (chip-selected), fall back to free-typed text
+        const hasJobType = selectedJobTypeIds.length > 0 || (jobType.trim().length >= 2);
+        if (!hasJobType) errs.jobType = 'Please select at least one preferred job type.';
+
+        // Career goal / domain: validated only if completely empty
+        if (!careerGoal.trim()) errs.careerGoal = 'Please enter a career goal or preferred domain.';
+
         setFormErrors(errs);
         return Object.keys(errs).length === 0;
     };
@@ -410,6 +424,7 @@ export function StudentProfile() {
     // ── Save profile ──────────────────────────────
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSaving) return;
         if (!user || !validate()) return;
 
         setIsSaving(true);
@@ -422,12 +437,37 @@ export function StudentProfile() {
                 skillsData?.data?.find((sd: any) => sd.name.toLowerCase() === s.toLowerCase())?._id
             ).filter(Boolean);
 
+            let locationIds = selectedLocationIds.filter(Boolean);
+            if (locationIds.length === 0 && location) {
+                const parsedLocations = location.split(',').map(l => l.trim().split('(')[0].trim()).filter(Boolean);
+                locationIds = parsedLocations
+                    .map(l => locationsData?.data?.find((ld: any) => ld.name.toLowerCase() === l.toLowerCase())?._id)
+                    .filter(Boolean);
+            }
+            if (locationIds.length === 0 && selectedLocationId) {
+                locationIds = [selectedLocationId];
+            }
+
+            let jtIds = selectedJobTypeIds.filter(Boolean);
+            if (jtIds.length === 0 && jobType) {
+                const parsedJobTypes = jobType.split(',').map(j => j.trim()).filter(Boolean);
+                jtIds = parsedJobTypes
+                    .map(j => jobTypesData?.data?.find((jd: any) => jd.name.toLowerCase() === j.toLowerCase())?._id)
+                    .filter(Boolean);
+            }
+
+            let domainIds = selectedDomainIds.filter(Boolean);
+            if (domainIds.length === 0 && careerGoal) {
+                const parsedDomains = careerGoal.split(',').map(d => d.trim()).filter(Boolean);
+                domainIds = parsedDomains
+                    .map(d => domainsData?.data?.find((dd: any) => dd.name.toLowerCase() === d.toLowerCase())?._id)
+                    .filter(Boolean);
+            }
+
             await updateProfile(user.id, {
                 location,
                 jobType,
                 careerGoal,
-                education: educationId || education,
-                educationId,
                 experienceLevel: experienceLevelId || experienceLevel,
                 experienceLevelId,
                 expectedSalary,
@@ -435,19 +475,17 @@ export function StudentProfile() {
                 skills: skillIds.length > 0 ? skillIds : skills,
                 locations: location.split(',').map(l => l.trim()).filter(Boolean),
                 jobTypes: jobType.split(',').map(j => j.trim()).filter(Boolean),
-                preferredDomains: selectedDomainIds,
-                preferredLocations: selectedLocationIds.length > 0 ? selectedLocationIds : (selectedLocationId ? [selectedLocationId] : []),
-                preferredJobTypes: selectedJobTypeIds,
+                preferredDomains: domainIds,
+                preferredLocations: locationIds,
+                preferredJobTypes: jtIds,
                 gender,
                 dob,
                 currentLocation,
                 hometown,
-                highestEducation,
-                pgUniversity: highestEducation === 'PG' ? pgUniversity : '',
-                graduationUniversity: highestEducation === 'PG' ? graduationUniversity : '',
-                ugUniversity: highestEducation === 'UG' ? ugUniversity : '',
-                schoolCollegeName: highestEducation === 'UG' ? schoolCollegeName : '',
-                languages,
+                languages: selectedLanguageIds.length > 0
+                    ? selectedLanguageIds.map(id => languagesData?.data?.find((l: any) => l._id === id)?.name || id).join(', ')
+                    : languages,
+                educationHistory,
                 certifications,
                 awards,
                 projects,
@@ -475,14 +513,17 @@ export function StudentProfile() {
         const fileName = file.name.toLowerCase();
         const isValidExtension = fileName.endsWith('.pdf') || fileName.endsWith('.doc') || fileName.endsWith('.docx');
         const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-        if (!validTypes.includes(file.type) && !isValidExtension) { showToast('Invalid format. PDF/DOC/DOCX only.', 'error'); return; }
+        if (!validTypes.includes(file.type) && !isValidExtension) {
+            showToast('Please upload a PDF or Word (DOC/DOCX) file.', 'error');
+            return;
+        }
         if (!user) return;
 
         setIsUploadingCV(true);
         try {
-            const cvUrl = await consultationApi.uploadCv(file);
-            await updateProfile(user.id, { cvUrl: cvUrl || file.name });
-            sendEmail('CV Upload Received', `Your CV (${file.name}) was successfully uploaded.`);
+            // Use the dedicated resume upload endpoint: POST /user/me/resume (multipart/form-data, field: 'resume')
+            const resumeUrl = await mockApi.uploadResume(file);
+            await updateProfile(user.id, { cvUrl: resumeUrl || file.name });
             showToast('CV uploaded successfully.', 'success');
         } catch (err: any) {
             showToast(err.message || 'CV upload failed. Please try again.', 'error');
@@ -614,32 +655,7 @@ export function StudentProfile() {
                                 )}
 
                                 <div className="grid sm:grid-cols-2 gap-5">
-                                    {/* Education */}
-                                    <div className="space-y-1.5 relative">
-                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Education / Degree</label>
-                                        <Input
-                                            placeholder="Search & select education..."
-                                            value={educationQuery}
-                                            onChange={e => { setEducationQuery(e.target.value); setShowEduSuggestions(true); }}
-                                            onFocus={() => setShowEduSuggestions(true)}
-                                            onBlur={() => setTimeout(() => setShowEduSuggestions(false), 200)}
-                                            disabled={!isEditing}
-                                            className="h-11"
-                                        />
-                                        {isEditing && showEduSuggestions && educationsData?.data && educationsData.data.length > 0 && (
-                                            <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-1.5 flex flex-col gap-0.5">
-                                                {educationsData.data.filter((e: any) => e.name.toLowerCase().includes(educationQuery.toLowerCase())).map((edu: any) => (
-                                                    <button key={edu._id} type="button"
-                                                        onMouseDown={() => { setEducation(edu.name); setEducationQuery(edu.name); setEducationId(edu._id); setShowEduSuggestions(false); }}
-                                                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-lg transition-colors"
-                                                    >{edu.name}</button>
-                                                ))}
-                                            </div>
-                                        )}
-                                        {education && !showEduSuggestions && (
-                                            <p className="text-xs text-muted-foreground">Selected: <span className="font-semibold text-foreground">{education}</span></p>
-                                        )}
-                                    </div>
+
 
                                     {/* Experience Level */}
                                     <div className="space-y-1.5 relative">
@@ -712,33 +728,38 @@ export function StudentProfile() {
                                         {isEditing && showLocationSuggestions && locationsData?.data && locationsData.data.length > 0 && (
                                             <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-2 flex flex-wrap gap-1.5">
                                                 {locationsData.data
-                                                    .filter((l: any) => l.name.toLowerCase().includes(locationQuery.toLowerCase()))
+                                                    .filter((l: any) => {
+                                                        const searchPart = locationQuery.split('(')[0].trim();
+                                                        return l.name.toLowerCase().includes(searchPart.toLowerCase());
+                                                    })
                                                     .slice(0, 12)
                                                     .map((l: any) => (
                                                         <button key={l._id} type="button"
                                                             onMouseDown={() => {
-                                                                setLocation(l.name);
-                                                                setLocationQuery(l.name);
+                                                                const label = getLocationLabel(l);
+                                                                setLocation(label);
+                                                                setLocationQuery(label);
                                                                 setShowLocationSuggestions(false);
                                                                 setSelectedLocationId(l._id || '');
                                                                 setSelectedLocationIds([l._id].filter(Boolean));
                                                             }}
                                                             className="px-3 py-1.5 text-xs font-semibold bg-muted hover:bg-black hover:text-white rounded-lg transition-colors"
-                                                        >+ {l.name}</button>
+                                                        >+ {getLocationLabel(l)}</button>
                                                     ))}
                                             </div>
                                         )}
                                         {formErrors.location && <p className="text-destructive text-xs">{formErrors.location}</p>}
                                     </div>
 
-                                    {/* Job Type */}
+                                    {/* Preferred Job Type */}
                                     <div className="space-y-1.5 relative">
                                         <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Preferred Job Type <span className="text-destructive">*</span></label>
                                         <Input
-                                            placeholder="Search & select job type..."
+                                            placeholder="Select preferred job types"
                                             value={jobTypeQuery}
                                             onChange={e => { setJobTypeQuery(e.target.value); setShowJobTypeSuggestions(true); }}
                                             onFocus={() => setShowJobTypeSuggestions(true)}
+                                            onClick={() => setShowJobTypeSuggestions(true)}
                                             onBlur={() => setTimeout(() => setShowJobTypeSuggestions(false), 200)}
                                             disabled={!isEditing}
                                             className={`h-11 ${formErrors.jobType ? 'border-destructive' : ''}`}
@@ -767,13 +788,13 @@ export function StudentProfile() {
                                                                     }
                                                                     setSelectedJobTypeIds(nextIds);
 
-                                                                    // Update the comma-separated text string
+                                                                    // Update comma-separated list
                                                                     const selectedNames = jobTypesData.data
                                                                         .filter((x: any) => nextIds.includes(x._id))
                                                                         .map((x: any) => x.name);
                                                                     const commaSeparated = selectedNames.join(', ');
                                                                     setJobType(commaSeparated);
-                                                                    setJobTypeQuery(commaSeparated);
+                                                                    setJobTypeQuery(''); // Keep it blank so user doesn't need to type commas
                                                                 }}
                                                                 className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-lg transition-colors cursor-pointer select-none text-black font-semibold"
                                                             >
@@ -790,17 +811,47 @@ export function StudentProfile() {
                                                 }
                                             </div>
                                         )}
+                                        {/* Selected Job Types Chips */}
+                                        {selectedJobTypeIds.length > 0 && (
+                                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                                {selectedJobTypeIds.map((id) => {
+                                                    const name = jobTypesData?.data?.find((jt: any) => jt._id === id)?.name || id;
+                                                    return (
+                                                        <Badge key={id} variant="secondary" className="flex items-center gap-1 bg-muted/50 text-foreground font-semibold py-1">
+                                                            {name}
+                                                            {isEditing && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const nextIds = selectedJobTypeIds.filter(x => x !== id);
+                                                                        setSelectedJobTypeIds(nextIds);
+                                                                        const selectedNames = jobTypesData?.data
+                                                                            ?.filter((x: any) => nextIds.includes(x._id))
+                                                                            ?.map((x: any) => x.name) || [];
+                                                                        const commaSeparated = selectedNames.join(', ');
+                                                                        setJobType(commaSeparated);
+                                                                        setJobTypeQuery('');
+                                                                    }}
+                                                                    className="hover:text-destructive rounded-full w-3.5 h-3.5 flex items-center justify-center text-[10px] ml-0.5 cursor-pointer font-bold"
+                                                                >
+                                                                    ✕
+                                                                </button>
+                                                            )}
+                                                        </Badge>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                         {formErrors.jobType && <p className="text-destructive text-xs">{formErrors.jobType}</p>}
                                     </div>
-                                </div>
 
-                                {/* Career Goal / Domain */}
-                                <div className="space-y-1.5 relative">
-                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Career Goal / Preferred Domain <span className="text-destructive">*</span></label>
-                                    <Input
-                                        placeholder="e.g. Software Engineering, Data Science"
-                                        value={careerGoal}
-                                        onChange={e => { setCareerGoal(e.target.value); setShowDomainSuggestions(true); }}
+                                    {/* Career Goal / Domain */}
+                                    <div className="space-y-1.5 relative">
+                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Career Goal / Preferred Domain <span className="text-destructive">*</span></label>
+                                        <Input
+                                            placeholder="e.g. Software Engineering, Data Science"
+                                            value={careerGoal}
+                                            onChange={e => { setCareerGoal(e.target.value); setShowDomainSuggestions(true); }}
                                         onFocus={() => setShowDomainSuggestions(true)}
                                         onBlur={() => setTimeout(() => setShowDomainSuggestions(false), 200)}
                                         disabled={!isEditing}
@@ -829,6 +880,7 @@ export function StudentProfile() {
                                     )}
                                     {formErrors.careerGoal && <p className="text-destructive text-xs">{formErrors.careerGoal}</p>}
                                 </div>
+                            </div>
 
                                 {/* Skills */}
                                 <div className="space-y-1.5">
@@ -898,16 +950,80 @@ export function StudentProfile() {
                                             />
                                         </div>
 
-                                        {/* Languages */}
-                                        <div className="space-y-1.5 sm:col-span-2">
+                                        {/* Languages Known — API-driven chip multi-select */}
+                                        <div className="space-y-1.5 sm:col-span-2 relative">
                                             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Languages Known</label>
-                                            <Input
-                                                placeholder="e.g. English, Hindi, Spanish"
-                                                value={languages}
-                                                onChange={(e) => setLanguages(e.target.value)}
-                                                disabled={!isEditing}
-                                                className={`h-11 ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : ''}`}
-                                            />
+                                            {/* Chip display */}
+                                            {selectedLanguageIds.length > 0 && (
+                                                <div className="flex flex-wrap gap-1.5 mb-1.5">
+                                                    {selectedLanguageIds.map((id) => {
+                                                        const name = languagesData?.data?.find((l: any) => l._id === id)?.name || id;
+                                                        return (
+                                                            <Badge key={id} variant="secondary" className="flex items-center gap-1 bg-muted/50 text-foreground font-semibold py-1">
+                                                                {name}
+                                                                {isEditing && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setSelectedLanguageIds(selectedLanguageIds.filter(x => x !== id))}
+                                                                        className="hover:text-destructive rounded-full w-3.5 h-3.5 flex items-center justify-center text-[10px] ml-0.5 cursor-pointer font-bold"
+                                                                    >✕</button>
+                                                                )}
+                                                            </Badge>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                            {/* Search input + dropdown */}
+                                            {isEditing ? (
+                                                <>
+                                                    <Input
+                                                        placeholder={selectedLanguageIds.length === 0 ? 'Search and add languages...' : 'Add more languages...'}
+                                                        value={languageQuery}
+                                                        onChange={e => { setLanguageQuery(e.target.value); setShowLanguageSuggestions(true); }}
+                                                        onFocus={() => setShowLanguageSuggestions(true)}
+                                                        onBlur={() => setTimeout(() => setShowLanguageSuggestions(false), 200)}
+                                                        className="h-11"
+                                                    />
+                                                    {showLanguageSuggestions && languagesData?.data && languagesData.data.length > 0 && (
+                                                        <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-1.5 flex flex-col gap-0.5">
+                                                            {languagesData.data
+                                                                .filter((l: any) => {
+                                                                    const q = languageQuery.toLowerCase();
+                                                                    return l.name.toLowerCase().includes(q);
+                                                                })
+                                                                .slice(0, 20)
+                                                                .map((l: any) => {
+                                                                    const isSelected = selectedLanguageIds.includes(l._id);
+                                                                    return (
+                                                                        <div
+                                                                            key={l._id}
+                                                                            onMouseDown={e => e.preventDefault()}
+                                                                            onClick={() => {
+                                                                                if (!isSelected) {
+                                                                                    setSelectedLanguageIds([...selectedLanguageIds, l._id]);
+                                                                                }
+                                                                                setLanguageQuery('');
+                                                                                setShowLanguageSuggestions(true);
+                                                                            }}
+                                                                            className={`flex items-center gap-2 w-full text-left px-3 py-2 text-sm rounded-lg transition-colors cursor-pointer select-none font-semibold text-black ${isSelected ? 'bg-black/5 text-black/40 cursor-default' : 'hover:bg-muted'}`}
+                                                                        >
+                                                                            {isSelected && <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+                                                                            {l.name}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <Input
+                                                    value={selectedLanguageIds.length === 0
+                                                        ? (languages || '—')
+                                                        : selectedLanguageIds.map(id => languagesData?.data?.find((l: any) => l._id === id)?.name || id).join(', ')}
+                                                    disabled
+                                                    className="h-11 bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed"
+                                                />
+                                            )}
                                         </div>
 
                                         {/* Profile Summary */}
@@ -925,82 +1041,279 @@ export function StudentProfile() {
                                     </div>
                                 </div>
 
-                                {/* ── ACADEMIC QUALIFICATIONS SECTION ── */}
+                                {/* ── EDUCATION HISTORY SECTION ── */}
                                 <div className="pt-4 border-t border-border/60">
-                                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">Academic Qualifications</h3>
-                                    <div className="grid sm:grid-cols-2 gap-4">
-                                        {/* Highest Education */}
-                                        <div className="space-y-1.5 sm:col-span-2">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Highest Education Level</label>
-                                            {isEditing ? (
-                                                <select
-                                                    value={highestEducation}
-                                                    onChange={(e) => setHighestEducation(e.target.value)}
-                                                    className="w-full h-11 bg-background border border-input focus:border-ring focus:ring-2 focus:ring-ring/20 rounded-md px-3 text-sm font-medium outline-none transition-all"
-                                                >
-                                                    <option value="">Select Level</option>
-                                                    <option value="PG">Post Graduate (PG)</option>
-                                                    <option value="UG">Under Graduate (UG)</option>
-                                                    <option value="High School">High School</option>
-                                                    <option value="Other">Other</option>
-                                                </select>
-                                            ) : (
-                                                <Input value={highestEducation || '—'} disabled className="h-11 bg-muted/30 border-border/40 text-muted-foreground font-medium cursor-not-allowed" />
-                                            )}
-                                        </div>
-
-                                        {/* PG sub-fields */}
-                                        {(highestEducation === 'PG' || (!isEditing && (pgUniversity || graduationUniversity))) && (
-                                            <>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">University Name (PG)</label>
-                                                    <Input
-                                                        placeholder="e.g. Oxford University"
-                                                        value={pgUniversity}
-                                                        onChange={(e) => setPgUniversity(e.target.value)}
-                                                        disabled={!isEditing}
-                                                        className={`h-11 ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : ''}`}
-                                                    />
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Graduation University Name</label>
-                                                    <Input
-                                                        placeholder="e.g. Delhi University"
-                                                        value={graduationUniversity}
-                                                        onChange={(e) => setGraduationUniversity(e.target.value)}
-                                                        disabled={!isEditing}
-                                                        className={`h-11 ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : ''}`}
-                                                    />
-                                                </div>
-                                            </>
-                                        )}
-
-                                        {/* UG sub-fields */}
-                                        {(highestEducation === 'UG' || (!isEditing && (ugUniversity || schoolCollegeName))) && (
-                                            <>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">University Name (UG)</label>
-                                                    <Input
-                                                        placeholder="e.g. Stanford University"
-                                                        value={ugUniversity}
-                                                        onChange={(e) => setUgUniversity(e.target.value)}
-                                                        disabled={!isEditing}
-                                                        className={`h-11 ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : ''}`}
-                                                    />
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">School / College Name</label>
-                                                    <Input
-                                                        placeholder="e.g. St. Francis College"
-                                                        value={schoolCollegeName}
-                                                        onChange={(e) => setSchoolCollegeName(e.target.value)}
-                                                        disabled={!isEditing}
-                                                        className={`h-11 ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : ''}`}
-                                                    />
-                                                </div>
-                                            </>
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Education History</h3>
+                                        {isEditing && (
+                                            <Button
+                                                type="button"
+                                                onClick={() => setEducationHistory([...educationHistory, {
+                                                    education: '',
+                                                    university: '',
+                                                    course: '',
+                                                    specialization: '',
+                                                    customUniversity: '',
+                                                    customCourse: '',
+                                                    customSpecialization: '',
+                                                    courseType: 'Full-time',
+                                                    startYear: '',
+                                                    endYear: '',
+                                                    gradingSystem: 'CGPA',
+                                                    gradingValue: ''
+                                                }])}
+                                                variant="outline"
+                                                className="h-7 rounded-lg text-xs font-bold px-3 border-border/60"
+                                            >
+                                                + Add Education
+                                            </Button>
                                         )}
                                     </div>
+
+                                    {educationHistory.length === 0 ? (
+                                        <p className="text-xs text-muted-foreground italic">{isEditing ? 'No education added. Click + Add Education to get started.' : 'No education history listed.'}</p>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {educationHistory.map((item, idx) => {
+                                                const degreeName = educationsData?.data?.find((d: any) => d._id === item.education)?.name || item.education || '—';
+                                                const uniName = item.university === 'other' ? (item.customUniversity || 'Custom University') : (universitiesData?.data?.find((u: any) => u._id === item.university)?.name || item.university || '—');
+                                                const courseName = item.course === 'other' ? (item.customCourse || 'Custom Course') : (coursesData?.data?.find((c: any) => c._id === item.course)?.name || item.course || '—');
+                                                const specName = item.specialization === 'other' ? (item.customSpecialization || 'Custom Specialization') : (specializationsData?.data?.find((s: any) => s._id === item.specialization)?.name || item.specialization || '—');
+
+                                                return (
+                                                    <div key={idx} className="bg-muted/20 p-4 rounded-xl border border-border/40 space-y-3">
+                                                        {isEditing ? (
+                                                            <>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                                    {/* Degree */}
+                                                                    <div className="space-y-1">
+                                                                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Degree</label>
+                                                                        <select
+                                                                            value={item.education || ''}
+                                                                            onChange={(e) => {
+                                                                                const copy = [...educationHistory];
+                                                                                copy[idx] = { ...copy[idx], education: e.target.value };
+                                                                                setEducationHistory(copy);
+                                                                            }}
+                                                                            className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
+                                                                        >
+                                                                            <option value="">Select Degree</option>
+                                                                            {educationsData?.data?.map((d: any) => (
+                                                                                <option key={d._id} value={d._id}>{d.name}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
+
+                                                                    {/* Course */}
+                                                                    <div className="space-y-1">
+                                                                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Course</label>
+                                                                        <select
+                                                                            value={item.course || ''}
+                                                                            onChange={(e) => {
+                                                                                const copy = [...educationHistory];
+                                                                                copy[idx] = { ...copy[idx], course: e.target.value, customCourse: e.target.value === 'other' ? '' : copy[idx].customCourse };
+                                                                                setEducationHistory(copy);
+                                                                            }}
+                                                                            className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
+                                                                        >
+                                                                            <option value="">Select Course</option>
+                                                                            {coursesData?.data?.map((c: any) => (
+                                                                                <option key={c._id} value={c._id}>{c.name}</option>
+                                                                            ))}
+                                                                            <option value="other">Other / Custom Course</option>
+                                                                        </select>
+                                                                        {item.course === 'other' && (
+                                                                            <Input
+                                                                                placeholder="Enter Custom Course"
+                                                                                value={item.customCourse || ''}
+                                                                                onChange={(e) => {
+                                                                                    const copy = [...educationHistory];
+                                                                                    copy[idx] = { ...copy[idx], customCourse: e.target.value };
+                                                                                    setEducationHistory(copy);
+                                                                                }}
+                                                                                className="h-8 mt-1 text-xs"
+                                                                            />
+                                                                        )}
+                                                                    </div>
+
+                                                                    {/* Specialization */}
+                                                                    <div className="space-y-1">
+                                                                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Specialization</label>
+                                                                        <select
+                                                                            value={item.specialization || ''}
+                                                                            onChange={(e) => {
+                                                                                const copy = [...educationHistory];
+                                                                                copy[idx] = { ...copy[idx], specialization: e.target.value, customSpecialization: e.target.value === 'other' ? '' : copy[idx].customSpecialization };
+                                                                                setEducationHistory(copy);
+                                                                            }}
+                                                                            className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
+                                                                        >
+                                                                            <option value="">Select Specialization</option>
+                                                                            {specializationsData?.data?.map((s: any) => (
+                                                                                <option key={s._id} value={s._id}>{s.name}</option>
+                                                                            ))}
+                                                                            <option value="other">Other / Custom Specialization</option>
+                                                                        </select>
+                                                                        {item.specialization === 'other' && (
+                                                                            <Input
+                                                                                placeholder="Enter Custom Specialization"
+                                                                                value={item.customSpecialization || ''}
+                                                                                onChange={(e) => {
+                                                                                    const copy = [...educationHistory];
+                                                                                    copy[idx] = { ...copy[idx], customSpecialization: e.target.value };
+                                                                                    setEducationHistory(copy);
+                                                                                }}
+                                                                                className="h-8 mt-1 text-xs"
+                                                                            />
+                                                                        )}
+                                                                    </div>
+
+                                                                    {/* University */}
+                                                                    <div className="space-y-1">
+                                                                        <label className="text-[10px] font-bold text-muted-foreground uppercase">University</label>
+                                                                        <select
+                                                                            value={item.university || ''}
+                                                                            onChange={(e) => {
+                                                                                const copy = [...educationHistory];
+                                                                                copy[idx] = { ...copy[idx], university: e.target.value, customUniversity: e.target.value === 'other' ? '' : copy[idx].customUniversity };
+                                                                                setEducationHistory(copy);
+                                                                            }}
+                                                                            className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
+                                                                        >
+                                                                            <option value="">Select University</option>
+                                                                            {universitiesData?.data?.map((u: any) => (
+                                                                                <option key={u._id} value={u._id}>{u.name}</option>
+                                                                            ))}
+                                                                            <option value="other">Other / Custom University</option>
+                                                                        </select>
+                                                                        {item.university === 'other' && (
+                                                                            <Input
+                                                                                placeholder="Enter Custom University"
+                                                                                value={item.customUniversity || ''}
+                                                                                onChange={(e) => {
+                                                                                    const copy = [...educationHistory];
+                                                                                    copy[idx] = { ...copy[idx], customUniversity: e.target.value };
+                                                                                    setEducationHistory(copy);
+                                                                                }}
+                                                                                className="h-8 mt-1 text-xs"
+                                                                            />
+                                                                        )}
+                                                                    </div>
+
+                                                                    {/* Course Type */}
+                                                                    <div className="space-y-1">
+                                                                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Course Type</label>
+                                                                        <select
+                                                                            value={item.courseType || 'Full-time'}
+                                                                            onChange={(e) => {
+                                                                                const copy = [...educationHistory];
+                                                                                copy[idx] = { ...copy[idx], courseType: e.target.value };
+                                                                                setEducationHistory(copy);
+                                                                            }}
+                                                                            className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
+                                                                        >
+                                                                            <option value="Full-time">Full-time</option>
+                                                                            <option value="Part-time">Part-time</option>
+                                                                            <option value="Correspondence/Distance">Correspondence/Distance</option>
+                                                                        </select>
+                                                                    </div>
+
+                                                                    {/* Start Year & End Year */}
+                                                                    <div className="grid grid-cols-2 gap-2">
+                                                                        <div className="space-y-1">
+                                                                            <label className="text-[10px] font-bold text-muted-foreground uppercase">Start Year</label>
+                                                                            <Input
+                                                                                placeholder="e.g. 2020"
+                                                                                value={item.startYear || ''}
+                                                                                onChange={(e) => {
+                                                                                    const copy = [...educationHistory];
+                                                                                    copy[idx] = { ...copy[idx], startYear: e.target.value };
+                                                                                    setEducationHistory(copy);
+                                                                                }}
+                                                                                className="h-9 text-xs"
+                                                                            />
+                                                                        </div>
+                                                                        <div className="space-y-1">
+                                                                            <label className="text-[10px] font-bold text-muted-foreground uppercase">End Year</label>
+                                                                            <Input
+                                                                                placeholder="e.g. 2024"
+                                                                                value={item.endYear || ''}
+                                                                                onChange={(e) => {
+                                                                                    const copy = [...educationHistory];
+                                                                                    copy[idx] = { ...copy[idx], endYear: e.target.value };
+                                                                                    setEducationHistory(copy);
+                                                                                }}
+                                                                                className="h-9 text-xs"
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Grading System & Grading Value */}
+                                                                    <div className="grid grid-cols-2 gap-2">
+                                                                        <div className="space-y-1">
+                                                                            <label className="text-[10px] font-bold text-muted-foreground uppercase">Grading System</label>
+                                                                            <select
+                                                                                value={item.gradingSystem || 'CGPA'}
+                                                                                onChange={(e) => {
+                                                                                    const copy = [...educationHistory];
+                                                                                    copy[idx] = { ...copy[idx], gradingSystem: e.target.value };
+                                                                                    setEducationHistory(copy);
+                                                                                }}
+                                                                                className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
+                                                                            >
+                                                                                <option value="CGPA">CGPA</option>
+                                                                                <option value="GPA">GPA</option>
+                                                                                <option value="Percentage">Percentage</option>
+                                                                                <option value="Marks">Marks</option>
+                                                                            </select>
+                                                                        </div>
+                                                                        <div className="space-y-1">
+                                                                            <label className="text-[10px] font-bold text-muted-foreground uppercase">Grading Value</label>
+                                                                            <Input
+                                                                                placeholder="Value"
+                                                                                value={item.gradingValue || ''}
+                                                                                onChange={(e) => {
+                                                                                    const copy = [...educationHistory];
+                                                                                    copy[idx] = { ...copy[idx], gradingValue: e.target.value };
+                                                                                    setEducationHistory(copy);
+                                                                                }}
+                                                                                className="h-9 text-xs"
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex justify-end pt-1">
+                                                                    <Button
+                                                                        type="button"
+                                                                        onClick={() => setEducationHistory(educationHistory.filter((_, i) => i !== idx))}
+                                                                        variant="outline"
+                                                                        className="h-7 rounded-lg text-xs font-bold text-destructive border-destructive/20 hover:bg-destructive/5 px-2"
+                                                                    >
+                                                                        Remove Education
+                                                                    </Button>
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <div className="flex flex-col gap-1">
+                                                                <div className="flex justify-between items-start">
+                                                                    <span className="text-sm font-semibold text-foreground">{degreeName}</span>
+                                                                    <span className="text-xs font-medium text-muted-foreground">{item.startYear && item.endYear ? `${item.startYear} - ${item.endYear}` : '—'}</span>
+                                                                </div>
+                                                                <span className="text-xs text-foreground font-medium">{courseName} {specName !== '—' && `· ${specName}`}</span>
+                                                                <span className="text-xs text-muted-foreground">{uniName}</span>
+                                                                <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
+                                                                    <span>Course Type: <span className="font-semibold text-foreground">{item.courseType || 'Full-time'}</span></span>
+                                                                    {item.gradingValue && (
+                                                                        <span>Grade: <span className="font-semibold text-foreground">{item.gradingValue} ({item.gradingSystem || 'CGPA'})</span></span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* ── CERTIFICATIONS SECTION ── */}
@@ -1367,7 +1680,7 @@ export function StudentProfile() {
                             <div className="space-y-2">
                                 <h4 className="font-semibold text-sm">Your Control Rights</h4>
                                 <p className="text-xs text-muted-foreground leading-relaxed">
-                                    In compliance with DPDP 2023 & GDPR, you have the right to withdraw consent or delete your account. Email <a href="mailto:privacy@sqrex.com" className="text-primary hover:underline">privacy@sqrex.com</a> for inquiries.
+                                    In compliance with DPDP 2023 & GDPR, you have the right to withdraw consent or delete your account. Email <a href="mailto:privacy@squrex.com" className="text-primary hover:underline">privacy@squrex.com</a> for inquiries.
                                 </p>
                             </div>
                             <div className="pt-2">
