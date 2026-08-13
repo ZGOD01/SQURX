@@ -20,6 +20,7 @@ export interface ApiJobItem {
   source?: string;
   status?: string;
   visaSponsorship?: string;
+  relevanceScore?: number;
 }
 
 // ─── Raw API job shape returned by GET /jobs ─────────────────────────────────
@@ -30,7 +31,8 @@ export interface ApiJob {
   title?: string;
   description?: string;
   summary?: string;
-  
+  relevanceScore?: number;
+
   // Location
   location?: string;
   locationText?: string;
@@ -102,6 +104,7 @@ export interface FetchJobsParams {
   location?: string;
   minSalary?: number | string;
   maxSalary?: number | string;
+  currency?: string;
   industry?: string;
   experienceLevel?: string;
   source?: string;
@@ -282,7 +285,8 @@ export function mapApiJobToItem(job: ApiJob): ApiJobItem {
     createdAt,
     source: job.source || undefined,
     status: job.status || undefined,
-    visaSponsorship
+    visaSponsorship,
+    relevanceScore: job.relevanceScore !== undefined ? job.relevanceScore : undefined,
   };
 }
 
@@ -319,6 +323,7 @@ export async function fetchJobs(
   if (params.source) query.set('source', params.source);
   if (params.minSalary !== undefined && params.minSalary !== '') query.set('minSalary', String(params.minSalary));
   if (params.maxSalary !== undefined && params.maxSalary !== '') query.set('maxSalary', String(params.maxSalary));
+  if (params.currency) query.set('currency', params.currency);
   if (params.industry) query.set('industry', params.industry);
   if (params.page !== undefined) query.set('page', String(params.page));
   if (params.limit !== undefined) query.set('limit', String(params.limit));
@@ -337,6 +342,78 @@ export async function fetchJobs(
 
   if (!response.ok) {
     let message = `Failed to fetch jobs (HTTP ${response.status})`;
+    try {
+      const errJson = await response.json();
+      if (errJson?.message) message = errJson.message;
+    } catch {
+      // ignore parse errors
+    }
+    throw new Error(message);
+  }
+
+  const json = await response.json();
+
+  let rawJobs: ApiJob[] = [];
+  let total = 0;
+  let page = 1;
+  let limit = 10;
+
+  const payload = json?.data ?? json;
+
+  if (Array.isArray(payload)) {
+    rawJobs = payload;
+    total = payload.length;
+  } else if (payload && typeof payload === 'object') {
+    if (Array.isArray(payload.jobs)) {
+      rawJobs = payload.jobs;
+    } else if (Array.isArray(payload.data)) {
+      rawJobs = payload.data;
+    } else if (Array.isArray(payload.results)) {
+      rawJobs = payload.results;
+    }
+    total = payload.total !== undefined ? payload.total : rawJobs.length;
+    page = payload.page !== undefined ? payload.page : 1;
+    limit = payload.limit !== undefined ? payload.limit : 10;
+  }
+
+  return {
+    jobs: rawJobs.map(mapApiJobToItem),
+    total,
+    page,
+    limit
+  };
+}
+
+/**
+ * Fetches personalized relevant jobs scored to user profile (`GET /jobs/relevant`).
+ * Requires a valid JWT bearer token. Returns paginated list of jobs with relevanceScore.
+ */
+export async function fetchRelevantJobs(
+  params: { page?: number; limit?: number } = {}
+): Promise<FetchJobsResponse> {
+  const token = getInMemToken();
+  if (!token) {
+    throw new Error('Authentication required to fetch relevant jobs.');
+  }
+
+  const query = new URLSearchParams();
+  if (params.page !== undefined) query.set('page', String(params.page));
+  if (params.limit !== undefined) query.set('limit', String(params.limit));
+
+  const qs = query.toString();
+  const url = `${API_BASE_URL}/jobs/relevant${qs ? `?${qs}` : ''}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    let message = `Failed to fetch relevant jobs (HTTP ${response.status})`;
     try {
       const errJson = await response.json();
       if (errJson?.message) message = errJson.message;

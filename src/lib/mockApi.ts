@@ -89,9 +89,16 @@ export const mockApi = {
                     // ── Backend is the source of truth for all fields below ──
 
                     // CV / document URLs
-                    profile.cvUrl = data.resume || profile.cvUrl;
-                    profile.documentUrl = data.schoolLeavingCertificate || profile.documentUrl;
-                    profile.resume = data.resume || profile.resume;
+                    if (data.resume !== undefined) {
+                        profile.cvUrl = data.resume;
+                        profile.resume = data.resume;
+                    } else if (data.cvUrl !== undefined) {
+                        profile.cvUrl = data.cvUrl;
+                        profile.resume = data.cvUrl;
+                    }
+                    if (data.cvName !== undefined) profile.cvName = data.cvName;
+                    if (data.resumeName !== undefined) profile.resumeName = data.resumeName;
+                    if (data.schoolLeavingCertificate !== undefined) profile.documentUrl = data.schoolLeavingCertificate;
 
                     // Domain / career goal + domain ID
                     if (data.domain?.name) {
@@ -170,9 +177,9 @@ export const mockApi = {
                         }
                     }
 
-                    // Salary fields
-                    if (data.expectedSalary) profile.expectedSalary = String(data.expectedSalary);
-                    if (data.currentSalary) profile.currentSalary = String(data.currentSalary);
+                    // Salary fields — preserve structured object shape { amount, currency } or null/string
+                    if (data.expectedSalary !== undefined) profile.expectedSalary = data.expectedSalary;
+                    if (data.currentSalary !== undefined) profile.currentSalary = data.currentSalary;
 
                     // Full name
                     if (data.fullName) profile.fullName = data.fullName;
@@ -222,12 +229,37 @@ export const mockApi = {
             // Build payload purely from the incoming `data` argument — no sessionStorage fallbacks.
             const payload: Record<string, any> = {};
 
+            const formatSalaryPayload = (sal: any) => {
+                if (!sal) return null;
+                if (typeof sal === 'object') {
+                    if (sal.amount === null || sal.amount === undefined || sal.amount === '') return null;
+                    const currId = typeof sal.currency === 'object' && sal.currency ? sal.currency._id : sal.currency;
+                    return {
+                        amount: Number(sal.amount),
+                        currency: currId || null,
+                    };
+                }
+                return sal;
+            };
+
             if (data.gdprConsent !== undefined) payload.gdprConsent = data.gdprConsent;
             if (data.fullName !== undefined) payload.fullName = data.fullName;
             if (data.mobile !== undefined) payload.mobile = data.mobile;
             else if (data.phone !== undefined) payload.mobile = data.phone;
-            if (data.expectedSalary !== undefined) payload.expectedSalary = data.expectedSalary;
-            if (data.currentSalary !== undefined) payload.currentSalary = data.currentSalary;
+            
+            if (data.expectedSalary !== undefined) {
+                payload.expectedSalary = formatSalaryPayload(data.expectedSalary);
+            }
+            if (data.currentSalary !== undefined) {
+                payload.currentSalary = formatSalaryPayload(data.currentSalary);
+            }
+
+            // Business rule: If Fresher is selected, force-clear currentSalary to null
+            const isFresher = data.experienceLevel === 'Fresher' || data.experienceLevelId === 'Fresher';
+            if (isFresher) {
+                payload.currentSalary = null;
+            }
+
             if (data.preferredDomains !== undefined) payload.preferredDomains = data.preferredDomains;
             
             if (data.educationHistory !== undefined) payload.educationHistory = data.educationHistory;
@@ -238,6 +270,9 @@ export const mockApi = {
             if (data.skills !== undefined) payload.skills = data.skills;
             if (data.preferredLocations !== undefined) payload.preferredLocations = data.preferredLocations;
             if (data.cvUrl !== undefined) payload.resume = data.cvUrl;
+            if (data.resume !== undefined) payload.resume = data.resume;
+            if (data.cvName !== undefined) payload.cvName = data.cvName;
+            if (data.resumeName !== undefined) payload.resumeName = data.resumeName;
 
             // Sync new fields with backend
             if (data.gender !== undefined) payload.gender = data.gender;

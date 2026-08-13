@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from './store';
 import { useStudentStore } from '../student/store';
+import { getCleanFileName } from '../student/StudentProfile';
 import { Button, Input, Badge } from '@/components/ui';
 import { PageTransition } from '@/components/motion';
 import { ArrowRight, Loader2, Check, UploadCloud } from 'lucide-react';
@@ -13,7 +14,8 @@ import {
     useGetJobTypesQuery,
     useGetExperienceLevelsQuery,
     useGetLocationsQuery,
-    useGetDomainsQuery
+    useGetDomainsQuery,
+    useGetCurrenciesQuery
 } from '@/lib/store/authApi';
 // Helper to get location with country in brackets
 export const getLocationLabel = (l: any): string => {
@@ -71,8 +73,10 @@ export function Onboarding() {
     const [showJobTypeSuggestions, setShowJobTypeSuggestions] = useState(false);
     const [selectedJobTypeIds, setSelectedJobTypeIds] = useState<string[]>([]);
 
-    const [expectedSalary, setExpectedSalary] = useState('');
-    const [currentSalary, setCurrentSalary] = useState('');
+    const [expectedSalaryAmount, setExpectedSalaryAmount] = useState('');
+    const [expectedSalaryCurrency, setExpectedSalaryCurrency] = useState('');
+    const [currentSalaryAmount, setCurrentSalaryAmount] = useState('');
+    const [currentSalaryCurrency, setCurrentSalaryCurrency] = useState('');
 
     const [gender, setGender] = useState('');
     const [dob, setDob] = useState('');
@@ -113,6 +117,7 @@ export function Onboarding() {
     const { data: experienceLevelsData } = useGetExperienceLevelsQuery({ search: experienceLevelQuery });
     const { data: locationsData } = useGetLocationsQuery({ search: lastLocationPart });
     const { data: domainsData } = useGetDomainsQuery({ search: lastDomainPart });
+    const { data: currenciesData } = useGetCurrenciesQuery();
 
     const [showSkillSuggestions, setShowSkillSuggestions] = useState(false);
 
@@ -252,8 +257,7 @@ export function Onboarding() {
             setOtherAchievements(profile?.otherAchievements || '');
 
             if (profile?.cvUrl) {
-                const parts = profile.cvUrl.split('/');
-                setCvName(parts[parts.length - 1] || 'Resume_Document.pdf');
+                setCvName(profile.cvName || profile.resumeName || getCleanFileName(profile.cvUrl));
             }
 
             setIsInitialized(true);
@@ -335,8 +339,8 @@ export function Onboarding() {
             await updateProfile(user.id, {
                 fullName,
                 experienceLevel: expMatch?._id || experienceLevel,
-                currentSalary: experienceLevel === 'Fresher' ? '' : currentSalary,
-                expectedSalary,
+                currentSalary: experienceLevel === 'Fresher' ? null : (currentSalaryAmount ? { amount: Number(currentSalaryAmount), currency: currentSalaryCurrency } : null),
+                expectedSalary: expectedSalaryAmount ? { amount: Number(expectedSalaryAmount), currency: expectedSalaryCurrency } : null,
                 preferredDomains: domainIds,
                 skills: skillIds,
                 preferredLocations: locationIds,
@@ -400,14 +404,25 @@ export function Onboarding() {
         setIsUploadingCV(true);
         try {
             const cvUrl = await consultationApi.uploadCv(file);
-            await updateProfile(user.id, { cvUrl: cvUrl || file.name });
+            const finalUrl = cvUrl || file.name;
+            await updateProfile(user.id, {
+                cvUrl: finalUrl,
+                resume: finalUrl,
+                cvName: file.name,
+                resumeName: file.name
+            });
             setCvName(file.name);
             setSelectedCvFile(null);
         } catch (err: any) {
             console.error('CV upload error:', err);
             // Fallback: Save PDF filename into user profile so onboarding can be completed even if API endpoint is unreachable
             try {
-                await updateProfile(user.id, { cvUrl: file.name });
+                await updateProfile(user.id, {
+                    cvUrl: file.name,
+                    resume: file.name,
+                    cvName: file.name,
+                    resumeName: file.name
+                });
                 setCvName(file.name);
                 setSelectedCvFile(null);
             } catch (fallbackErr) {
@@ -618,26 +633,50 @@ export function Onboarding() {
                                     {/* Expected Salary */}
                                     <div className="space-y-1.5">
                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Expected Salary (Annual)</label>
-                                        <Input
-                                            required
-                                            placeholder="e.g. $85,000"
-                                            value={expectedSalary}
-                                            onChange={(e) => setExpectedSalary(e.target.value)}
-                                            className="h-12 rounded-xl"
-                                        />
+                                        <div className="flex gap-2">
+                                            <select
+                                                value={expectedSalaryCurrency}
+                                                onChange={(e) => setExpectedSalaryCurrency(e.target.value)}
+                                                className="h-12 w-28 bg-white border border-gray-200 focus:border-black rounded-xl px-2 text-xs font-semibold outline-none transition-all shrink-0"
+                                            >
+                                                <option value="">Currency</option>
+                                                {currenciesData?.data?.map((c: any) => (
+                                                    <option key={c._id} value={c._id}>{c.code} ({c.symbol})</option>
+                                                ))}
+                                            </select>
+                                            <Input
+                                                type="number"
+                                                placeholder="e.g. 1800000"
+                                                value={expectedSalaryAmount}
+                                                onChange={(e) => setExpectedSalaryAmount(e.target.value)}
+                                                className="h-12 rounded-xl flex-1"
+                                            />
+                                        </div>
                                     </div>
 
                                     {/* Current Salary */}
                                     {experienceLevel !== 'Fresher' && (
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Current Salary (Annual)</label>
-                                            <Input
-                                                required
-                                                placeholder="e.g. $70,000"
-                                                value={currentSalary}
-                                                onChange={(e) => setCurrentSalary(e.target.value)}
-                                                className="h-12 rounded-xl"
-                                            />
+                                            <div className="flex gap-2">
+                                                <select
+                                                    value={currentSalaryCurrency}
+                                                    onChange={(e) => setCurrentSalaryCurrency(e.target.value)}
+                                                    className="h-12 w-28 bg-white border border-gray-200 focus:border-black rounded-xl px-2 text-xs font-semibold outline-none transition-all shrink-0"
+                                                >
+                                                    <option value="">Currency</option>
+                                                    {currenciesData?.data?.map((c: any) => (
+                                                        <option key={c._id} value={c._id}>{c.code} ({c.symbol})</option>
+                                                    ))}
+                                                </select>
+                                                <Input
+                                                    type="number"
+                                                    placeholder="e.g. 1200000"
+                                                    value={currentSalaryAmount}
+                                                    onChange={(e) => setCurrentSalaryAmount(e.target.value)}
+                                                    className="h-12 rounded-xl flex-1"
+                                                />
+                                            </div>
                                         </div>
                                     )}                                    {/* Preferred Job Role */}
                                     <div className="space-y-1.5 relative">

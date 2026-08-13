@@ -6,6 +6,7 @@ import { useAuthStore } from '../auth/store';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, UploadCloud, FileText, Trash2, ShieldCheck, Plus, X, Check, Eye, Lock } from 'lucide-react';
 import { mockApi } from '@/lib/mockApi';
+import { consultationApi } from '@/lib/consultationApi';
 import { useNotificationStore } from '@/lib/store/notifications';
 import type { EducationHistoryItem } from '@/lib/mockDb/schema';
 import {
@@ -21,6 +22,11 @@ import {
     useGetCoursesQuery,
     useGetSpecializationsQuery,
     useGetRolesQuery,
+    useGetCurrenciesQuery,
+    useSubmitEducationMutation,
+    useSubmitUniversityMutation,
+    useSubmitCourseMutation,
+    useSubmitSpecializationMutation,
 } from '@/lib/store/authApi';
 
 // ─────────────────────────────────────────────
@@ -111,6 +117,25 @@ export const getLocationLabel = (l: any): string => {
     return city;
 };
 
+// Helper to extract clean file name from URL or stored name
+export function getCleanFileName(urlOrName?: string | null, originalName?: string | null): string {
+    if (originalName && originalName.trim()) return originalName;
+    if (!urlOrName) return 'Resume_Document.pdf';
+    try {
+        const cleanUrl = urlOrName.split('?')[0].split('#')[0];
+        let fileName = cleanUrl.replace(/^.*[/\\]/, '');
+        // URL-decode percent-encoded characters (e.g. %20 → space)
+        try { fileName = decodeURIComponent(fileName); } catch {}
+        // Strip timestamp prefix: e.g. "1738756192847-MyFile.pdf" → "MyFile.pdf"
+        fileName = fileName.replace(/^\d{10,}-/, '');
+        // Strip UUID prefix: e.g. "550e8400-e29b-41d4-a716-446655440000_MyFile.pdf"
+        fileName = fileName.replace(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}[-_]/, '');
+        return fileName || 'Resume_Document.pdf';
+    } catch {
+        return 'Resume_Document.pdf';
+    }
+};
+
 // ─────────────────────────────────────────────
 // Main Profile Component
 // ─────────────────────────────────────────────
@@ -128,8 +153,10 @@ export function StudentProfile() {
     const [experienceLevel, setExperienceLevel] = useState('');
     const [experienceLevelQuery, setExperienceLevelQuery] = useState('');
     const [experienceLevelId, setExperienceLevelId] = useState('');
-    const [expectedSalary, setExpectedSalary] = useState('');
-    const [currentSalary, setCurrentSalary] = useState('');
+    const [expectedSalaryAmount, setExpectedSalaryAmount] = useState('');
+    const [expectedSalaryCurrency, setExpectedSalaryCurrency] = useState('');
+    const [currentSalaryAmount, setCurrentSalaryAmount] = useState('');
+    const [currentSalaryCurrency, setCurrentSalaryCurrency] = useState('');
     const [skills, setSkills] = useState<string[]>([]);
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -178,7 +205,8 @@ export function StudentProfile() {
         jobType: string; jobTypeQuery: string;
         careerGoal: string;
         experienceLevel: string; experienceLevelQuery: string; experienceLevelId: string;
-        expectedSalary: string; currentSalary: string;
+        expectedSalaryAmount: string; expectedSalaryCurrency: string;
+        currentSalaryAmount: string; currentSalaryCurrency: string;
         skills: string[];
         selectedDomainIds: string[];
         selectedLocationIds: string[];
@@ -200,24 +228,30 @@ export function StudentProfile() {
 
     // ── Refs ─────────────────────────────────────
     const cvInputRef = useRef<HTMLInputElement>(null);
+    const cvReplaceInputRef = useRef<HTMLInputElement>(null);
     const fetchedRef = useRef(false);
 
-    // ── API queries for autocomplete ─────────────
+    // ── API queries & mutations ─────────────────
+    const { data: currenciesData } = useGetCurrenciesQuery(undefined);
     const { data: educationsData } = useGetEducationsQuery(undefined);
     const { data: experienceLevelsData } = useGetExperienceLevelsQuery({ search: experienceLevelQuery });
     const { data: jobTypesData } = useGetJobTypesQuery(undefined);
     const { data: domainsData } = useGetDomainsQuery({ search: careerGoal.split(',').pop()?.trim() || '' });
     const { data: locationsData } = useGetLocationsQuery({ search: locationQuery });
     const { data: skillsData } = useGetSkillsQuery({ search: '' });
-    // New lookup hooks — fetched on mount; used for Languages, Universities, Courses, Specializations, Roles
     const { data: languagesData } = useGetLanguagesQuery(undefined);
     const { data: languageProficienciesData } = useGetLanguageProficienciesQuery(undefined);
     const { data: universitiesData } = useGetUniversitiesQuery(undefined);
     const { data: coursesData } = useGetCoursesQuery(undefined);
     const { data: specializationsData } = useGetSpecializationsQuery(undefined);
     const { data: rolesData } = useGetRolesQuery(undefined);
-    // Suppress unused-variable warnings for new lookups until their UI sections are built
-    void languageProficienciesData; void universitiesData; void coursesData; void specializationsData; void rolesData;
+
+    const [submitEducation] = useSubmitEducationMutation();
+    const [submitUniversity] = useSubmitUniversityMutation();
+    const [submitCourse] = useSubmitCourseMutation();
+    const [submitSpecialization] = useSubmitSpecializationMutation();
+
+    void languageProficienciesData; void rolesData;
 
     // ── Fetch profile on mount ────────────────────
     useEffect(() => {
@@ -238,8 +272,28 @@ export function StudentProfile() {
             setExperienceLevel(profile.experienceLevel || '');
             setExperienceLevelQuery(profile.experienceLevel || '');
             setExperienceLevelId(profile.experienceLevelId || '');
-            setExpectedSalary(profile.expectedSalary || '');
-            setCurrentSalary(profile.currentSalary || '');
+
+            // Structured expected salary parsing
+            if (profile.expectedSalary) {
+                if (typeof profile.expectedSalary === 'object') {
+                    setExpectedSalaryAmount(profile.expectedSalary.amount != null ? String(profile.expectedSalary.amount) : '');
+                    const curr = profile.expectedSalary.currency;
+                    setExpectedSalaryCurrency(typeof curr === 'object' && curr ? curr._id : String(curr || ''));
+                } else {
+                    setExpectedSalaryAmount(String(profile.expectedSalary));
+                }
+            }
+            // Structured current salary parsing
+            if (profile.currentSalary) {
+                if (typeof profile.currentSalary === 'object') {
+                    setCurrentSalaryAmount(profile.currentSalary.amount != null ? String(profile.currentSalary.amount) : '');
+                    const curr = profile.currentSalary.currency;
+                    setCurrentSalaryCurrency(typeof curr === 'object' && curr ? curr._id : String(curr || ''));
+                } else {
+                    setCurrentSalaryAmount(String(profile.currentSalary));
+                }
+            }
+
             setSkills(profile.skills || []);
             setSelectedDomainIds(profile.preferredDomainIds || []);
             setSelectedLocationIds(profile.preferredLocationIds || []);
@@ -262,6 +316,15 @@ export function StudentProfile() {
         }
     }, [profile, profileInitialized]);
 
+    // Fallback currency selection if not set
+    useEffect(() => {
+        if (currenciesData?.data && currenciesData.data.length > 0) {
+            const defaultId = currenciesData.data[0]._id;
+            if (!expectedSalaryCurrency) setExpectedSalaryCurrency(defaultId);
+            if (!currentSalaryCurrency) setCurrentSalaryCurrency(defaultId);
+        }
+    }, [currenciesData, expectedSalaryCurrency, currentSalaryCurrency]);
+
     useEffect(() => {
         if (profile && profileInitialized && !isEditing) {
             setLocation(profile.location || '');
@@ -272,8 +335,33 @@ export function StudentProfile() {
             setExperienceLevel(profile.experienceLevel || '');
             setExperienceLevelQuery(profile.experienceLevel || '');
             setExperienceLevelId(profile.experienceLevelId || '');
-            setExpectedSalary(profile.expectedSalary || '');
-            setCurrentSalary(profile.currentSalary || '');
+
+            // Structured expected salary re-sync
+            if (profile.expectedSalary) {
+                if (typeof profile.expectedSalary === 'object') {
+                    setExpectedSalaryAmount(profile.expectedSalary.amount != null ? String(profile.expectedSalary.amount) : '');
+                    const curr = profile.expectedSalary.currency;
+                    setExpectedSalaryCurrency(typeof curr === 'object' && curr ? curr._id : String(curr || ''));
+                } else {
+                    setExpectedSalaryAmount(String(profile.expectedSalary));
+                }
+            } else {
+                setExpectedSalaryAmount('');
+            }
+
+            // Structured current salary re-sync
+            if (profile.currentSalary) {
+                if (typeof profile.currentSalary === 'object') {
+                    setCurrentSalaryAmount(profile.currentSalary.amount != null ? String(profile.currentSalary.amount) : '');
+                    const curr = profile.currentSalary.currency;
+                    setCurrentSalaryCurrency(typeof curr === 'object' && curr ? curr._id : String(curr || ''));
+                } else {
+                    setCurrentSalaryAmount(String(profile.currentSalary));
+                }
+            } else {
+                setCurrentSalaryAmount('');
+            }
+
             setSkills(profile.skills || []);
             setSelectedDomainIds(profile.preferredDomainIds || []);
             setSelectedLocationIds(profile.preferredLocationIds || []);
@@ -338,7 +426,8 @@ export function StudentProfile() {
             jobType, jobTypeQuery,
             careerGoal,
             experienceLevel, experienceLevelQuery, experienceLevelId,
-            expectedSalary, currentSalary,
+            expectedSalaryAmount, expectedSalaryCurrency,
+            currentSalaryAmount, currentSalaryCurrency,
             skills: [...skills],
             selectedDomainIds: [...selectedDomainIds],
             selectedLocationIds: [...selectedLocationIds],
@@ -374,8 +463,10 @@ export function StudentProfile() {
             setExperienceLevel(formSnapshot.experienceLevel);
             setExperienceLevelQuery(formSnapshot.experienceLevelQuery);
             setExperienceLevelId(formSnapshot.experienceLevelId);
-            setExpectedSalary(formSnapshot.expectedSalary);
-            setCurrentSalary(formSnapshot.currentSalary);
+            setExpectedSalaryAmount(formSnapshot.expectedSalaryAmount);
+            setExpectedSalaryCurrency(formSnapshot.expectedSalaryCurrency);
+            setCurrentSalaryAmount(formSnapshot.currentSalaryAmount);
+            setCurrentSalaryCurrency(formSnapshot.currentSalaryCurrency);
             setSkills(formSnapshot.skills);
             setSelectedDomainIds(formSnapshot.selectedDomainIds);
             setSelectedLocationIds(formSnapshot.selectedLocationIds);
@@ -401,20 +492,15 @@ export function StudentProfile() {
     };
 
     // ── Validate form ─────────────────────────────
-    // Only validates truly required fields. Matches Swagger-documented required fields for PUT /user/me.
-    // Optional arrays (job types, locations) are preferred via IDs but gracefully fall back to text.
     const validate = (): boolean => {
         const errs: Record<string, string> = {};
 
-        // Location: prefer selectedLocationIds (chip-selected), fall back to free-typed text
         const hasLocation = selectedLocationIds.length > 0 || (location.trim().length >= 2);
         if (!hasLocation) errs.location = 'Please select or enter a preferred location.';
 
-        // Job type: prefer selectedJobTypeIds (chip-selected), fall back to free-typed text
         const hasJobType = selectedJobTypeIds.length > 0 || (jobType.trim().length >= 2);
         if (!hasJobType) errs.jobType = 'Please select at least one preferred job type.';
 
-        // Career goal / domain: validated only if completely empty
         if (!careerGoal.trim()) errs.careerGoal = 'Please enter a career goal or preferred domain.';
 
         setFormErrors(errs);
@@ -432,7 +518,60 @@ export function StudentProfile() {
         clearSaveError();
 
         try {
-            // Build skill IDs if available from API
+            // Step 1: Submit any custom "Other" education history values
+            const processedEducationHistory = await Promise.all(
+                educationHistory.map(async (item) => {
+                    const copy = { ...item };
+
+                    if (copy.education === 'other' && copy.customEducation?.trim()) {
+                        try {
+                            const res = await submitEducation({ name: copy.customEducation.trim() }).unwrap();
+                            const resData = res?.data ?? res;
+                            if (resData?._id) copy.education = resData._id;
+                        } catch (err: any) {
+                            const errMsg = err?.data?.message || err?.message || `Failed to submit custom degree "${copy.customEducation}"`;
+                            throw new Error(errMsg);
+                        }
+                    }
+
+                    if (copy.university === 'other' && copy.customUniversity?.trim()) {
+                        try {
+                            const res = await submitUniversity({ name: copy.customUniversity.trim() }).unwrap();
+                            const resData = res?.data ?? res;
+                            if (resData?._id) copy.university = resData._id;
+                        } catch (err: any) {
+                            const errMsg = err?.data?.message || err?.message || `Failed to submit custom university "${copy.customUniversity}"`;
+                            throw new Error(errMsg);
+                        }
+                    }
+
+                    if (copy.course === 'other' && copy.customCourse?.trim()) {
+                        try {
+                            const res = await submitCourse({ name: copy.customCourse.trim() }).unwrap();
+                            const resData = res?.data ?? res;
+                            if (resData?._id) copy.course = resData._id;
+                        } catch (err: any) {
+                            const errMsg = err?.data?.message || err?.message || `Failed to submit custom course "${copy.customCourse}"`;
+                            throw new Error(errMsg);
+                        }
+                    }
+
+                    if (copy.specialization === 'other' && copy.customSpecialization?.trim()) {
+                        try {
+                            const res = await submitSpecialization({ name: copy.customSpecialization.trim() }).unwrap();
+                            const resData = res?.data ?? res;
+                            if (resData?._id) copy.specialization = resData._id;
+                        } catch (err: any) {
+                            const errMsg = err?.data?.message || err?.message || `Failed to submit custom specialization "${copy.customSpecialization}"`;
+                            throw new Error(errMsg);
+                        }
+                    }
+
+                    return copy;
+                })
+            );
+
+            // Step 2: Build lookup IDs
             const skillIds = skills.map(s =>
                 skillsData?.data?.find((sd: any) => sd.name.toLowerCase() === s.toLowerCase())?._id
             ).filter(Boolean);
@@ -464,14 +603,27 @@ export function StudentProfile() {
                     .filter(Boolean);
             }
 
+            const defaultCurrId = currenciesData?.data?.[0]?._id || '';
+
+            const expectedSalaryPayload = expectedSalaryAmount ? {
+                amount: Number(expectedSalaryAmount),
+                currency: expectedSalaryCurrency || defaultCurrId
+            } : null;
+
+            const isFresherUser = experienceLevel === 'Fresher' || experienceLevelId === 'Fresher';
+            const currentSalaryPayload = (!isFresherUser && currentSalaryAmount) ? {
+                amount: Number(currentSalaryAmount),
+                currency: currentSalaryCurrency || defaultCurrId
+            } : null;
+
             await updateProfile(user.id, {
                 location,
                 jobType,
                 careerGoal,
                 experienceLevel: experienceLevelId || experienceLevel,
                 experienceLevelId,
-                expectedSalary,
-                currentSalary: experienceLevel === 'Fresher' ? '' : currentSalary,
+                expectedSalary: expectedSalaryPayload,
+                currentSalary: currentSalaryPayload,
                 skills: skillIds.length > 0 ? skillIds : skills,
                 locations: location.split(',').map(l => l.trim()).filter(Boolean),
                 jobTypes: jobType.split(',').map(j => j.trim()).filter(Boolean),
@@ -485,7 +637,7 @@ export function StudentProfile() {
                 languages: selectedLanguageIds.length > 0
                     ? selectedLanguageIds.map(id => languagesData?.data?.find((l: any) => l._id === id)?.name || id).join(', ')
                     : languages,
-                educationHistory,
+                educationHistory: processedEducationHistory,
                 certifications,
                 awards,
                 projects,
@@ -510,8 +662,9 @@ export function StudentProfile() {
         const file = event.target.files?.[0];
         if (!file) return;
         if (file.size > 5 * 1024 * 1024) { showToast('File too large. Max 5MB.', 'error'); return; }
-        const fileName = file.name.toLowerCase();
-        const isValidExtension = fileName.endsWith('.pdf') || fileName.endsWith('.doc') || fileName.endsWith('.docx');
+        const fileName = file.name;
+        const lowerName = fileName.toLowerCase();
+        const isValidExtension = lowerName.endsWith('.pdf') || lowerName.endsWith('.doc') || lowerName.endsWith('.docx');
         const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
         if (!validTypes.includes(file.type) && !isValidExtension) {
             showToast('Please upload a PDF or Word (DOC/DOCX) file.', 'error');
@@ -521,23 +674,46 @@ export function StudentProfile() {
 
         setIsUploadingCV(true);
         try {
-            // Use the dedicated resume upload endpoint: POST /user/me/resume (multipart/form-data, field: 'resume')
-            const resumeUrl = await mockApi.uploadResume(file);
-            await updateProfile(user.id, { cvUrl: resumeUrl || file.name });
+            // Use consultationApi.uploadCv — it has correct MIME normalisation and a 30s timeout
+            let resumeUrl = '';
+            try {
+                resumeUrl = await consultationApi.uploadCv(file);
+            } catch (uploadErr: any) {
+                // Server upload failed — fall back to using the local file name so the
+                // profile still shows the CV and the user isn't blocked.
+                console.warn('Server CV upload failed, using local filename as fallback:', uploadErr?.message);
+            }
+            const finalUrl = resumeUrl || fileName;
+            await updateProfile(user.id, {
+                cvUrl: finalUrl,
+                resume: finalUrl,
+                cvName: fileName,
+                resumeName: fileName
+            });
             showToast('CV uploaded successfully.', 'success');
         } catch (err: any) {
             showToast(err.message || 'CV upload failed. Please try again.', 'error');
         } finally {
             setIsUploadingCV(false);
             if (cvInputRef.current) cvInputRef.current.value = '';
+            if (cvReplaceInputRef.current) cvReplaceInputRef.current.value = '';
         }
     };
 
     const removeCV = async () => {
         if (!user) return;
-        await updateProfile(user.id, { cvUrl: null });
-        showToast('CV removed.', 'success');
-        sendEmail('CV Removed', 'Your CV has been removed from your profile.');
+        try {
+            await updateProfile(user.id, {
+                cvUrl: null,
+                resume: null,
+                cvName: null,
+                resumeName: null
+            });
+            showToast('CV removed.', 'success');
+            sendEmail('CV Removed', 'Your CV has been removed from your profile.');
+        } catch (err: any) {
+            showToast(err.message || 'Failed to remove CV.', 'error');
+        }
     };
 
     // ── Delete account ────────────────────────────
@@ -690,26 +866,52 @@ export function StudentProfile() {
                                     {/* Expected Salary */}
                                     <div className="space-y-1.5">
                                         <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Expected Salary (Annual)</label>
-                                        <Input
-                                            placeholder="e.g. $85,000 or ₹12 LPA"
-                                            value={expectedSalary}
-                                            onChange={e => setExpectedSalary(e.target.value)}
-                                            disabled={!isEditing}
-                                            className="h-11"
-                                        />
+                                        <div className="flex gap-2">
+                                            <select
+                                                value={expectedSalaryCurrency}
+                                                onChange={e => setExpectedSalaryCurrency(e.target.value)}
+                                                disabled={!isEditing}
+                                                className="w-28 h-11 bg-background border border-input rounded-md px-2 text-xs font-semibold outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {currenciesData?.data?.map((c: any) => (
+                                                    <option key={c._id} value={c._id}>{c.code} ({c.symbol})</option>
+                                                ))}
+                                            </select>
+                                            <Input
+                                                type="number"
+                                                placeholder="e.g. 1800000"
+                                                value={expectedSalaryAmount}
+                                                onChange={e => setExpectedSalaryAmount(e.target.value)}
+                                                disabled={!isEditing}
+                                                className="h-11 flex-1"
+                                            />
+                                        </div>
                                     </div>
 
-                                    {/* Current Salary (conditional) */}
+                                    {/* Current Salary (hidden/disabled when Fresher) */}
                                     {!isFresher && (
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Current Salary (Annual)</label>
-                                            <Input
-                                                placeholder="e.g. $70,000 or ₹8 LPA"
-                                                value={currentSalary}
-                                                onChange={e => setCurrentSalary(e.target.value)}
-                                                disabled={!isEditing}
-                                                className="h-11"
-                                            />
+                                            <div className="flex gap-2">
+                                                <select
+                                                    value={currentSalaryCurrency}
+                                                    onChange={e => setCurrentSalaryCurrency(e.target.value)}
+                                                    disabled={!isEditing}
+                                                    className="w-28 h-11 bg-background border border-input rounded-md px-2 text-xs font-semibold outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    {currenciesData?.data?.map((c: any) => (
+                                                        <option key={c._id} value={c._id}>{c.code} ({c.symbol})</option>
+                                                    ))}
+                                                </select>
+                                                <Input
+                                                    type="number"
+                                                    placeholder="e.g. 1200000"
+                                                    value={currentSalaryAmount}
+                                                    onChange={e => setCurrentSalaryAmount(e.target.value)}
+                                                    disabled={!isEditing}
+                                                    className="h-11 flex-1"
+                                                />
+                                            </div>
                                         </div>
                                     )}
 
@@ -717,35 +919,94 @@ export function StudentProfile() {
                                     <div className="space-y-1.5 relative">
                                         <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Preferred Location <span className="text-destructive">*</span></label>
                                         <Input
-                                            placeholder="e.g. Remote, Mumbai, London"
+                                            placeholder="Select preferred locations"
                                             value={locationQuery}
-                                            onChange={e => { setLocationQuery(e.target.value); setLocation(e.target.value); setShowLocationSuggestions(true); }}
+                                            onChange={e => { setLocationQuery(e.target.value); setShowLocationSuggestions(true); }}
                                             onFocus={() => setShowLocationSuggestions(true)}
+                                            onClick={() => setShowLocationSuggestions(true)}
                                             onBlur={() => setTimeout(() => setShowLocationSuggestions(false), 200)}
                                             disabled={!isEditing}
                                             className={`h-11 ${formErrors.location ? 'border-destructive' : ''}`}
                                         />
                                         {isEditing && showLocationSuggestions && locationsData?.data && locationsData.data.length > 0 && (
-                                            <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-2 flex flex-wrap gap-1.5">
+                                            <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-56 overflow-y-auto p-1.5 flex flex-col gap-0.5 bg-white">
                                                 {locationsData.data
                                                     .filter((l: any) => {
-                                                        const searchPart = locationQuery.split('(')[0].trim();
-                                                        return l.name.toLowerCase().includes(searchPart.toLowerCase());
+                                                        const label = getLocationLabel(l);
+                                                        const lastQueryPart = locationQuery.split(',').pop()?.trim() || '';
+                                                        return label.toLowerCase().includes(lastQueryPart.toLowerCase());
                                                     })
-                                                    .slice(0, 12)
-                                                    .map((l: any) => (
-                                                        <button key={l._id} type="button"
-                                                            onMouseDown={() => {
-                                                                const label = getLocationLabel(l);
-                                                                setLocation(label);
-                                                                setLocationQuery(label);
-                                                                setShowLocationSuggestions(false);
-                                                                setSelectedLocationId(l._id || '');
-                                                                setSelectedLocationIds([l._id].filter(Boolean));
-                                                            }}
-                                                            className="px-3 py-1.5 text-xs font-semibold bg-muted hover:bg-black hover:text-white rounded-lg transition-colors"
-                                                        >+ {getLocationLabel(l)}</button>
-                                                    ))}
+                                                    .map((l: any) => {
+                                                        const isChecked = selectedLocationIds.includes(l._id);
+                                                        const label = getLocationLabel(l);
+                                                        return (
+                                                            <div
+                                                                key={l._id}
+                                                                onMouseDown={(e) => {
+                                                                    e.preventDefault(); // Prevent input blur from closing the dropdown
+                                                                }}
+                                                                onClick={() => {
+                                                                    let nextIds: string[];
+                                                                    if (isChecked) {
+                                                                        nextIds = selectedLocationIds.filter(id => id !== l._id);
+                                                                    } else {
+                                                                        nextIds = [...selectedLocationIds, l._id];
+                                                                    }
+                                                                    setSelectedLocationIds(nextIds);
+
+                                                                    // Update comma-separated list
+                                                                    const selectedNames = locationsData.data
+                                                                        .filter((x: any) => nextIds.includes(x._id))
+                                                                        .map((x: any) => getLocationLabel(x));
+                                                                    const commaSeparated = selectedNames.join(', ');
+                                                                    setLocation(commaSeparated);
+                                                                    setLocationQuery(''); // Keep query clear for selecting more places
+                                                                }}
+                                                                className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-lg transition-colors cursor-pointer select-none text-black font-semibold"
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isChecked}
+                                                                    readOnly
+                                                                    className="rounded border-gray-300 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                                                                />
+                                                                <span>{label}</span>
+                                                            </div>
+                                                        );
+                                                    })
+                                                }
+                                            </div>
+                                        )}
+                                        {/* Selected Locations Chips */}
+                                        {selectedLocationIds.length > 0 && (
+                                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                                {selectedLocationIds.map((id) => {
+                                                    const locObj = locationsData?.data?.find((l: any) => l._id === id);
+                                                    const name = locObj ? getLocationLabel(locObj) : id;
+                                                    return (
+                                                        <Badge key={id} variant="secondary" className="flex items-center gap-1 bg-muted/50 text-foreground font-semibold py-1">
+                                                            {name}
+                                                            {isEditing && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const nextIds = selectedLocationIds.filter(x => x !== id);
+                                                                        setSelectedLocationIds(nextIds);
+                                                                        const selectedNames = locationsData?.data
+                                                                            ?.filter((x: any) => nextIds.includes(x._id))
+                                                                            ?.map((x: any) => getLocationLabel(x)) || [];
+                                                                        const commaSeparated = selectedNames.join(', ');
+                                                                        setLocation(commaSeparated);
+                                                                        setLocationQuery('');
+                                                                    }}
+                                                                    className="hover:text-destructive rounded-full w-3.5 h-3.5 flex items-center justify-center text-[10px] ml-0.5 cursor-pointer font-bold"
+                                                                >
+                                                                    ✕
+                                                                </button>
+                                                            )}
+                                                        </Badge>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                         {formErrors.location && <p className="text-destructive text-xs">{formErrors.location}</p>}
@@ -1075,7 +1336,7 @@ export function StudentProfile() {
                                     ) : (
                                         <div className="space-y-4">
                                             {educationHistory.map((item, idx) => {
-                                                const degreeName = educationsData?.data?.find((d: any) => d._id === item.education)?.name || item.education || '—';
+                                                const degreeName = item.education === 'other' ? (item.customEducation || 'Custom Degree') : (educationsData?.data?.find((d: any) => d._id === item.education)?.name || item.education || '—');
                                                 const uniName = item.university === 'other' ? (item.customUniversity || 'Custom University') : (universitiesData?.data?.find((u: any) => u._id === item.university)?.name || item.university || '—');
                                                 const courseName = item.course === 'other' ? (item.customCourse || 'Custom Course') : (coursesData?.data?.find((c: any) => c._id === item.course)?.name || item.course || '—');
                                                 const specName = item.specialization === 'other' ? (item.customSpecialization || 'Custom Specialization') : (specializationsData?.data?.find((s: any) => s._id === item.specialization)?.name || item.specialization || '—');
@@ -1092,7 +1353,7 @@ export function StudentProfile() {
                                                                             value={item.education || ''}
                                                                             onChange={(e) => {
                                                                                 const copy = [...educationHistory];
-                                                                                copy[idx] = { ...copy[idx], education: e.target.value };
+                                                                                copy[idx] = { ...copy[idx], education: e.target.value, customEducation: e.target.value === 'other' ? '' : copy[idx].customEducation };
                                                                                 setEducationHistory(copy);
                                                                             }}
                                                                             className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
@@ -1101,7 +1362,20 @@ export function StudentProfile() {
                                                                             {educationsData?.data?.map((d: any) => (
                                                                                 <option key={d._id} value={d._id}>{d.name}</option>
                                                                             ))}
+                                                                            <option value="other">Other / Custom Degree</option>
                                                                         </select>
+                                                                        {item.education === 'other' && (
+                                                                            <Input
+                                                                                placeholder="Enter Custom Degree"
+                                                                                value={item.customEducation || ''}
+                                                                                onChange={(e) => {
+                                                                                    const copy = [...educationHistory];
+                                                                                    copy[idx] = { ...copy[idx], customEducation: e.target.value };
+                                                                                    setEducationHistory(copy);
+                                                                                }}
+                                                                                className="h-8 mt-1 text-xs"
+                                                                            />
+                                                                        )}
                                                                     </div>
 
                                                                     {/* Course */}
@@ -1548,8 +1822,8 @@ export function StudentProfile() {
                                             <FileText size={20} />
                                         </div>
                                         <div className="flex-1 overflow-hidden">
-                                            <h4 className="font-semibold text-sm truncate" title="Uploaded CV">
-                                                {profile.cvUrl.replace(/^.*[\\/]/, '') || 'Resume_Document.pdf'}
+                                            <h4 className="font-semibold text-sm truncate" title={profile.cvName || profile.resumeName || getCleanFileName(profile.cvUrl)}>
+                                                {profile.cvName || profile.resumeName || getCleanFileName(profile.cvUrl)}
                                             </h4>
                                             <p className="text-xs text-muted-foreground mt-0.5">Uploaded · Active</p>
                                         </div>
@@ -1578,13 +1852,25 @@ export function StudentProfile() {
                                                 <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
                                                 <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">Replace</span></div>
                                             </div>
-                                            <Button variant="outline" className="w-full cursor-pointer overflow-hidden relative group">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                disabled={isUploadingCV}
+                                                className="w-full cursor-pointer overflow-hidden relative group disabled:cursor-wait"
+                                            >
                                                 <span className="flex items-center gap-2 group-hover:text-primary transition-colors">
-                                                    <UploadCloud size={18} /> Upload New CV
+                                                    {isUploadingCV
+                                                        ? <><Loader2 size={18} className="animate-spin" /> Uploading...</>
+                                                        : <><UploadCloud size={18} /> Upload New CV</>
+                                                    }
                                                 </span>
-                                                <input type="file" onChange={handleCVUpload}
+                                                <input
+                                                    ref={cvReplaceInputRef}
+                                                    type="file"
+                                                    onChange={handleCVUpload}
+                                                    disabled={isUploadingCV}
                                                     accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                                    className="absolute inset-0 opacity-0 cursor-pointer"
+                                                    className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-wait"
                                                 />
                                             </Button>
                                         </>

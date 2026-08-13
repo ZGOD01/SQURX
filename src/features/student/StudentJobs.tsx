@@ -18,9 +18,11 @@ import {
     ChevronLeft,
     ChevronRight,
     Globe,
-    Loader2
+    Loader2,
+    Star
 } from 'lucide-react';
-import { fetchJobs, fetchJobDetails, type ApiJobItem } from '@/lib/jobsApi';
+import { fetchJobs, fetchJobDetails, fetchRelevantJobs, type ApiJobItem } from '@/lib/jobsApi';
+import { useGetCurrenciesQuery } from '@/lib/store/authApi';
 import { useNotificationStore } from '@/lib/store/notifications';
 import { useStudentStore } from './store';
 import { useAuthStore } from '@/features/auth/store';
@@ -44,16 +46,23 @@ export function StudentJobs() {
     const [experienceLevel, setExperienceLevel] = useState('All');
     const [minSalary, setMinSalary] = useState('');
     const [maxSalary, setMaxSalary] = useState('');
+    const [currency, setCurrency] = useState('');
     const [industry, setIndustry] = useState('');
     const [domain, setDomain] = useState('');
     const [preferredLocations, setPreferredLocations] = useState<string[]>([]);
     const [prefLocInput, setPrefLocInput] = useState('');
+
+    // Tabs
+    const [activeTab, setActiveTab] = useState<'all' | 'relevant'>('all');
 
     // Debounced values
     const [debouncedQ, setDebouncedQ] = useState('');
     const [debouncedLocation, setDebouncedLocation] = useState('');
     const [debouncedMinSalary, setDebouncedMinSalary] = useState('');
     const [debouncedMaxSalary, setDebouncedMaxSalary] = useState('');
+
+    // Live currencies from API
+    const { data: currenciesData } = useGetCurrenciesQuery();
 
     // Modal & UI State
     const [selectedJob, setSelectedJob] = useState<ApiJobItem | null>(null);
@@ -99,30 +108,39 @@ export function StudentJobs() {
             setIsLoading(true);
             setFetchError(null);
             try {
-                // Map experienceLevel filter to backend format
-                let apiExp: string | undefined = undefined;
-                if (experienceLevel === 'Fresher') apiExp = 'entry';
-                else if (experienceLevel === '1-3 Years') apiExp = 'junior';
-                else if (experienceLevel === '3-5 Years') apiExp = 'mid';
-                else if (experienceLevel === '5+ Years') apiExp = 'senior';
+                if (activeTab === 'relevant') {
+                    const response = await fetchRelevantJobs({ page, limit });
+                    if (active) {
+                        setJobs(response.jobs);
+                        setTotal(response.total);
+                    }
+                } else {
+                    // Map experienceLevel filter to backend format
+                    let apiExp: string | undefined = undefined;
+                    if (experienceLevel === 'Fresher') apiExp = 'entry';
+                    else if (experienceLevel === '1-3 Years') apiExp = 'junior';
+                    else if (experienceLevel === '3-5 Years') apiExp = 'mid';
+                    else if (experienceLevel === '5+ Years') apiExp = 'senior';
 
-                const locQuery = preferredLocations.length > 0 ? preferredLocations.join(',') : (debouncedLocation || undefined);
+                    const locQuery = preferredLocations.length > 0 ? preferredLocations.join(',') : (debouncedLocation || undefined);
 
-                const response = await fetchJobs({
-                    keywords: debouncedQ || undefined,
-                    taxonomy: domain || undefined,
-                    location: locQuery,
-                    minSalary: debouncedMinSalary || undefined,
-                    maxSalary: debouncedMaxSalary || undefined,
-                    industry: industry || undefined,
-                    experienceLevel: apiExp,
-                    page: page,
-                    limit: limit
-                });
+                    const response = await fetchJobs({
+                        keywords: debouncedQ || undefined,
+                        taxonomy: domain || undefined,
+                        location: locQuery,
+                        minSalary: debouncedMinSalary || undefined,
+                        maxSalary: debouncedMaxSalary || undefined,
+                        currency: currency || undefined,
+                        industry: industry || undefined,
+                        experienceLevel: apiExp,
+                        page: page,
+                        limit: limit
+                    });
 
-                if (active) {
-                    setJobs(response.jobs);
-                    setTotal(response.total);
+                    if (active) {
+                        setJobs(response.jobs);
+                        setTotal(response.total);
+                    }
                 }
             } catch (err: any) {
                 if (active) {
@@ -139,7 +157,7 @@ export function StudentJobs() {
         return () => {
             active = false;
         };
-    }, [debouncedQ, debouncedLocation, experienceLevel, page, limit, debouncedMinSalary, debouncedMaxSalary, industry, domain, preferredLocations]);
+    }, [debouncedQ, debouncedLocation, experienceLevel, page, limit, debouncedMinSalary, debouncedMaxSalary, currency, industry, domain, preferredLocations, activeTab]);
 
     // Reset page to 1 when filters change
     const handleQChange = (val: string) => {
@@ -163,6 +181,7 @@ export function StudentJobs() {
         setExperienceLevel('All');
         setMinSalary('');
         setMaxSalary('');
+        setCurrency('');
         setIndustry('');
         setDomain('');
         setPreferredLocations([]);
@@ -217,6 +236,11 @@ export function StudentJobs() {
     const displayJobsList = jobs;
     const displayTotalCount = total;
     const totalPages = Math.ceil(displayTotalCount / limit) || 1;
+
+    const handleTabChange = (tab: 'all' | 'relevant') => {
+        setActiveTab(tab);
+        setPage(1);
+    };
 
     return (
         <PageTransition className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -357,7 +381,7 @@ export function StudentJobs() {
                             </div>
                         </div>
 
-                        {(q || location || experienceLevel !== 'All' || minSalary || maxSalary || industry || domain || preferredLocations.length > 0) && (
+                        {(q || location || experienceLevel !== 'All' || minSalary || maxSalary || currency || industry || domain || preferredLocations.length > 0) && (
                             <Button 
                                 variant="outline" 
                                 className="rounded-xl font-bold h-11 border-dashed hover:bg-muted"
@@ -370,12 +394,23 @@ export function StudentJobs() {
 
                     <div className="h-px w-full bg-border/40" />
 
-                    {/* Salary Range */}
+                    {/* Salary Range + Currency */}
                     <div>
                         <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Salary Range
                         </p>
-                        <div className="flex flex-col sm:flex-row gap-3 max-w-md">
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            {/* Currency selector */}
+                            <select
+                                value={currency}
+                                onChange={(e) => { setCurrency(e.target.value); setPage(1); }}
+                                className="h-11 w-36 bg-background border border-border/60 rounded-xl px-3 text-sm font-semibold outline-none focus:border-primary/50 transition-colors cursor-pointer shrink-0"
+                            >
+                                <option value="">Any Currency</option>
+                                {currenciesData?.data?.map((c: any) => (
+                                    <option key={c._id} value={c._id}>{c.code} – {c.name}</option>
+                                ))}
+                            </select>
                             <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors flex-1">
                                 <IndianRupee className="absolute left-3 text-muted-foreground w-4 h-4 pointer-events-none" />
                                 <input
@@ -494,13 +529,31 @@ export function StudentJobs() {
                 </div>
             </div>
 
-            {/* Layout bar for jobs count */}
-            <div className="flex items-center justify-between mb-4 pb-4 border-b border-border/40">
+            {/* Layout bar: count + All/Recommended tabs */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-border/40">
                 <div className="text-sm font-bold text-muted-foreground flex items-center gap-2">
                     <span className="flex items-center justify-center bg-primary/10 text-primary rounded-full px-2.5 py-0.5 text-xs font-black">
                         {displayTotalCount}
                     </span>
-                    Jobs Available
+                    {activeTab === 'relevant' ? 'Recommended for You' : 'Jobs Available'}
+                </div>
+                <div className="flex items-center gap-1 p-1 bg-muted rounded-xl">
+                    <button
+                        onClick={() => handleTabChange('all')}
+                        className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                            activeTab === 'all' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        <Briefcase size={13} /> All Jobs
+                    </button>
+                    <button
+                        onClick={() => handleTabChange('relevant')}
+                        className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                            activeTab === 'relevant' ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        <Star size={13} /> Recommended
+                    </button>
                 </div>
             </div>
 
@@ -568,6 +621,12 @@ export function StudentJobs() {
                                                         {applied && (
                                                             <Badge variant="default" className="bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 border-emerald-500/20 flex items-center gap-1 text-[10px] uppercase shadow-none">
                                                                 <CheckCircle2 size={10} /> Applied
+                                                            </Badge>
+                                                        )}
+                                                        {job.relevanceScore !== undefined && (
+                                                            <Badge variant="secondary" className="bg-gradient-to-r from-blue-500/15 to-purple-500/15 text-blue-700 border-blue-400/30 flex items-center gap-1 text-[10px] font-bold">
+                                                                <Star size={9} className="fill-blue-500 text-blue-500" />
+                                                                {Math.round(job.relevanceScore * 100)}% Match
                                                             </Badge>
                                                         )}
                                                         {job.source && (
@@ -796,11 +855,11 @@ export function StudentJobs() {
                             ) : (
                                 <div className="space-y-2">
                                     <Button className="w-full h-12 gap-2 font-bold" onClick={() => handleApply(selectedJob)}>
-                                        Apply Externally <ExternalLink size={16} />
+                                        Apply<ExternalLink size={16} />
                                     </Button>
                                     {selectedJob.applyLink && (
                                         <p className="text-[11px] text-center text-muted-foreground font-light leading-normal">
-                                            By clicking apply you will be redirected to the partner site to complete your application
+                                            By clicking apply you will be redirected to the external site to complete your application
                                         </p>
                                     )}
                                 </div>

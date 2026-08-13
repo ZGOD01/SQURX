@@ -101,10 +101,22 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
     if (currentProfile) {
       set({ profile: { ...currentProfile, ...data }, saveError: null });
     }
+    // Collect which CV-related fields were explicitly set in this update
+    // (including null, which means deletion). We re-apply these after the
+    // backend re-fetch so stale remote state cannot silently restore them.
+    const CV_FIELDS = ['cvUrl', 'resume', 'cvName', 'resumeName'] as const;
+    const cvOverrides: Record<string, any> = {};
+    for (const field of CV_FIELDS) {
+      if (field in data) cvOverrides[field] = data[field] ?? null;
+    }
+    const hasCvOverride = Object.keys(cvOverrides).length > 0;
     try {
       await mockApi.updateStudentProfile(userId, data);
       const profile = await mockApi.getStudentProfile(userId);
-      set({ profile, isLoading: false, saveError: null });
+      // Re-apply explicit CV overrides on top of what the backend returned
+      // so a stale /user/me response cannot resurrect a deleted/replaced CV.
+      const mergedProfile = hasCvOverride ? { ...profile, ...cvOverrides } as any : profile;
+      set({ profile: mergedProfile, isLoading: false, saveError: null });
     } catch (err: any) {
       // Rollback optimistic update on error
       set({ profile: currentProfile || null, error: err.message, saveError: err.message, isLoading: false });

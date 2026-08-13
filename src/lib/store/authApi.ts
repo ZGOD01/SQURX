@@ -145,6 +145,48 @@ export const authApi = baseApi.injectEndpoints({
         params: params || {},
       }),
     }),
+    /** GET /currencies — returns active currencies { data: [{ _id, name, code, symbol, isActive }] } */
+    getCurrencies: builder.query<any, { search?: string } | void>({
+      query: (params) => ({
+        url: '/currencies',
+        method: 'GET',
+        params: params || {},
+      }),
+    }),
+
+    // ── User-submitted custom "Other" value mutations ──────────────────────
+    /** POST /educations — submit custom education value for admin approval */
+    submitEducation: builder.mutation<any, { name: string }>({
+      query: (data) => ({
+        url: '/educations',
+        method: 'POST',
+        body: data,
+      }),
+    }),
+    /** POST /universities — submit custom university value for admin approval */
+    submitUniversity: builder.mutation<any, { name: string }>({
+      query: (data) => ({
+        url: '/universities',
+        method: 'POST',
+        body: data,
+      }),
+    }),
+    /** POST /courses — submit custom course value for admin approval */
+    submitCourse: builder.mutation<any, { name: string }>({
+      query: (data) => ({
+        url: '/courses',
+        method: 'POST',
+        body: data,
+      }),
+    }),
+    /** POST /specializations — submit custom specialization value for admin approval */
+    submitSpecialization: builder.mutation<any, { name: string }>({
+      query: (data) => ({
+        url: '/specializations',
+        method: 'POST',
+        body: data,
+      }),
+    }),
   }),
 });
 
@@ -169,4 +211,11 @@ export const {
   useGetUniversitiesQuery,
   useGetCoursesQuery,
   useGetSpecializationsQuery,
+  useGetCurrenciesQuery,
+  // Custom "Other" value submission mutations
+  useSubmitEducationMutation,
+  useSubmitUniversityMutation,
+  useSubmitCourseMutation,
+  useSubmitSpecializationMutation,
 } = authApi;
+

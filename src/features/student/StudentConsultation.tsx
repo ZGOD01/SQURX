@@ -316,52 +316,6 @@ export function StudentConsultation() {
   const [error, setError] = useState("");
   const [showBookingFlow, setShowBookingFlow] = useState(false);
 
-<<<<<<< HEAD
-    const fetchAppointments = () => {
-        setLoading(true);
-        const token = getInMemToken();
-        if (!token) {
-            setError('No auth token found. Please log out and log in again.');
-            setLoading(false);
-            return;
-        }
-
-        fetch(`${API_BASE_URL}/consultations/my-appointments`, {
-            headers: { Authorization: `Bearer ${token}` },
-        })
-            .then((res) => res.json())
-            .then((json) => {
-                setData(json);
-                setLoading(false);
-            })
-            .catch((err) => {
-                setError(err.message);
-                setLoading(false);
-            });
-    };
-
-    useEffect(() => {
-        fetchAppointments();
-    }, []);
-
-    /* ─── Extract appointments from API shape ─── */
-    const raw = data?.data ?? data?.appointments ?? data;
-    let activeAppointments: Appointment[] = [];
-    let pastAppointments: Appointment[] = [];
-
-    if (raw) {
-        if (Array.isArray(raw)) {
-            activeAppointments = raw.filter(
-                (a: Appointment) => a.status?.toLowerCase() !== 'completed' && a.status?.toLowerCase() !== 'cancelled'
-            );
-            pastAppointments = raw.filter(
-                (a: Appointment) => a.status?.toLowerCase() === 'completed' || a.status?.toLowerCase() === 'cancelled'
-            );
-        } else if (typeof raw === 'object' && ('active' in raw || 'past' in raw)) {
-            activeAppointments = raw.active || [];
-            pastAppointments = raw.past || [];
-        }
-=======
   const fetchAppointments = () => {
     setLoading(true);
     const token = getInMemToken();
@@ -369,7 +323,6 @@ export function StudentConsultation() {
       setError("No auth token found. Please log out and log in again.");
       setLoading(false);
       return;
->>>>>>> squrex/main
     }
 
     fetch(`${API_BASE}/consultations/my-appointments`, {

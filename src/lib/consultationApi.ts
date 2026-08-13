@@ -33,53 +33,26 @@ const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: 
 };
 
 export const consultationApi = {
+  // GET /time-slots — returns dates within the current bookable window
   getTimeSlots: async () => {
     const res = await fetchWithTimeout(`${BASE_URL}/time-slots`, { timeout: 30000 });
     if (!res.ok) throw new Error('Failed to fetch time slots');
     const body = await res.json();
-    if (body && Array.isArray(body.data) && body.data.length > 0) {
-      const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-      const projectedData: any[] = [];
-      let dayOffset = 0;
-
-      while (projectedData.length < 15) {
-        const targetDate = new Date(start);
-        targetDate.setDate(start.getDate() + dayOffset);
-        dayOffset += 1;
-
-        if (targetDate.getDay() === 0) {
-          continue; // Skip Sundays
-        }
-
-        const backendRecordIndex = projectedData.length % body.data.length;
-        const originalRecord = body.data[backendRecordIndex];
-        const isRepeated = projectedData.length >= body.data.length;
-
-        const mappedSlots = Array.isArray(originalRecord.slots) ? originalRecord.slots.map((s: any, sIdx: number) => {
-          let available = s.isAvailable;
-          if (isRepeated) {
-            // Create variations in availability across days
-            available = (sIdx + projectedData.length) % 3 !== 0;
-          }
-          return {
-            ...s,
-            _id: `${s._id}_${targetDate.toISOString()}`,
-            isAvailable: available
-          };
-        }) : [];
-
-        projectedData.push({
-          ...originalRecord,
-          _id: `${originalRecord._id}_${targetDate.toISOString()}`,
-          date: targetDate.toISOString(),
-          slots: mappedSlots
-        });
-      }
-      body.data = projectedData;
-    }
     return body;
   },
+
+  // GET /time-slots/calendar?month=YYYY-MM — returns full month calendar view
+  getCalendarSlots: async (month?: string) => {
+    const query = month ? `?month=${encodeURIComponent(month)}` : '';
+    const res = await fetchWithTimeout(`${BASE_URL}/time-slots/calendar${query}`, { timeout: 30000 });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Failed to fetch calendar slots');
+    }
+    return res.json();
+  },
+
+  // POST /consultations/book — submit consultation booking
   bookConsultation: async (data: any) => {
     const token = getAuthToken();
     const headers: Record<string, string> = {
@@ -90,10 +63,10 @@ export const consultationApi = {
     }
     const sanitizedData = { ...data };
     if (sanitizedData.appointment) {
-      if (typeof sanitizedData.appointment.dateId === 'string') {
+      if (typeof sanitizedData.appointment.dateId === 'string' && sanitizedData.appointment.dateId.includes('_')) {
         sanitizedData.appointment.dateId = sanitizedData.appointment.dateId.split('_')[0];
       }
-      if (typeof sanitizedData.appointment.timeId === 'string') {
+      if (typeof sanitizedData.appointment.timeId === 'string' && sanitizedData.appointment.timeId.includes('_')) {
         sanitizedData.appointment.timeId = sanitizedData.appointment.timeId.split('_')[0];
       }
     }
@@ -111,11 +84,9 @@ export const consultationApi = {
        if (err.errors && err.errors.length > 0) {
            errorMessage = `Validation Error: ${err.errors[0].message} (Field: ${err.errors[0].field})`;
        }
-       // No alert — let the caller handle the error gracefully
        throw new Error(errorMessage);
      }
     const result = await res.json();
-    // Do not store tokens in localStorage for guest bookings
     return result;
   },
   getMyAppointments: async () => {

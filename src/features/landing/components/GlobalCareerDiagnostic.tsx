@@ -210,6 +210,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
 
     // GDPR Consent Modal States
     const [showGdprModal, setShowGdprModal] = useState(false);
+    const [showPrivacyPolicyModal, setShowPrivacyPolicyModal] = useState(false);
     const [consentAge18, setConsentAge18] = useState(false);
     const [consentReadUnderstood, setConsentReadUnderstood] = useState(false);
     const [consentDataProcessing, setConsentDataProcessing] = useState(false);
@@ -217,10 +218,10 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
     const [marketingOptIn, setMarketingOptIn] = useState<'yes' | 'no' | null>(null);
     const allConsentsGiven = consentAge18 && consentReadUnderstood && consentDataProcessing && consentResumeSharing;
 
-    // Lock body scroll and hide navbar when GDPR modal is open
+    // Lock body scroll and hide navbar when GDPR or Privacy Policy modal is open
     useEffect(() => {
         const navbar = document.getElementById('main-navbar');
-        if (showGdprModal) {
+        if (showGdprModal || showPrivacyPolicyModal) {
             document.body.style.overflow = 'hidden';
             if (navbar) {
                 navbar.style.visibility = 'hidden';
@@ -238,7 +239,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
             const n = document.getElementById('main-navbar');
             if (n) { n.style.visibility = ''; n.style.pointerEvents = ''; }
         };
-    }, [showGdprModal]);
+    }, [showGdprModal, showPrivacyPolicyModal]);
 
     useEffect(() => {
         // Fetch real active quiz questions from the API and merge their database IDs
@@ -739,7 +740,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                         </p>
                                         
                                         <div className="flex items-center gap-2 text-blue-600 font-black text-xs uppercase tracking-widest group-hover:gap-4 transition-all">
-                                            Start Diagnostic <ArrowRight size={16} strokeWidth={3} />
+                                            Start Journey <ArrowRight size={16} strokeWidth={3} />
                                         </div>
                                     </motion.button>
 
@@ -780,7 +781,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                     <div className="w-full md:w-[45%] bg-white p-6 md:p-10 flex flex-col justify-between">
                         <div>
                             <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-600 text-[11px] font-bold tracking-widest uppercase mb-6 shadow-sm border border-blue-100">
-                                <Compass size={12} /> Diagnostic Engine
+                                <Compass size={12} /> Inputs Before Free Counseling
                             </span>
                             
                             <AnimatePresence mode="wait">
@@ -797,7 +798,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                     <p className="text-base text-gray-500 font-medium leading-relaxed">
                                         {step < questions.length 
                                             ? questions[step].description 
-                                            : "Your variables have been compiled for your appointment booking."}
+                                            : "Your inputs have been compiled for your free counseling booking."}
                                     </p>
                                 </motion.div>
                             </AnimatePresence>
@@ -1128,7 +1129,23 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                                     }`}
                                                 >
                                                     I consent to SQUREX processing my personal data to schedule this consultation, in accordance with their{' '}
-                                                    <span className="underline underline-offset-2 decoration-blue-400 text-blue-600">Privacy &amp; Consent Policy</span>.
+                                                    <span 
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setShowPrivacyPolicyModal(true);
+                                                        }}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                                e.stopPropagation();
+                                                                setShowPrivacyPolicyModal(true);
+                                                            }
+                                                        }}
+                                                        className="underline underline-offset-2 decoration-blue-400 text-blue-600 hover:text-blue-700 font-bold cursor-pointer transition-colors"
+                                                    >
+                                                        Privacy &amp; Consent Policy
+                                                    </span>.
                                                 </span>
                                             </label>
                                             {termsError && (
@@ -1233,42 +1250,41 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                     <h3 className="text-xl md:text-2xl font-black text-gray-900 mb-2 tracking-tight">Select Date & Time</h3>
                                     <p className="text-sm text-gray-500 mb-6 leading-relaxed">Book a fast-track 1-on-1 session with our experts to review your customized roadmap.</p>
                                     
-                                    {/* Date Selector */}
+                                    {/* Date Selector — 7 Columns Grid */}
                                     <div className="space-y-3 mb-6">
                                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between">
-                                            <span>Available Dates</span>
+                                            <span>Available Dates (7 Days Calendar)</span>
+                                            <span className="text-[9px] font-semibold text-gray-400">Sundays Closed</span>
                                         </label>
-                                        <div className="grid grid-cols-5 gap-2">
+                                        <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
                                             {(() => {
-                                                // Calculate the allowed date range: tomorrow through tomorrow + 14 days (15 days total)
                                                 const now = new Date();
                                                 const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                                                 const tomorrow = new Date(todayMidnight);
                                                 tomorrow.setDate(tomorrow.getDate() + 1);
                                                 const rangeEnd = new Date(todayMidnight);
-                                                rangeEnd.setDate(rangeEnd.getDate() + 15); // 15 days from today = day 15 inclusive
+                                                rangeEnd.setDate(rangeEnd.getDate() + 15);
 
                                                 const filtered = slotsData.filter((dateObj) => {
                                                     const d = new Date(dateObj.date);
                                                     const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate());
                                                     if (dMidnight < tomorrow) return false;
                                                     if (dMidnight > rangeEnd) return false;
-                                                    if (d.getDay() === 0) return false; // Sunday
                                                     return true;
                                                 });
 
                                                 if (slotsData.length === 0) {
                                                     return (
-                                                        <p className="text-sm text-gray-400 col-span-5 py-2">
-                                                            Loading available dates…
+                                                        <p className="text-xs text-gray-400 col-span-7 py-3 text-center">
+                                                            Loading live calendar data…
                                                         </p>
                                                     );
                                                 }
 
                                                 if (filtered.length === 0) {
                                                     return (
-                                                        <p className="text-sm text-gray-400 col-span-5 py-2">
-                                                            No available dates in the next 15 days. Please check back later.
+                                                        <p className="text-xs text-gray-400 col-span-7 py-3 text-center">
+                                                            No available dates found. Please check back later.
                                                         </p>
                                                     );
                                                 }
@@ -1277,19 +1293,42 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                                     const dateStr = dateObj._id;
                                                     const isSelected = selectedDate === dateStr;
                                                     const date = new Date(dateObj.date);
+                                                    const isSunday = date.getDay() === 0 || dateObj.isSunday === true;
+
+                                                    if (isSunday) {
+                                                        return (
+                                                            <div
+                                                                key={`sun_${i}`}
+                                                                className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-gray-100 bg-gray-50/70 text-gray-300 cursor-not-allowed select-none opacity-50"
+                                                                title="Sunday - Closed"
+                                                            >
+                                                                <span className="text-[10px] uppercase font-bold tracking-wider mb-1 text-gray-400">
+                                                                    Sun
+                                                                </span>
+                                                                <span className="text-base font-bold leading-none text-gray-400">
+                                                                    {date.getDate()}
+                                                                </span>
+                                                                <span className="text-[8px] font-extrabold uppercase mt-1 tracking-tighter text-gray-400 bg-gray-200/60 px-1 rounded">
+                                                                    Off
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    }
+
                                                     return (
                                                         <button
                                                             key={i}
+                                                            type="button"
                                                             onClick={() => { setSelectedDate(dateStr); setSelectedTime(''); setBookingError(null); }}
-                                                            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all ${isSelected
+                                                            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all cursor-pointer ${isSelected
                                                                 ? 'bg-blue-600 text-white shadow-md scale-[1.05] border-blue-600 ring-2 ring-blue-600/20'
-                                                                : 'bg-white hover:border-blue-400 border-gray-200 text-gray-500 hover:text-gray-900'
+                                                                : 'bg-white hover:border-blue-400 border-gray-200 text-gray-600 hover:text-gray-900 shadow-sm'
                                                                 }`}
                                                         >
                                                             <span className="text-[10px] uppercase font-bold tracking-wider mb-1 opacity-80">
                                                                 {date.toLocaleDateString(undefined, { weekday: 'short' })}
                                                             </span>
-                                                            <span className="text-lg font-black leading-none">
+                                                            <span className="text-base font-black leading-none">
                                                                 {date.getDate()}
                                                             </span>
                                                         </button>
@@ -1774,6 +1813,163 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                     <span>OK — Go to Dashboard</span>
                                     <ArrowRight className="w-4 h-4" />
                                 </button>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
+
+            {/* ── Privacy & Consent Policy Read-Only Popup Modal ─────────────── */}
+            {typeof document !== 'undefined' && createPortal(
+                <AnimatePresence>
+                    {showPrivacyPolicyModal && (
+                        <motion.div
+                            key="privacy-policy-modal-overlay"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="fixed inset-0 z-[999999] flex items-center justify-center p-4 sm:p-6"
+                            style={{ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', backgroundColor: 'rgba(0,0,0,0.55)' }}
+                            onClick={() => setShowPrivacyPolicyModal(false)}
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="privacy-policy-modal-title"
+                        >
+                            <motion.div
+                                key="privacy-policy-modal-panel"
+                                initial={{ y: 24, opacity: 0, scale: 0.96 }}
+                                animate={{ y: 0, opacity: 1, scale: 1 }}
+                                exit={{ y: 24, opacity: 0, scale: 0.96 }}
+                                transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="relative w-full max-w-2xl bg-white rounded-[2rem] shadow-[0_32px_80px_rgba(0,0,0,0.28)] overflow-hidden flex flex-col max-h-[85vh] border border-gray-100"
+                            >
+                                {/* Header */}
+                                <div className="flex items-center justify-between px-6 sm:px-8 py-6 border-b border-gray-100 bg-gray-50/70">
+                                    <div className="flex items-center gap-3.5">
+                                        <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-sm shrink-0">
+                                            <ShieldCheck className="w-6 h-6" />
+                                        </div>
+                                        <div>
+                                            <h3 id="privacy-policy-modal-title" className="text-xl font-black text-gray-900 tracking-tight">Privacy &amp; Consent Policy</h3>
+                                            <p className="text-xs text-gray-500 font-semibold mt-0.5">DPDP Act 2023 — TICC / Squrex</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPrivacyPolicyModal(false)}
+                                        className="w-9 h-9 rounded-full bg-gray-200/60 hover:bg-gray-200 text-gray-600 hover:text-gray-900 flex items-center justify-center transition-colors text-sm font-bold cursor-pointer"
+                                        aria-label="Close"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+
+                                {/* Read-Only Policy Body (Exact Official GDPR Data — No Checkboxes / Ticks) */}
+                                <div className="p-6 sm:p-8 overflow-y-auto space-y-5 text-xs sm:text-sm text-gray-600 leading-relaxed">
+                                    <div className="bg-blue-50/60 border border-blue-100 rounded-2xl p-4 text-xs font-semibold text-blue-900 leading-relaxed">
+                                        TICC owner of Squrex will be registered as Data fiduciary under the Digital Personal Data Protection Act 2023, once the registration will be made open. TICC is compliant with GDPR regulations.
+                                    </div>
+
+                                    <p className="font-bold text-gray-900 text-xs uppercase tracking-wide">
+                                        Before you continue, here's how we'll use your information:
+                                    </p>
+
+                                    {/* What We Collect */}
+                                    <div className="bg-gray-50/80 border border-gray-100 rounded-2xl p-4 space-y-2">
+                                        <p className="font-bold text-gray-900 uppercase tracking-wide text-[11px]">What We Collect</p>
+                                        <p className="text-xs">When you book a consultation, we collect:</p>
+                                        <ul className="list-disc list-inside pl-2 space-y-1 text-xs">
+                                            <li>Your name, email, and phone number</li>
+                                            <li>Your responses to our career quiz</li>
+                                            <li>Your preferred consultation date and time</li>
+                                        </ul>
+                                    </div>
+
+                                    {/* How We Use It */}
+                                    <div className="bg-gray-50/80 border border-gray-100 rounded-2xl p-4 space-y-2">
+                                        <p className="font-bold text-gray-900 uppercase tracking-wide text-[11px]">How We Use It</p>
+                                        <p className="font-bold text-gray-800 text-xs">To deliver your consultation:</p>
+                                        <ul className="list-disc list-inside pl-2 space-y-1 text-xs">
+                                            <li>Connect you with a career counselor</li>
+                                            <li>Share your quiz responses with the assigned counselor</li>
+                                            <li>Send you confirmation and reminder communications</li>
+                                        </ul>
+                                        <p className="font-bold text-gray-800 text-xs mt-2">To improve our service:</p>
+                                        <ul className="list-disc list-inside pl-2 space-y-1 text-xs">
+                                            <li>Analyse skill gaps against global employer demands</li>
+                                            <li>Personalize counselling and university recommendations</li>
+                                            <li>Understand what's working and make our platform better</li>
+                                        </ul>
+                                    </div>
+
+                                    <p className="text-xs text-gray-600">
+                                        We will only use your data for the purposes listed above. If we need to use it for anything else, we will ask for your consent again.
+                                    </p>
+
+                                    {/* Where Your Data Goes */}
+                                    <div className="bg-gray-50/80 border border-gray-100 rounded-2xl p-4 space-y-2">
+                                        <p className="font-bold text-gray-900 uppercase tracking-wide text-[11px]">Where Your Data Goes</p>
+                                        <p className="text-xs"><strong className="text-gray-900">Storage:</strong> Securely stored on cloud servers within India (AWS) in compliance with Indian data protection laws.</p>
+                                        <p className="text-xs"><strong className="text-gray-900">Who sees it:</strong></p>
+                                        <ul className="list-disc list-inside pl-2 space-y-1 text-xs">
+                                            <li>Assigned career counselors for consultation purposes</li>
+                                            <li>Service providers who help us run the platform</li>
+                                        </ul>
+                                        <p className="text-xs"><strong className="text-gray-900">How long:</strong> Up to 3 years, or until you ask us to delete it.</p>
+                                    </div>
+
+                                    {/* Your Rights */}
+                                    <div className="bg-gray-50/80 border border-gray-100 rounded-2xl p-4 space-y-2">
+                                        <p className="font-bold text-gray-900 uppercase tracking-wide text-[11px]">Your Rights</p>
+                                        <ul className="list-disc list-inside pl-2 space-y-1 text-xs">
+                                            <li>See what data we have about you</li>
+                                            <li>Fix any incorrect information</li>
+                                            <li>Delete your data</li>
+                                            <li>Stop receiving emails anytime</li>
+                                            <li>Download your data</li>
+                                            <li>Object to automated decision making</li>
+                                            <li>Nominate someone to exercise your rights in case of death or incapacity</li>
+                                        </ul>
+                                        <p className="mt-1 text-xs">Contact: <span className="text-gray-900 font-bold">privacy@squrex.com</span></p>
+                                    </div>
+
+                                    {/* Grievances Officer */}
+                                    <div className="bg-gray-50/80 border border-gray-100 rounded-2xl p-4 space-y-1">
+                                        <p className="font-bold text-gray-900 uppercase tracking-wide text-[11px]">Grievances Officer</p>
+                                        <p className="text-xs">For any complaint or concern about your data:</p>
+                                        <p className="text-xs">Email: <span className="text-gray-900 font-bold">grievances@squrex.com</span></p>
+                                        <p className="text-xs text-gray-500">We will acknowledge your complaint within 24 working hours.</p>
+                                    </div>
+
+                                    {/* Important to Know */}
+                                    <div className="bg-gray-50/80 border border-gray-100 rounded-2xl p-4 space-y-1">
+                                        <p className="font-bold text-gray-900 uppercase tracking-wide text-[11px]">Important to Know</p>
+                                        <ul className="list-disc list-inside pl-2 space-y-1 text-xs">
+                                            <li>You can withdraw consent anytime through your account settings or by emailing us.</li>
+                                            <li>Withdrawing consent won't affect data already processed.</li>
+                                            <li>We use industry-standard security to protect your data.</li>
+                                            <li>We'll never sell your information.</li>
+                                        </ul>
+                                    </div>
+
+                                    <p className="text-[11px] text-gray-400">
+                                        Queries? privacy@squrex.com &nbsp;|&nbsp; Office address: Official Address &nbsp;|&nbsp; WhatsApp only
+                                    </p>
+                                </div>
+
+                                {/* Footer / Close Action Button */}
+                                <div className="px-6 sm:px-8 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPrivacyPolicyModal(false)}
+                                        className="px-6 py-3 bg-gray-900 hover:bg-gray-800 text-white font-bold text-xs rounded-2xl shadow-md transition-all active:scale-[0.98] cursor-pointer"
+                                    >
+                                        Close Policy
+                                    </button>
+                                </div>
                             </motion.div>
                         </motion.div>
                     )}

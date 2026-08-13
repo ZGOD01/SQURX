@@ -8,8 +8,8 @@ export const studentProfileSchema = z.object({
   educationId: z.string().optional(),
   experienceLevel: z.string().optional(),
   experienceLevelId: z.string().optional(),
-  expectedSalary: z.string().optional(),
-  currentSalary: z.string().optional(),
+  expectedSalary: z.union([z.string(), z.object({ amount: z.number().nullable().optional(), currency: z.any().optional() }), z.null()]).optional(),
+  currentSalary: z.union([z.string(), z.object({ amount: z.number().nullable().optional(), currency: z.any().optional() }), z.null()]).optional(),
   skills: z.array(z.string()).optional(),
 });
 

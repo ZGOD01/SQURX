@@ -16,6 +16,7 @@ export interface EducationHistoryItem {
   university?: string; // University ID
   course?: string; // Course ID
   specialization?: string; // Specialization ID
+  customEducation?: string;
   customUniversity?: string;
   customCourse?: string;
   customSpecialization?: string;
@@ -24,6 +25,19 @@ export interface EducationHistoryItem {
   endYear?: string | number;
   gradingSystem?: string;
   gradingValue?: string | number;
+}
+
+export interface CurrencyObject {
+  _id: string;
+  name?: string;
+  code: string;
+  symbol: string;
+  isActive?: boolean;
+}
+
+export interface SalaryValue {
+  amount: number | null;
+  currency: CurrencyObject | string | null;
 }
 
 export interface StudentProfile {
@@ -36,12 +50,14 @@ export interface StudentProfile {
   locations: string[];
   jobTypes: string[];
   cvUrl: string | null;
+  cvName?: string | null;
+  resumeName?: string | null;
   documentUrl?: string | null;
   alertCount: number;
   experienceLevel?: string;
   experienceLevelId?: string;
-  expectedSalary?: string;
-  currentSalary?: string;
+  expectedSalary?: SalaryValue | string | null;
+  currentSalary?: SalaryValue | string | null;
   // Backend-synced completion percentage (source of truth from /me)
   profileCompletionPercentage?: number;
   // Backend-synced GDPR consent state
