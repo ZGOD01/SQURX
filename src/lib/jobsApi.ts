@@ -96,13 +96,30 @@ export interface ApiJob {
   visaSponsorship?: string | boolean;
 }
 
+/**
+ * Parameters accepted by GET /jobs.
+ *
+ * Alias behaviour (handled server-side):
+ * - `q` is an alias for `keywords` — both map to the backend `keywords` param.
+ * - `domain` is an alias for `taxonomy` — both map to the backend `taxonomy` param.
+ *
+ * Server-side matching rules:
+ * - `location` uses case-insensitive substring matching (e.g. "london" matches "East London").
+ * - `minSalary` / `maxSalary` use range-overlap logic: a job matches if its salary range
+ *   overlaps with [minSalary, maxSalary], not just if the job's salary falls entirely within.
+ */
 export interface FetchJobsParams {
   keywords?: string;
+  /** Alias for `keywords`. */
   q?: string;
   taxonomy?: string;
+  /** Alias for `taxonomy`. */
   domain?: string;
+  /** Case-insensitive substring match against job location. */
   location?: string;
+  /** Range-overlap min bound (inclusive). */
   minSalary?: number | string;
+  /** Range-overlap max bound (inclusive). */
   maxSalary?: number | string;
   currency?: string;
   industry?: string;

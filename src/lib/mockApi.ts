@@ -1,5 +1,6 @@
 import { MockDB } from './mockDb';
 import type { User, StudentProfile, CompanyProfile, JobVacancy, JobApplication, ConsultationBooking, SystemActivity } from './mockDb/schema';
+import type { EmploymentHistoryItem, ProjectItem, LanguageKnownItem } from './mockDb/schema';
 import { API_BASE_URL } from './config';
 import { getInMemToken } from '@/features/auth/store';
 
@@ -199,10 +200,38 @@ export const mockApi = {
                     profile.dob = data.dob || '';
                     profile.currentLocation = data.currentLocation || '';
                     profile.hometown = data.hometown || '';
-                    profile.languages = data.languages || '';
+
+                    // languagesKnown[] — array replaces old `languages` string
+                    if (Array.isArray(data.languagesKnown)) {
+                        profile.languagesKnown = data.languagesKnown as LanguageKnownItem[];
+                    } else if (Array.isArray(data.languages)) {
+                        // backend may send as `languages` array of objects
+                        profile.languagesKnown = (data.languages as any[]).map((l: any) =>
+                            typeof l === 'string'
+                                ? ({ languageName: l } as LanguageKnownItem)
+                                : ({ language: l._id || l.language, languageName: l.name || l.languageName, proficiency: l.proficiency?._id || l.proficiency, proficiencyName: l.proficiency?.name || l.proficiencyName } as LanguageKnownItem)
+                        );
+                    } else {
+                        profile.languagesKnown = [];
+                    }
+
+                    // employmentHistory[] — PUT replaces whole array; currentSalary is a string
+                    if (Array.isArray(data.employmentHistory)) {
+                        profile.employmentHistory = data.employmentHistory as EmploymentHistoryItem[];
+                    } else {
+                        profile.employmentHistory = [];
+                    }
+
                     profile.certifications = Array.isArray(data.certifications) ? data.certifications : [];
                     profile.awards = data.awards || '';
-                    profile.projects = data.projects || '';
+
+                    // projects[] — structured array (status/siteLink/teamSize), PUT replaces whole array
+                    if (Array.isArray(data.projects)) {
+                        profile.projects = data.projects as ProjectItem[];
+                    } else {
+                        profile.projects = [];
+                    }
+
                     profile.internships = Array.isArray(data.internships) ? data.internships : [];
                     profile.profileSummary = data.profileSummary || '';
                     profile.otherAchievements = data.otherAchievements || '';
@@ -279,10 +308,19 @@ export const mockApi = {
             if (data.dob !== undefined) payload.dob = data.dob;
             if (data.currentLocation !== undefined) payload.currentLocation = data.currentLocation;
             if (data.hometown !== undefined) payload.hometown = data.hometown;
-            if (data.languages !== undefined) payload.languages = data.languages;
+
+            // languagesKnown[] — PUT replaces whole stored array
+            if (data.languagesKnown !== undefined) payload.languagesKnown = data.languagesKnown;
+
+            // employmentHistory[] — PUT replaces whole stored array; currentSalary kept as string per spec
+            if (data.employmentHistory !== undefined) payload.employmentHistory = data.employmentHistory;
+
             if (data.certifications !== undefined) payload.certifications = data.certifications;
             if (data.awards !== undefined) payload.awards = data.awards;
+
+            // projects[] — PUT replaces whole stored array
             if (data.projects !== undefined) payload.projects = data.projects;
+
             if (data.internships !== undefined) payload.internships = data.internships;
             if (data.profileSummary !== undefined) payload.profileSummary = data.profileSummary;
             if (data.otherAchievements !== undefined) payload.otherAchievements = data.otherAchievements;

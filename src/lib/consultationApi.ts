@@ -144,8 +144,12 @@ export const consultationApi = {
 
   /**
    * Sends a booking notification email to Counselling@squarex.com via the backend.
-   * Reuses the existing backend's email/notification infrastructure.
-   * Falls back silently on failure so it never breaks the booking confirmation.
+   *
+   * NOTE: Consultation email sending is NOT built on the backend side.
+   * There is no dedicated email/notification endpoint for this feature yet.
+   * This method silently tries several common endpoint paths and falls back
+   * gracefully so the booking confirmation flow is never blocked.
+   * When the backend implements this, point the primary URL at the real endpoint.
    */
   sendBookingNotification: async (details: {
     studentName: string;
@@ -187,7 +191,7 @@ export const consultationApi = {
         // ignore and try next endpoint
       }
     }
-    // All endpoints failed – log silently without throwing so booking flow continues
-    console.warn('[consultationApi] sendBookingNotification: no reachable notification endpoint found.');
+    // All endpoints failed – falls back silently; booking flow is unaffected.
+    console.warn('[consultationApi] sendBookingNotification: email not built on backend yet. No reachable notification endpoint found.');
   },
 };

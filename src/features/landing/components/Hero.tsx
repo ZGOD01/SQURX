@@ -28,8 +28,10 @@ export function Hero() {
                 return res.json();
             })
             .then((json) => {
-                const raw: any[] = Array.isArray(json.data) ? json.data : [];
-                // Filter only active records, sort by displayOrder asc
+        const raw: any[] = Array.isArray(json.data) ? json.data : [];
+                // Filter only active records, sort by displayOrder asc.
+                // NOTE: The backend currently seeds 4 hero lines (not 5 as originally
+                // specified). The carousel adapts to however many active records exist.
                 const active = raw
                     .filter((item) => item.isActive !== false)
                     .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));

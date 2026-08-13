@@ -8,7 +8,7 @@ import { Loader2, UploadCloud, FileText, Trash2, ShieldCheck, Plus, X, Check, Ey
 import { mockApi } from '@/lib/mockApi';
 import { consultationApi } from '@/lib/consultationApi';
 import { useNotificationStore } from '@/lib/store/notifications';
-import type { EducationHistoryItem } from '@/lib/mockDb/schema';
+import type { EducationHistoryItem, EmploymentHistoryItem, ProjectItem, LanguageKnownItem } from '@/lib/mockDb/schema';
 import {
     useGetEducationsQuery,
     useGetSkillsQuery,
@@ -164,11 +164,12 @@ export function StudentProfile() {
     const [dob, setDob] = useState('');
     const [currentLocation, setCurrentLocation] = useState('');
     const [hometown, setHometown] = useState('');
-    const [languages, setLanguages] = useState('');
+    const [languagesKnown, setLanguagesKnown] = useState<LanguageKnownItem[]>([]);
     const [educationHistory, setEducationHistory] = useState<EducationHistoryItem[]>([]);
+    const [employmentHistory, setEmploymentHistory] = useState<EmploymentHistoryItem[]>([]);
     const [certifications, setCertifications] = useState<Array<{ name: string; status: 'completed' | 'undergoing' }>>([]);
     const [awards, setAwards] = useState('');
-    const [projects, setProjects] = useState('');
+    const [projects, setProjects] = useState<ProjectItem[]>([]);
     const [internships, setInternships] = useState<Array<{ companyName: string; duration: string; role: string }>>([]);
     const [profileSummary, setProfileSummary] = useState('');
     const [otherAchievements, setOtherAchievements] = useState('');
@@ -216,11 +217,12 @@ export function StudentProfile() {
         dob: string;
         currentLocation: string;
         hometown: string;
-        languages: string;
+        languagesKnown: LanguageKnownItem[];
         educationHistory: EducationHistoryItem[];
+        employmentHistory: EmploymentHistoryItem[];
         certifications: Array<{ name: string; status: 'completed' | 'undergoing' }>;
         awards: string;
-        projects: string;
+        projects: ProjectItem[];
         internships: Array<{ companyName: string; duration: string; role: string }>;
         profileSummary: string;
         otherAchievements: string;
@@ -303,11 +305,12 @@ export function StudentProfile() {
             setDob(profile.dob || '');
             setCurrentLocation(profile.currentLocation || '');
             setHometown(profile.hometown || '');
-            setLanguages(profile.languages || '');
+            setLanguagesKnown(profile.languagesKnown || []);
             setEducationHistory(profile.educationHistory || []);
+            setEmploymentHistory(profile.employmentHistory || []);
             setCertifications(profile.certifications || []);
             setAwards(profile.awards || '');
-            setProjects(profile.projects || '');
+            setProjects(profile.projects || []);
             setInternships(profile.internships || []);
             setProfileSummary(profile.profileSummary || '');
             setOtherAchievements(profile.otherAchievements || '');
@@ -371,11 +374,12 @@ export function StudentProfile() {
             setDob(profile.dob || '');
             setCurrentLocation(profile.currentLocation || '');
             setHometown(profile.hometown || '');
-            setLanguages(profile.languages || '');
+            setLanguagesKnown(profile.languagesKnown || []);
             setEducationHistory(profile.educationHistory || []);
+            setEmploymentHistory(profile.employmentHistory || []);
             setCertifications(profile.certifications || []);
             setAwards(profile.awards || '');
-            setProjects(profile.projects || '');
+            setProjects(profile.projects || []);
             setInternships(profile.internships || []);
             setProfileSummary(profile.profileSummary || '');
             setOtherAchievements(profile.otherAchievements || '');
@@ -437,11 +441,12 @@ export function StudentProfile() {
             dob,
             currentLocation,
             hometown,
-            languages,
+            languagesKnown: languagesKnown ? [...languagesKnown.map(l => ({ ...l }))] : [],
             educationHistory: educationHistory ? [...educationHistory.map(eh => ({ ...eh }))] : [],
+            employmentHistory: employmentHistory ? [...employmentHistory.map(e => ({ ...e }))] : [],
             certifications: certifications ? [...certifications.map(c => ({ ...c }))] : [],
             awards,
-            projects,
+            projects: projects ? [...projects.map(p => ({ ...p }))] : [],
             internships: internships ? [...internships.map(i => ({ ...i }))] : [],
             profileSummary,
             otherAchievements,
@@ -476,8 +481,9 @@ export function StudentProfile() {
             setDob(formSnapshot.dob);
             setCurrentLocation(formSnapshot.currentLocation);
             setHometown(formSnapshot.hometown);
-            setLanguages(formSnapshot.languages);
+            setLanguagesKnown(formSnapshot.languagesKnown);
             setEducationHistory(formSnapshot.educationHistory);
+            setEmploymentHistory(formSnapshot.employmentHistory);
             setCertifications(formSnapshot.certifications);
             setAwards(formSnapshot.awards);
             setProjects(formSnapshot.projects);
@@ -634,12 +640,14 @@ export function StudentProfile() {
                 dob,
                 currentLocation,
                 hometown,
-                languages: selectedLanguageIds.length > 0
-                    ? selectedLanguageIds.map(id => languagesData?.data?.find((l: any) => l._id === id)?.name || id).join(', ')
-                    : languages,
+                // languagesKnown[] — PUT replaces the whole stored array
+                languagesKnown,
                 educationHistory: processedEducationHistory,
+                // employmentHistory[] — PUT replaces the whole stored array; currentSalary per item is a string
+                employmentHistory,
                 certifications,
                 awards,
+                // projects[] — PUT replaces the whole stored array
                 projects,
                 internships,
                 profileSummary,
@@ -664,10 +672,11 @@ export function StudentProfile() {
         if (file.size > 5 * 1024 * 1024) { showToast('File too large. Max 5MB.', 'error'); return; }
         const fileName = file.name;
         const lowerName = fileName.toLowerCase();
-        const isValidExtension = lowerName.endsWith('.pdf') || lowerName.endsWith('.doc') || lowerName.endsWith('.docx');
-        const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        // Spec: resume must be a PDF file only
+        const isValidExtension = lowerName.endsWith('.pdf');
+        const validTypes = ['application/pdf'];
         if (!validTypes.includes(file.type) && !isValidExtension) {
-            showToast('Please upload a PDF or Word (DOC/DOCX) file.', 'error');
+            showToast('Only PDF files are accepted. Please upload a PDF resume.', 'error');
             return;
         }
         if (!user) return;
@@ -1211,79 +1220,77 @@ export function StudentProfile() {
                                             />
                                         </div>
 
-                                        {/* Languages Known — API-driven chip multi-select */}
-                                        <div className="space-y-1.5 sm:col-span-2 relative">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Languages Known</label>
-                                            {/* Chip display */}
-                                            {selectedLanguageIds.length > 0 && (
-                                                <div className="flex flex-wrap gap-1.5 mb-1.5">
-                                                    {selectedLanguageIds.map((id) => {
-                                                        const name = languagesData?.data?.find((l: any) => l._id === id)?.name || id;
-                                                        return (
-                                                            <Badge key={id} variant="secondary" className="flex items-center gap-1 bg-muted/50 text-foreground font-semibold py-1">
-                                                                {name}
-                                                                {isEditing && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => setSelectedLanguageIds(selectedLanguageIds.filter(x => x !== id))}
-                                                                        className="hover:text-destructive rounded-full w-3.5 h-3.5 flex items-center justify-center text-[10px] ml-0.5 cursor-pointer font-bold"
-                                                                    >✕</button>
-                                                                )}
-                                                            </Badge>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-                                            {/* Search input + dropdown */}
-                                            {isEditing ? (
-                                                <>
-                                                    <Input
-                                                        placeholder={selectedLanguageIds.length === 0 ? 'Search and add languages...' : 'Add more languages...'}
-                                                        value={languageQuery}
-                                                        onChange={e => { setLanguageQuery(e.target.value); setShowLanguageSuggestions(true); }}
-                                                        onFocus={() => setShowLanguageSuggestions(true)}
-                                                        onBlur={() => setTimeout(() => setShowLanguageSuggestions(false), 200)}
-                                                        className="h-11"
-                                                    />
-                                                    {showLanguageSuggestions && languagesData?.data && languagesData.data.length > 0 && (
-                                                        <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-1.5 flex flex-col gap-0.5">
-                                                            {languagesData.data
-                                                                .filter((l: any) => {
-                                                                    const q = languageQuery.toLowerCase();
-                                                                    return l.name.toLowerCase().includes(q);
-                                                                })
-                                                                .slice(0, 20)
-                                                                .map((l: any) => {
-                                                                    const isSelected = selectedLanguageIds.includes(l._id);
-                                                                    return (
-                                                                        <div
-                                                                            key={l._id}
-                                                                            onMouseDown={e => e.preventDefault()}
-                                                                            onClick={() => {
-                                                                                if (!isSelected) {
-                                                                                    setSelectedLanguageIds([...selectedLanguageIds, l._id]);
-                                                                                }
-                                                                                setLanguageQuery('');
-                                                                                setShowLanguageSuggestions(true);
-                                                                            }}
-                                                                            className={`flex items-center gap-2 w-full text-left px-3 py-2 text-sm rounded-lg transition-colors cursor-pointer select-none font-semibold text-black ${isSelected ? 'bg-black/5 text-black/40 cursor-default' : 'hover:bg-muted'}`}
-                                                                        >
-                                                                            {isSelected && <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
-                                                                            {l.name}
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                        </div>
-                                                    )}
-                                                </>
+                                        {/* Languages Known — array of { language, proficiency } per spec */}
+                                        <div className="space-y-2 sm:col-span-2">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Languages Known</label>
+                                                {isEditing && (
+                                                    <Button
+                                                        type="button"
+                                                        onClick={() => setLanguagesKnown([...languagesKnown, { language: '', languageName: '', proficiency: '', proficiencyName: '' }])}
+                                                        variant="outline"
+                                                        className="h-7 rounded-lg text-xs font-bold px-3 border-border/60"
+                                                    >
+                                                        + Add Language
+                                                    </Button>
+                                                )}
+                                            </div>
+                                            {languagesKnown.length === 0 ? (
+                                                <p className="text-xs text-muted-foreground italic">{isEditing ? 'No languages added. Click + Add Language to get started.' : '—'}</p>
                                             ) : (
-                                                <Input
-                                                    value={selectedLanguageIds.length === 0
-                                                        ? (languages || '—')
-                                                        : selectedLanguageIds.map(id => languagesData?.data?.find((l: any) => l._id === id)?.name || id).join(', ')}
-                                                    disabled
-                                                    className="h-11 bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed"
-                                                />
+                                                <div className="space-y-2">
+                                                    {languagesKnown.map((lk, idx) => (
+                                                        <div key={idx} className="flex gap-2 items-center bg-muted/20 p-2 rounded-xl border border-border/40">
+                                                            {isEditing ? (
+                                                                <>
+                                                                    <select
+                                                                        value={lk.language || ''}
+                                                                        onChange={(e) => {
+                                                                            const selected = languagesData?.data?.find((l: any) => l._id === e.target.value);
+                                                                            const c = [...languagesKnown];
+                                                                            c[idx] = { ...c[idx], language: e.target.value, languageName: selected?.name || '' };
+                                                                            setLanguagesKnown(c);
+                                                                        }}
+                                                                        className="h-9 flex-1 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+                                                                    >
+                                                                        <option value="">Select Language</option>
+                                                                        {languagesData?.data?.map((l: any) => (
+                                                                            <option key={l._id} value={l._id}>{l.name}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                    <select
+                                                                        value={lk.proficiency || ''}
+                                                                        onChange={(e) => {
+                                                                            const selected = languageProficienciesData?.data?.find((p: any) => p._id === e.target.value);
+                                                                            const c = [...languagesKnown];
+                                                                            c[idx] = { ...c[idx], proficiency: e.target.value, proficiencyName: selected?.name || '' };
+                                                                            setLanguagesKnown(c);
+                                                                        }}
+                                                                        className="h-9 flex-1 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+                                                                    >
+                                                                        <option value="">Proficiency Level</option>
+                                                                        {languageProficienciesData?.data?.map((p: any) => (
+                                                                            <option key={p._id} value={p._id}>{p.name}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                    <Button
+                                                                        type="button"
+                                                                        onClick={() => setLanguagesKnown(languagesKnown.filter((_, i) => i !== idx))}
+                                                                        variant="outline"
+                                                                        className="h-8 w-8 p-0 text-destructive border-destructive/20 hover:bg-destructive/5 rounded-lg shrink-0"
+                                                                    >✕</Button>
+                                                                </>
+                                                            ) : (
+                                                                <div className="flex items-center gap-2 w-full">
+                                                                    <span className="text-sm font-medium">{lk.languageName || lk.language || '—'}</span>
+                                                                    {(lk.proficiencyName || lk.proficiency) && (
+                                                                        <span className="text-xs px-2 py-0.5 rounded-full bg-muted font-semibold text-muted-foreground">{lk.proficiencyName || lk.proficiency}</span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             )}
                                         </div>
 
@@ -1589,6 +1596,106 @@ export function StudentProfile() {
                                         </div>
                                     )}
                                 </div>
+                                {/* ── EMPLOYMENT HISTORY SECTION ── */}
+                                <div className="pt-4 border-t border-border/60">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Employment History</h3>
+                                        {isEditing && (
+                                            <Button
+                                                type="button"
+                                                onClick={() => setEmploymentHistory([...employmentHistory, { companyName: '', role: '', startDate: '', endDate: '', isCurrent: false, currentSalary: '', description: '' }])}
+                                                variant="outline"
+                                                className="h-7 rounded-lg text-xs font-bold px-3 border-border/60"
+                                            >
+                                                + Add
+                                            </Button>
+                                        )}
+                                    </div>
+                                    {employmentHistory.length === 0 ? (
+                                        <p className="text-xs text-muted-foreground italic">{isEditing ? 'No employment history added. Click + Add to get started.' : 'No employment history listed.'}</p>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {employmentHistory.map((emp, idx) => (
+                                                <div key={idx} className="bg-muted/20 p-3 rounded-xl border border-border/40 space-y-2">
+                                                    {isEditing ? (
+                                                        <>
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                <Input
+                                                                    placeholder="Company Name"
+                                                                    value={emp.companyName || ''}
+                                                                    onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], companyName: e.target.value }; setEmploymentHistory(c); }}
+                                                                    className="h-9 rounded-lg text-sm"
+                                                                />
+                                                                <Input
+                                                                    placeholder="Role / Job Title"
+                                                                    value={emp.role || ''}
+                                                                    onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], role: e.target.value }; setEmploymentHistory(c); }}
+                                                                    className="h-9 rounded-lg text-sm"
+                                                                />
+                                                            </div>
+                                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                                <Input
+                                                                    placeholder="Start Date (e.g. 2021-06)"
+                                                                    value={emp.startDate || ''}
+                                                                    onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], startDate: e.target.value }; setEmploymentHistory(c); }}
+                                                                    className="h-9 rounded-lg text-sm"
+                                                                />
+                                                                <Input
+                                                                    placeholder="End Date (e.g. 2023-08)"
+                                                                    value={emp.endDate || ''}
+                                                                    disabled={!!emp.isCurrent}
+                                                                    onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], endDate: e.target.value }; setEmploymentHistory(c); }}
+                                                                    className="h-9 rounded-lg text-sm disabled:opacity-50"
+                                                                />
+                                                                {/* Current salary kept as string per spec */}
+                                                                <Input
+                                                                    placeholder="Current Salary (e.g. 50000)"
+                                                                    value={emp.currentSalary || ''}
+                                                                    onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], currentSalary: e.target.value }; setEmploymentHistory(c); }}
+                                                                    className="h-9 rounded-lg text-sm"
+                                                                />
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    id={`emp-current-${idx}`}
+                                                                    checked={!!emp.isCurrent}
+                                                                    onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], isCurrent: e.target.checked, endDate: e.target.checked ? '' : c[idx].endDate }; setEmploymentHistory(c); }}
+                                                                    className="rounded border-gray-300 w-4 h-4 cursor-pointer"
+                                                                />
+                                                                <label htmlFor={`emp-current-${idx}`} className="text-xs font-semibold text-muted-foreground cursor-pointer select-none">Currently working here</label>
+                                                            </div>
+                                                            <textarea
+                                                                placeholder="Brief description of responsibilities..."
+                                                                value={emp.description || ''}
+                                                                onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], description: e.target.value }; setEmploymentHistory(c); }}
+                                                                rows={2}
+                                                                className="w-full rounded-md border px-3 py-2 text-sm outline-none transition-all resize-none bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20"
+                                                            />
+                                                            <div className="flex justify-end">
+                                                                <Button
+                                                                    type="button"
+                                                                    onClick={() => setEmploymentHistory(employmentHistory.filter((_, i) => i !== idx))}
+                                                                    variant="outline"
+                                                                    className="h-7 rounded-lg text-xs font-bold text-destructive border-destructive/20 hover:bg-destructive/5 px-2"
+                                                                >Remove</Button>
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <div className="flex flex-col gap-0.5">
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-sm font-semibold">{emp.companyName || '—'}</span>
+                                                                {emp.isCurrent && <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-100 text-blue-700">Current</span>}
+                                                            </div>
+                                                            <span className="text-xs text-muted-foreground">{emp.role}{(emp.startDate || emp.endDate) ? ` · ${emp.startDate || ''}${emp.isCurrent ? ' – Present' : emp.endDate ? ` – ${emp.endDate}` : ''}` : ''}</span>
+                                                            {emp.description && <span className="text-xs text-muted-foreground mt-0.5">{emp.description}</span>}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
 
                                 {/* ── CERTIFICATIONS SECTION ── */}
                                 <div className="pt-4 border-t border-border/60">
@@ -1724,19 +1831,97 @@ export function StudentProfile() {
 
                                 {/* ── PROJECTS & ACHIEVEMENTS SECTION ── */}
                                 <div className="pt-4 border-t border-border/60">
-                                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">Projects & Achievements</h3>
                                     <div className="space-y-4">
-                                        {/* Projects */}
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Key Projects</label>
-                                            <textarea
-                                                placeholder="Write about major projects you worked on..."
-                                                value={projects}
-                                                onChange={(e) => setProjects(e.target.value)}
-                                                disabled={!isEditing}
-                                                rows={3}
-                                                className={`w-full rounded-md border px-3 py-2.5 text-sm font-medium outline-none transition-all resize-none ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : 'bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20'}`}
-                                            />
+                                        {/* Projects — structured array, PUT replaces whole array */}
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Key Projects</label>
+                                                {isEditing && (
+                                                    <Button
+                                                        type="button"
+                                                        onClick={() => setProjects([...projects, { title: '', description: '', status: 'ongoing', siteLink: '', teamSize: '' }])}
+                                                        variant="outline"
+                                                        className="h-7 rounded-lg text-xs font-bold px-3 border-border/60"
+                                                    >
+                                                        + Add Project
+                                                    </Button>
+                                                )}
+                                            </div>
+                                            {projects.length === 0 ? (
+                                                <p className="text-xs text-muted-foreground italic">{isEditing ? 'No projects added. Click + Add Project to get started.' : 'No projects listed.'}</p>
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    {projects.map((proj, idx) => (
+                                                        <div key={idx} className="bg-muted/20 p-3 rounded-xl border border-border/40 space-y-2">
+                                                            {isEditing ? (
+                                                                <>
+                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                        <Input
+                                                                            placeholder="Project Title"
+                                                                            value={proj.title || ''}
+                                                                            onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], title: e.target.value }; setProjects(c); }}
+                                                                            className="h-9 rounded-lg text-sm"
+                                                                        />
+                                                                        {/* Status: allowed values per spec — ongoing | completed | paused */}
+                                                                        <select
+                                                                            value={proj.status || 'ongoing'}
+                                                                            onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], status: e.target.value as 'ongoing' | 'completed' | 'paused' }; setProjects(c); }}
+                                                                            className="h-9 rounded-lg border border-input bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+                                                                        >
+                                                                            <option value="ongoing">Ongoing</option>
+                                                                            <option value="completed">Completed</option>
+                                                                            <option value="paused">Paused</option>
+                                                                        </select>
+                                                                    </div>
+                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                        <Input
+                                                                            placeholder="Site Link / GitHub URL"
+                                                                            value={proj.siteLink || ''}
+                                                                            onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], siteLink: e.target.value }; setProjects(c); }}
+                                                                            className="h-9 rounded-lg text-sm"
+                                                                        />
+                                                                        <Input
+                                                                            placeholder="Team Size (e.g. 3)"
+                                                                            value={proj.teamSize !== undefined ? String(proj.teamSize) : ''}
+                                                                            onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], teamSize: e.target.value }; setProjects(c); }}
+                                                                            className="h-9 rounded-lg text-sm"
+                                                                        />
+                                                                    </div>
+                                                                    <textarea
+                                                                        placeholder="Project description..."
+                                                                        value={proj.description || ''}
+                                                                        onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], description: e.target.value }; setProjects(c); }}
+                                                                        rows={2}
+                                                                        className="w-full rounded-md border px-3 py-2 text-sm outline-none transition-all resize-none bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20"
+                                                                    />
+                                                                    <div className="flex justify-end">
+                                                                        <Button
+                                                                            type="button"
+                                                                            onClick={() => setProjects(projects.filter((_, i) => i !== idx))}
+                                                                            variant="outline"
+                                                                            className="h-7 rounded-lg text-xs font-bold text-destructive border-destructive/20 hover:bg-destructive/5 px-2"
+                                                                        >Remove</Button>
+                                                                    </div>
+                                                                </>
+                                                            ) : (
+                                                                <div className="flex flex-col gap-0.5">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="text-sm font-semibold">{proj.title || '—'}</span>
+                                                                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${proj.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : proj.status === 'paused' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                                            {proj.status === 'completed' ? 'Completed' : proj.status === 'paused' ? 'Paused' : 'Ongoing'}
+                                                                        </span>
+                                                                    </div>
+                                                                    {proj.description && <span className="text-xs text-muted-foreground">{proj.description}</span>}
+                                                                    <div className="flex gap-3 mt-0.5 flex-wrap">
+                                                                        {proj.siteLink && <a href={proj.siteLink} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline underline-offset-2">View Site</a>}
+                                                                        {proj.teamSize && <span className="text-xs text-muted-foreground">Team: {proj.teamSize}</span>}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Awards */}

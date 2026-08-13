@@ -1,11 +1,11 @@
 import { z } from 'zod';
 
+// NOTE: `education` and `educationId` have been removed — they are fully
+// replaced by the `educationHistory[]` array field (PUT replaces the whole array).
 export const studentProfileSchema = z.object({
   location: z.string().min(2, 'Location is required'),
   jobType: z.string().min(2, 'Job type is required'),
   careerGoal: z.string().min(3, 'Career goal / domain is required'),
-  education: z.string().optional(),
-  educationId: z.string().optional(),
   experienceLevel: z.string().optional(),
   experienceLevelId: z.string().optional(),
   expectedSalary: z.union([z.string(), z.object({ amount: z.number().nullable().optional(), currency: z.any().optional() }), z.null()]).optional(),
@@ -23,3 +23,4 @@ export const studentPreferencesSchema = z.object({
 });
 
 export type StudentPreferencesValues = z.infer<typeof studentPreferencesSchema>;
+
