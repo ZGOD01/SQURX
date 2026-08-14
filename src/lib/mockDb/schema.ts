@@ -29,41 +29,60 @@ export interface EducationHistoryItem {
 
 /**
  * One entry in employmentHistory[].
- * NOTE: currentSalary is intentionally a string in this document (matches backend spec).
+ * Strictly matches backend schema: employmentType is required (reuses JobType lookup).
  */
 export interface EmploymentHistoryItem {
   _id?: string;
+  employmentType?: string; // ObjectId (reuses JobType lookup)
+  isCurrentEmployment?: boolean;
+  totalExperienceYears?: number;
+  totalExperienceMonths?: number;
   companyName?: string;
-  role?: string;
-  startDate?: string;    // e.g. "2021-06"
-  endDate?: string;      // e.g. "2023-08" — empty/absent when isCurrent is true
-  isCurrent?: boolean;
-  currentSalary?: string; // kept as string per spec ("still a string in this document")
-  description?: string;
+  jobTitle?: string;
+  joiningDate?: string;
+  currentSalary?: string; // kept as string per backend spec
+  skillsUsed?: string[];
+  jobProfile?: string;
+  noticePeriod?: string;
 }
 
 /**
  * One entry in projects[].
- * status: 'ongoing' | 'completed' | 'paused'
+ * Strictly matches backend schema: status ('Ongoing' | 'Completed'), details, projectSite, teamSize, role, etc.
  */
 export interface ProjectItem {
   _id?: string;
-  title?: string;
-  description?: string;
-  status?: 'ongoing' | 'completed' | 'paused';
-  siteLink?: string;   // live URL / GitHub link
-  teamSize?: number | string;
+  title: string;
+  tag?: string;
+  client?: string;
+  status?: 'Ongoing' | 'Completed';
+  workedFromYear?: number;
+  workedFromMonth?: number;
+  workedTillYear?: number;
+  workedTillMonth?: number;
+  details?: string;
+  location?: string;
+  projectSite?: 'Onsite' | 'Remote' | 'Hybrid';
+  natureOfEmployment?: string; // ObjectId
+  teamSize?: '1-5' | '6-10' | '11-20' | '21-50' | '50+';
+  role?: string; // ObjectId
+  roleDescription?: string;
+  skillsUsed?: string;
 }
 
 /**
  * One entry in languagesKnown[].
- * Replaces the old plain `languages: string` field.
+ * Strictly matches backend schema: language and proficiency are required ObjectIds, plus read/write/speak booleans.
  */
 export interface LanguageKnownItem {
-  language?: string;    // language ID (from /languages) or display name
-  languageName?: string; // resolved display name
-  proficiency?: string; // proficiency ID (from /language-proficiencies) or display name
-  proficiencyName?: string; // resolved display name
+  _id?: string;
+  language: string;    // language ID (from /languages)
+  proficiency: string; // proficiency ID (from /language-proficiencies)
+  read?: boolean;
+  write?: boolean;
+  speak?: boolean;
+  languageName?: string;   // UI display helper
+  proficiencyName?: string; // UI display helper
 }
 
 export interface CurrencyObject {
@@ -110,15 +129,16 @@ export interface StudentProfile {
   dob?: string;
   currentLocation?: string;
   hometown?: string;
+  hometownCountry?: string;
   // ── Array fields — PUT replaces the whole stored array ──
-  /** Array of known languages with proficiency. Replaces old `languages: string`. */
+  /** Array of known languages with proficiency and read/write/speak. */
   languagesKnown?: LanguageKnownItem[];
   educationHistory?: EducationHistoryItem[];
-  /** Full employment history. PUT replaces whole array. currentSalary per item is a string. */
+  /** Full employment history per backend spec. */
   employmentHistory?: EmploymentHistoryItem[];
   certifications?: Array<{ name: string; status: 'completed' | 'undergoing' }>;
   awards?: string;
-  /** Structured project list. PUT replaces whole array. */
+  /** Structured project list per backend spec. */
   projects?: ProjectItem[];
   internships?: Array<{ companyName: string; duration: string; role: string }>;
   profileSummary?: string;

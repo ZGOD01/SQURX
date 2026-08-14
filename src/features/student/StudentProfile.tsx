@@ -5,7 +5,6 @@ import { PageTransition } from '@/components/motion';
 import { useAuthStore } from '../auth/store';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, UploadCloud, FileText, Trash2, ShieldCheck, Plus, X, Check, Eye, Lock } from 'lucide-react';
-import { mockApi } from '@/lib/mockApi';
 import { consultationApi } from '@/lib/consultationApi';
 import { useNotificationStore } from '@/lib/store/notifications';
 import type { EducationHistoryItem, EmploymentHistoryItem, ProjectItem, LanguageKnownItem } from '@/lib/mockDb/schema';
@@ -164,6 +163,7 @@ export function StudentProfile() {
     const [dob, setDob] = useState('');
     const [currentLocation, setCurrentLocation] = useState('');
     const [hometown, setHometown] = useState('');
+    const [hometownCountry, setHometownCountry] = useState('');
     const [languagesKnown, setLanguagesKnown] = useState<LanguageKnownItem[]>([]);
     const [educationHistory, setEducationHistory] = useState<EducationHistoryItem[]>([]);
     const [employmentHistory, setEmploymentHistory] = useState<EmploymentHistoryItem[]>([]);
@@ -186,8 +186,6 @@ export function StudentProfile() {
     const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
     const [selectedJobTypeIds, setSelectedJobTypeIds] = useState<string[]>([]);
     const [selectedLanguageIds, setSelectedLanguageIds] = useState<string[]>([]);
-    const [showLanguageSuggestions, setShowLanguageSuggestions] = useState(false);
-    const [languageQuery, setLanguageQuery] = useState('');
 
     // ── Status states ────────────────────────────
     const [isSaving, setIsSaving] = useState(false);
@@ -217,6 +215,7 @@ export function StudentProfile() {
         dob: string;
         currentLocation: string;
         hometown: string;
+        hometownCountry: string;
         languagesKnown: LanguageKnownItem[];
         educationHistory: EducationHistoryItem[];
         employmentHistory: EmploymentHistoryItem[];
@@ -236,7 +235,7 @@ export function StudentProfile() {
     // ── API queries & mutations ─────────────────
     const { data: currenciesData } = useGetCurrenciesQuery(undefined);
     const { data: educationsData } = useGetEducationsQuery(undefined);
-    const { data: experienceLevelsData } = useGetExperienceLevelsQuery({ search: experienceLevelQuery });
+    const { data: experienceLevelsData } = useGetExperienceLevelsQuery(undefined);
     const { data: jobTypesData } = useGetJobTypesQuery(undefined);
     const { data: domainsData } = useGetDomainsQuery({ search: careerGoal.split(',').pop()?.trim() || '' });
     const { data: locationsData } = useGetLocationsQuery({ search: locationQuery });
@@ -252,8 +251,6 @@ export function StudentProfile() {
     const [submitUniversity] = useSubmitUniversityMutation();
     const [submitCourse] = useSubmitCourseMutation();
     const [submitSpecialization] = useSubmitSpecializationMutation();
-
-    void languageProficienciesData; void rolesData;
 
     // ── Fetch profile on mount ────────────────────
     useEffect(() => {
@@ -305,6 +302,7 @@ export function StudentProfile() {
             setDob(profile.dob || '');
             setCurrentLocation(profile.currentLocation || '');
             setHometown(profile.hometown || '');
+            setHometownCountry(profile.hometownCountry || '');
             setLanguagesKnown(profile.languagesKnown || []);
             setEducationHistory(profile.educationHistory || []);
             setEmploymentHistory(profile.employmentHistory || []);
@@ -374,6 +372,7 @@ export function StudentProfile() {
             setDob(profile.dob || '');
             setCurrentLocation(profile.currentLocation || '');
             setHometown(profile.hometown || '');
+            setHometownCountry(profile.hometownCountry || '');
             setLanguagesKnown(profile.languagesKnown || []);
             setEducationHistory(profile.educationHistory || []);
             setEmploymentHistory(profile.employmentHistory || []);
@@ -418,8 +417,6 @@ export function StudentProfile() {
     };
 
     // ── Enter edit mode ───────────────────────────
-    // Captures a snapshot of the current form values so Cancel can restore them.
-    // Does NOT call any API or show any success message.
     const enterEditMode = () => {
         setSaveSuccess(false);   // clear any stale success badge
         setFormErrors({});       // clear any stale validation errors
@@ -441,6 +438,7 @@ export function StudentProfile() {
             dob,
             currentLocation,
             hometown,
+            hometownCountry,
             languagesKnown: languagesKnown ? [...languagesKnown.map(l => ({ ...l }))] : [],
             educationHistory: educationHistory ? [...educationHistory.map(eh => ({ ...eh }))] : [],
             employmentHistory: employmentHistory ? [...employmentHistory.map(e => ({ ...e }))] : [],
@@ -452,11 +450,12 @@ export function StudentProfile() {
             otherAchievements,
         });
         setIsEditing(true);
+        if (careerGoal && !careerGoal.trim().endsWith(',')) {
+            setCareerGoal(prev => prev.trim() + ', ');
+        }
     };
 
     // ── Cancel edit ───────────────────────────────
-    // Restores all form values from the snapshot taken when Edit was clicked.
-    // Does NOT call any API.
     const handleCancel = () => {
         if (formSnapshot) {
             setLocation(formSnapshot.location);
@@ -481,6 +480,7 @@ export function StudentProfile() {
             setDob(formSnapshot.dob);
             setCurrentLocation(formSnapshot.currentLocation);
             setHometown(formSnapshot.hometown);
+            setHometownCountry(formSnapshot.hometownCountry);
             setLanguagesKnown(formSnapshot.languagesKnown);
             setEducationHistory(formSnapshot.educationHistory);
             setEmploymentHistory(formSnapshot.employmentHistory);
@@ -616,18 +616,21 @@ export function StudentProfile() {
                 currency: expectedSalaryCurrency || defaultCurrId
             } : null;
 
-            const isFresherUser = experienceLevel === 'Fresher' || experienceLevelId === 'Fresher';
+            const expMatch = experienceLevelsData?.data?.find((e: any) => e.name.toLowerCase() === experienceLevel.toLowerCase());
+            const expId = experienceLevelId || expMatch?._id || experienceLevel;
+
+            const isFresherUser = experienceLevel === 'Fresher' || experienceLevelId === 'Fresher' || (expMatch?.name === 'Fresher');
             const currentSalaryPayload = (!isFresherUser && currentSalaryAmount) ? {
                 amount: Number(currentSalaryAmount),
-                currency: currentSalaryCurrency || defaultCurrId
+                currency: expectedSalaryCurrency || defaultCurrId
             } : null;
 
             await updateProfile(user.id, {
                 location,
                 jobType,
                 careerGoal,
-                experienceLevel: experienceLevelId || experienceLevel,
-                experienceLevelId,
+                experienceLevel: expId,
+                experienceLevelId: expId,
                 expectedSalary: expectedSalaryPayload,
                 currentSalary: currentSalaryPayload,
                 skills: skillIds.length > 0 ? skillIds : skills,
@@ -640,15 +643,48 @@ export function StudentProfile() {
                 dob,
                 currentLocation,
                 hometown,
-                // languagesKnown[] — PUT replaces the whole stored array
-                languagesKnown,
+                hometownCountry,
+                languagesKnown: languagesKnown.map(lk => ({
+                    language: lk.language,
+                    proficiency: lk.proficiency,
+                    read: !!lk.read,
+                    write: !!lk.write,
+                    speak: !!lk.speak
+                })),
                 educationHistory: processedEducationHistory,
-                // employmentHistory[] — PUT replaces the whole stored array; currentSalary per item is a string
-                employmentHistory,
+                employmentHistory: employmentHistory.map(e => ({
+                    employmentType: e.employmentType || '',
+                    isCurrentEmployment: !!e.isCurrentEmployment,
+                    totalExperienceYears: e.totalExperienceYears ? Number(e.totalExperienceYears) : undefined,
+                    totalExperienceMonths: e.totalExperienceMonths ? Number(e.totalExperienceMonths) : undefined,
+                    companyName: e.companyName || '',
+                    jobTitle: e.jobTitle || '',
+                    joiningDate: e.joiningDate || '',
+                    currentSalary: e.currentSalary != null ? String(e.currentSalary) : '',
+                    skillsUsed: Array.isArray(e.skillsUsed) ? e.skillsUsed : [],
+                    jobProfile: e.jobProfile || '',
+                    noticePeriod: e.noticePeriod || ''
+                })),
                 certifications,
                 awards,
-                // projects[] — PUT replaces the whole stored array
-                projects,
+                projects: projects.map(p => ({
+                    title: p.title || '',
+                    tag: p.tag || undefined,
+                    client: p.client || undefined,
+                    status: p.status === 'Completed' ? 'Completed' : 'Ongoing',
+                    workedFromYear: p.workedFromYear ? Number(p.workedFromYear) : undefined,
+                    workedFromMonth: p.workedFromMonth ? Number(p.workedFromMonth) : undefined,
+                    workedTillYear: p.workedTillYear ? Number(p.workedTillYear) : undefined,
+                    workedTillMonth: p.workedTillMonth ? Number(p.workedTillMonth) : undefined,
+                    details: p.details || '',
+                    location: p.location || undefined,
+                    projectSite: p.projectSite || undefined,
+                    natureOfEmployment: p.natureOfEmployment || undefined,
+                    teamSize: p.teamSize || undefined,
+                    role: p.role || undefined,
+                    roleDescription: p.roleDescription || undefined,
+                    skillsUsed: p.skillsUsed || undefined
+                })),
                 internships,
                 profileSummary,
                 otherAchievements,
@@ -669,33 +705,35 @@ export function StudentProfile() {
     const handleCVUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
-        if (file.size > 5 * 1024 * 1024) { showToast('File too large. Max 5MB.', 'error'); return; }
+        if (file.size > 2 * 1024 * 1024) {
+            showToast('File size exceeds server limit (Max 2MB). Please upload a compressed PDF/Word file.', 'error');
+            return;
+        }
         const fileName = file.name;
         const lowerName = fileName.toLowerCase();
-        // Spec: resume must be a PDF file only
-        const isValidExtension = lowerName.endsWith('.pdf');
-        const validTypes = ['application/pdf'];
+        // Backend accepts: .pdf, .doc, .docx
+        const isValidExtension = lowerName.endsWith('.pdf') || lowerName.endsWith('.doc') || lowerName.endsWith('.docx');
+        const validTypes = [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ];
         if (!validTypes.includes(file.type) && !isValidExtension) {
-            showToast('Only PDF files are accepted. Please upload a PDF resume.', 'error');
+            showToast('Please upload a PDF or Word (DOC/DOCX) file', 'error');
             return;
         }
         if (!user) return;
 
         setIsUploadingCV(true);
         try {
-            // Use consultationApi.uploadCv — it has correct MIME normalisation and a 30s timeout
-            let resumeUrl = '';
-            try {
-                resumeUrl = await consultationApi.uploadCv(file);
-            } catch (uploadErr: any) {
-                // Server upload failed — fall back to using the local file name so the
-                // profile still shows the CV and the user isn't blocked.
-                console.warn('Server CV upload failed, using local filename as fallback:', uploadErr?.message);
+            // Upload file to server POST /user/me/resume
+            const resumeUrl = await consultationApi.uploadCv(file);
+            if (!resumeUrl) {
+                throw new Error("Server returned empty resume URL.");
             }
-            const finalUrl = resumeUrl || fileName;
             await updateProfile(user.id, {
-                cvUrl: finalUrl,
-                resume: finalUrl,
+                cvUrl: resumeUrl,
+                resume: resumeUrl,
                 cvName: fileName,
                 resumeName: fileName
             });
@@ -718,6 +756,8 @@ export function StudentProfile() {
                 cvName: null,
                 resumeName: null
             });
+            if (cvInputRef.current) cvInputRef.current.value = '';
+            if (cvReplaceInputRef.current) cvReplaceInputRef.current.value = '';
             showToast('CV removed.', 'success');
             sendEmail('CV Removed', 'Your CV has been removed from your profile.');
         } catch (err: any) {
@@ -1122,34 +1162,94 @@ export function StudentProfile() {
                                             placeholder="e.g. Software Engineering, Data Science"
                                             value={careerGoal}
                                             onChange={e => { setCareerGoal(e.target.value); setShowDomainSuggestions(true); }}
-                                        onFocus={() => setShowDomainSuggestions(true)}
-                                        onBlur={() => setTimeout(() => setShowDomainSuggestions(false), 200)}
-                                        disabled={!isEditing}
-                                        className={`h-11 ${formErrors.careerGoal ? 'border-destructive' : ''}`}
-                                    />
-                                    {isEditing && showDomainSuggestions && domainsData?.data && domainsData.data.length > 0 && (
-                                        <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-2 flex flex-wrap gap-1.5">
-                                            {domainsData.data
-                                                .filter((d: any) => d.name.toLowerCase().includes((careerGoal.split(',').pop()?.trim() || '').toLowerCase()))
-                                                .slice(0, 12)
-                                                .map((d: any) => (
-                                                    <button key={d._id} type="button"
-                                                        onMouseDown={() => {
-                                                            const parts = careerGoal.split(',');
-                                                            parts[parts.length - 1] = ` ${d.name}`;
-                                                            setCareerGoal(parts.join(',').trim());
-                                                            setShowDomainSuggestions(false);
-                                                            if (!selectedDomainIds.includes(d._id)) {
-                                                                setSelectedDomainIds([...selectedDomainIds, d._id]);
-                                                            }
-                                                        }}
-                                                        className="px-3 py-1.5 text-xs font-semibold bg-muted hover:bg-black hover:text-white rounded-lg transition-colors"
-                                                    >+ {d.name}</button>
+                                            onFocus={() => {
+                                                setShowDomainSuggestions(true);
+                                                if (careerGoal && !careerGoal.trim().endsWith(',')) {
+                                                    setCareerGoal(prev => prev.trim() + ', ');
+                                                }
+                                            }}
+                                            onClick={() => {
+                                                setShowDomainSuggestions(true);
+                                                if (careerGoal && !careerGoal.trim().endsWith(',')) {
+                                                    setCareerGoal(prev => prev.trim() + ', ');
+                                                }
+                                            }}
+                                            onBlur={() => setTimeout(() => setShowDomainSuggestions(false), 200)}
+                                            disabled={!isEditing}
+                                            className={`h-11 ${formErrors.careerGoal ? 'border-destructive' : ''}`}
+                                        />
+                                        {isEditing && showDomainSuggestions && domainsData?.data && domainsData.data.length > 0 && (
+                                            <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-2 flex flex-wrap gap-1.5 bg-white">
+                                                {domainsData.data
+                                                    .filter((d: any) => {
+                                                        const lastPart = careerGoal.split(',').pop()?.trim() || '';
+                                                        return d.name.toLowerCase().includes(lastPart.toLowerCase());
+                                                    })
+                                                    .slice(0, 15)
+                                                    .map((d: any) => {
+                                                        const selectedNames = careerGoal.split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+                                                        const isAlreadySelected = selectedNames.includes(d.name.toLowerCase());
+                                                        return (
+                                                            <button
+                                                                key={d._id}
+                                                                type="button"
+                                                                onMouseDown={(e) => {
+                                                                    e.preventDefault(); // Prevent input blur
+                                                                    const parts = careerGoal.split(',').map(p => p.trim()).filter(Boolean);
+                                                                    const lastQuery = careerGoal.split(',').pop()?.trim().toLowerCase() || '';
+
+                                                                    if (lastQuery && parts.length > 0 && parts[parts.length - 1].toLowerCase().includes(lastQuery)) {
+                                                                        parts[parts.length - 1] = d.name;
+                                                                    } else if (!parts.map(x => x.toLowerCase()).includes(d.name.toLowerCase())) {
+                                                                        parts.push(d.name);
+                                                                    }
+
+                                                                    setCareerGoal(parts.join(', ') + ', ');
+                                                                    setShowDomainSuggestions(true);
+                                                                    if (!selectedDomainIds.includes(d._id)) {
+                                                                        setSelectedDomainIds([...selectedDomainIds, d._id]);
+                                                                    }
+                                                                }}
+                                                                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                                                                    isAlreadySelected
+                                                                        ? 'bg-primary text-primary-foreground opacity-60 cursor-default'
+                                                                        : 'bg-muted hover:bg-black hover:text-white'
+                                                                }`}
+                                                            >
+                                                                {isAlreadySelected ? `✓ ${d.name}` : `+ ${d.name}`}
+                                                            </button>
+                                                        );
+                                                    })}
+                                            </div>
+                                        )}
+                                        {/* Selected Domain Chips */}
+                                        {careerGoal.split(',').map(d => d.trim()).filter(Boolean).length > 0 && (
+                                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                                {careerGoal.split(',').map(d => d.trim()).filter(Boolean).map((domainName, idx) => (
+                                                    <Badge key={idx} variant="secondary" className="flex items-center gap-1 bg-muted/50 text-foreground font-semibold py-1">
+                                                        {domainName}
+                                                        {isEditing && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const remaining = careerGoal.split(',').map(d => d.trim()).filter(Boolean).filter((_, i) => i !== idx);
+                                                                    setCareerGoal(remaining.length > 0 ? remaining.join(', ') + ', ' : '');
+                                                                    const domMatch = domainsData?.data?.find((x: any) => x.name.toLowerCase() === domainName.toLowerCase());
+                                                                    if (domMatch) {
+                                                                        setSelectedDomainIds(selectedDomainIds.filter(id => id !== domMatch._id));
+                                                                    }
+                                                                }}
+                                                                className="hover:text-destructive rounded-full w-3.5 h-3.5 flex items-center justify-center text-[10px] ml-0.5 cursor-pointer font-bold"
+                                                            >
+                                                                ✕
+                                                            </button>
+                                                        )}
+                                                    </Badge>
                                                 ))}
-                                        </div>
-                                    )}
-                                    {formErrors.careerGoal && <p className="text-destructive text-xs">{formErrors.careerGoal}</p>}
-                                </div>
+                                            </div>
+                                        )}
+                                        {formErrors.careerGoal && <p className="text-destructive text-xs">{formErrors.careerGoal}</p>}
+                                    </div>
                             </div>
 
                                 {/* Skills */}
@@ -1208,11 +1308,11 @@ export function StudentProfile() {
                                             />
                                         </div>
 
-                                        {/* Hometown */}
+                                         {/* Hometown */}
                                         <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Hometown / Native Place & Country</label>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Hometown / Native Place</label>
                                             <Input
-                                                placeholder="e.g. Mumbai, India"
+                                                placeholder="e.g. Mumbai"
                                                 value={hometown}
                                                 onChange={(e) => setHometown(e.target.value)}
                                                 disabled={!isEditing}
@@ -1220,14 +1320,26 @@ export function StudentProfile() {
                                             />
                                         </div>
 
-                                        {/* Languages Known — array of { language, proficiency } per spec */}
+                                        {/* Hometown Country */}
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Hometown Country</label>
+                                            <Input
+                                                placeholder="e.g. India"
+                                                value={hometownCountry}
+                                                onChange={(e) => setHometownCountry(e.target.value)}
+                                                disabled={!isEditing}
+                                                className={`h-11 ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : ''}`}
+                                            />
+                                        </div>
+
+                                        {/* Languages Known — array of { language, proficiency, read, write, speak } per backend spec */}
                                         <div className="space-y-2 sm:col-span-2">
                                             <div className="flex justify-between items-center">
                                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Languages Known</label>
                                                 {isEditing && (
                                                     <Button
                                                         type="button"
-                                                        onClick={() => setLanguagesKnown([...languagesKnown, { language: '', languageName: '', proficiency: '', proficiencyName: '' }])}
+                                                        onClick={() => setLanguagesKnown([...languagesKnown, { language: '', languageName: '', proficiency: '', proficiencyName: '', read: true, write: true, speak: true }])}
                                                         variant="outline"
                                                         className="h-7 rounded-lg text-xs font-bold px-3 border-border/60"
                                                     >
@@ -1240,52 +1352,102 @@ export function StudentProfile() {
                                             ) : (
                                                 <div className="space-y-2">
                                                     {languagesKnown.map((lk, idx) => (
-                                                        <div key={idx} className="flex gap-2 items-center bg-muted/20 p-2 rounded-xl border border-border/40">
+                                                        <div key={idx} className="bg-muted/20 p-3 rounded-xl border border-border/40 space-y-2">
                                                             {isEditing ? (
                                                                 <>
-                                                                    <select
-                                                                        value={lk.language || ''}
-                                                                        onChange={(e) => {
-                                                                            const selected = languagesData?.data?.find((l: any) => l._id === e.target.value);
-                                                                            const c = [...languagesKnown];
-                                                                            c[idx] = { ...c[idx], language: e.target.value, languageName: selected?.name || '' };
-                                                                            setLanguagesKnown(c);
-                                                                        }}
-                                                                        className="h-9 flex-1 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-                                                                    >
-                                                                        <option value="">Select Language</option>
-                                                                        {languagesData?.data?.map((l: any) => (
-                                                                            <option key={l._id} value={l._id}>{l.name}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                    <select
-                                                                        value={lk.proficiency || ''}
-                                                                        onChange={(e) => {
-                                                                            const selected = languageProficienciesData?.data?.find((p: any) => p._id === e.target.value);
-                                                                            const c = [...languagesKnown];
-                                                                            c[idx] = { ...c[idx], proficiency: e.target.value, proficiencyName: selected?.name || '' };
-                                                                            setLanguagesKnown(c);
-                                                                        }}
-                                                                        className="h-9 flex-1 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-                                                                    >
-                                                                        <option value="">Proficiency Level</option>
-                                                                        {languageProficienciesData?.data?.map((p: any) => (
-                                                                            <option key={p._id} value={p._id}>{p.name}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                    <Button
-                                                                        type="button"
-                                                                        onClick={() => setLanguagesKnown(languagesKnown.filter((_, i) => i !== idx))}
-                                                                        variant="outline"
-                                                                        className="h-8 w-8 p-0 text-destructive border-destructive/20 hover:bg-destructive/5 rounded-lg shrink-0"
-                                                                    >✕</Button>
+                                                                    <div className="flex gap-2 items-center">
+                                                                        <select
+                                                                            value={lk.language || ''}
+                                                                            onChange={(e) => {
+                                                                                const selected = languagesData?.data?.find((l: any) => l._id === e.target.value);
+                                                                                const c = [...languagesKnown];
+                                                                                c[idx] = { ...c[idx], language: e.target.value, languageName: selected?.name || '' };
+                                                                                setLanguagesKnown(c);
+                                                                            }}
+                                                                            className="h-9 flex-1 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+                                                                        >
+                                                                            <option value="">Select Language *</option>
+                                                                            {languagesData?.data?.map((l: any) => (
+                                                                                <option key={l._id} value={l._id}>{l.name}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                        <select
+                                                                            value={lk.proficiency || ''}
+                                                                            onChange={(e) => {
+                                                                                const selected = languageProficienciesData?.data?.find((p: any) => p._id === e.target.value);
+                                                                                const c = [...languagesKnown];
+                                                                                c[idx] = { ...c[idx], proficiency: e.target.value, proficiencyName: selected?.name || '' };
+                                                                                setLanguagesKnown(c);
+                                                                            }}
+                                                                            className="h-9 flex-1 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+                                                                        >
+                                                                            <option value="">Proficiency Level *</option>
+                                                                            {languageProficienciesData?.data?.map((p: any) => (
+                                                                                <option key={p._id} value={p._id}>{p.name}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                        <Button
+                                                                            type="button"
+                                                                            onClick={() => setLanguagesKnown(languagesKnown.filter((_, i) => i !== idx))}
+                                                                            variant="outline"
+                                                                            className="h-8 w-8 p-0 text-destructive border-destructive/20 hover:bg-destructive/5 rounded-lg shrink-0"
+                                                                        >✕</Button>
+                                                                    </div>
+                                                                    <div className="flex gap-4 items-center pl-1 text-xs">
+                                                                        <label className="flex items-center gap-1.5 cursor-pointer font-medium">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={lk.read ?? false}
+                                                                                onChange={(e) => {
+                                                                                    const c = [...languagesKnown];
+                                                                                    c[idx] = { ...c[idx], read: e.target.checked };
+                                                                                    setLanguagesKnown(c);
+                                                                                }}
+                                                                                className="rounded border-gray-300 w-4 h-4 text-primary focus:ring-primary cursor-pointer"
+                                                                            />
+                                                                            Read
+                                                                        </label>
+                                                                        <label className="flex items-center gap-1.5 cursor-pointer font-medium">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={lk.write ?? false}
+                                                                                onChange={(e) => {
+                                                                                    const c = [...languagesKnown];
+                                                                                    c[idx] = { ...c[idx], write: e.target.checked };
+                                                                                    setLanguagesKnown(c);
+                                                                                }}
+                                                                                className="rounded border-gray-300 w-4 h-4 text-primary focus:ring-primary cursor-pointer"
+                                                                            />
+                                                                            Write
+                                                                        </label>
+                                                                        <label className="flex items-center gap-1.5 cursor-pointer font-medium">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={lk.speak ?? false}
+                                                                                onChange={(e) => {
+                                                                                    const c = [...languagesKnown];
+                                                                                    c[idx] = { ...c[idx], speak: e.target.checked };
+                                                                                    setLanguagesKnown(c);
+                                                                                }}
+                                                                                className="rounded border-gray-300 w-4 h-4 text-primary focus:ring-primary cursor-pointer"
+                                                                            />
+                                                                            Speak
+                                                                        </label>
+                                                                    </div>
                                                                 </>
                                                             ) : (
-                                                                <div className="flex items-center gap-2 w-full">
-                                                                    <span className="text-sm font-medium">{lk.languageName || lk.language || '—'}</span>
-                                                                    {(lk.proficiencyName || lk.proficiency) && (
-                                                                        <span className="text-xs px-2 py-0.5 rounded-full bg-muted font-semibold text-muted-foreground">{lk.proficiencyName || lk.proficiency}</span>
-                                                                    )}
+                                                                <div className="flex flex-col gap-1 w-full">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-sm font-semibold">{lk.languageName || lk.language || '—'}</span>
+                                                                        {(lk.proficiencyName || lk.proficiency) && (
+                                                                            <span className="text-xs px-2 py-0.5 rounded-full bg-muted font-semibold text-muted-foreground">{lk.proficiencyName || lk.proficiency}</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex gap-2 text-[11px] text-muted-foreground font-medium">
+                                                                        {lk.read && <span className="bg-muted/50 px-1.5 py-0.5 rounded">Read</span>}
+                                                                        {lk.write && <span className="bg-muted/50 px-1.5 py-0.5 rounded">Write</span>}
+                                                                        {lk.speak && <span className="bg-muted/50 px-1.5 py-0.5 rounded">Speak</span>}
+                                                                    </div>
                                                                 </div>
                                                             )}
                                                         </div>
@@ -1596,103 +1758,153 @@ export function StudentProfile() {
                                         </div>
                                     )}
                                 </div>
-                                {/* ── EMPLOYMENT HISTORY SECTION ── */}
+                                 {/* ── EMPLOYMENT HISTORY SECTION ── */}
                                 <div className="pt-4 border-t border-border/60">
                                     <div className="flex justify-between items-center mb-4">
                                         <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Employment History</h3>
                                         {isEditing && (
                                             <Button
                                                 type="button"
-                                                onClick={() => setEmploymentHistory([...employmentHistory, { companyName: '', role: '', startDate: '', endDate: '', isCurrent: false, currentSalary: '', description: '' }])}
+                                                onClick={() => setEmploymentHistory([...employmentHistory, {
+                                                    employmentType: '',
+                                                    companyName: '',
+                                                    jobTitle: '',
+                                                    joiningDate: '',
+                                                    isCurrentEmployment: false,
+                                                    totalExperienceYears: undefined,
+                                                    totalExperienceMonths: undefined,
+                                                    currentSalary: '',
+                                                    noticePeriod: '',
+                                                    jobProfile: ''
+                                                }])}
                                                 variant="outline"
                                                 className="h-7 rounded-lg text-xs font-bold px-3 border-border/60"
                                             >
-                                                + Add
+                                                + Add Employment
                                             </Button>
                                         )}
                                     </div>
                                     {employmentHistory.length === 0 ? (
-                                        <p className="text-xs text-muted-foreground italic">{isEditing ? 'No employment history added. Click + Add to get started.' : 'No employment history listed.'}</p>
+                                        <p className="text-xs text-muted-foreground italic">{isEditing ? 'No employment history added. Click + Add Employment to get started.' : 'No employment history listed.'}</p>
                                     ) : (
                                         <div className="space-y-3">
-                                            {employmentHistory.map((emp, idx) => (
-                                                <div key={idx} className="bg-muted/20 p-3 rounded-xl border border-border/40 space-y-2">
-                                                    {isEditing ? (
-                                                        <>
-                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                                <Input
-                                                                    placeholder="Company Name"
-                                                                    value={emp.companyName || ''}
-                                                                    onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], companyName: e.target.value }; setEmploymentHistory(c); }}
-                                                                    className="h-9 rounded-lg text-sm"
+                                            {employmentHistory.map((emp, idx) => {
+                                                const empTypeName = jobTypesData?.data?.find((jt: any) => jt._id === emp.employmentType)?.name || emp.employmentType || '';
+                                                return (
+                                                    <div key={idx} className="bg-muted/20 p-3.5 rounded-xl border border-border/40 space-y-2.5">
+                                                        {isEditing ? (
+                                                            <>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                                    {/* Employment Type (required JobType lookup) */}
+                                                                    <select
+                                                                        value={emp.employmentType || ''}
+                                                                        onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], employmentType: e.target.value }; setEmploymentHistory(c); }}
+                                                                        className="h-9 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 font-medium"
+                                                                    >
+                                                                        <option value="">Select Employment Type *</option>
+                                                                        {jobTypesData?.data?.map((jt: any) => (
+                                                                            <option key={jt._id} value={jt._id}>{jt.name}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                    <Input
+                                                                        placeholder="Company Name"
+                                                                        value={emp.companyName || ''}
+                                                                        onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], companyName: e.target.value }; setEmploymentHistory(c); }}
+                                                                        className="h-9 rounded-lg text-sm"
+                                                                    />
+                                                                    <Input
+                                                                        placeholder="Job Title / Role"
+                                                                        value={emp.jobTitle || ''}
+                                                                        onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], jobTitle: e.target.value }; setEmploymentHistory(c); }}
+                                                                        className="h-9 rounded-lg text-sm"
+                                                                    />
+                                                                </div>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                                    <Input
+                                                                        placeholder="Joining Date (e.g. 2021-06-15)"
+                                                                        value={emp.joiningDate || ''}
+                                                                        onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], joiningDate: e.target.value }; setEmploymentHistory(c); }}
+                                                                        className="h-9 rounded-lg text-sm"
+                                                                    />
+                                                                    <Input
+                                                                        type="number"
+                                                                        placeholder="Total Exp (Years)"
+                                                                        value={emp.totalExperienceYears != null ? String(emp.totalExperienceYears) : ''}
+                                                                        onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], totalExperienceYears: e.target.value ? Number(e.target.value) : undefined }; setEmploymentHistory(c); }}
+                                                                        className="h-9 rounded-lg text-sm"
+                                                                    />
+                                                                    <Input
+                                                                        type="number"
+                                                                        placeholder="Total Exp (Months)"
+                                                                        value={emp.totalExperienceMonths != null ? String(emp.totalExperienceMonths) : ''}
+                                                                        onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], totalExperienceMonths: e.target.value ? Number(e.target.value) : undefined }; setEmploymentHistory(c); }}
+                                                                        className="h-9 rounded-lg text-sm"
+                                                                    />
+                                                                </div>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                    <Input
+                                                                        placeholder="Current Salary (e.g. 50000)"
+                                                                        value={emp.currentSalary || ''}
+                                                                        onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], currentSalary: e.target.value }; setEmploymentHistory(c); }}
+                                                                        className="h-9 rounded-lg text-sm"
+                                                                    />
+                                                                    <Input
+                                                                        placeholder="Notice Period (e.g. 1 Month)"
+                                                                        value={emp.noticePeriod || ''}
+                                                                        onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], noticePeriod: e.target.value }; setEmploymentHistory(c); }}
+                                                                        className="h-9 rounded-lg text-sm"
+                                                                    />
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        id={`emp-current-${idx}`}
+                                                                        checked={!!emp.isCurrentEmployment}
+                                                                        onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], isCurrentEmployment: e.target.checked }; setEmploymentHistory(c); }}
+                                                                        className="rounded border-gray-300 w-4 h-4 cursor-pointer"
+                                                                    />
+                                                                    <label htmlFor={`emp-current-${idx}`} className="text-xs font-semibold text-muted-foreground cursor-pointer select-none">Current Employment</label>
+                                                                </div>
+                                                                <textarea
+                                                                    placeholder="Job Profile / Description of responsibilities..."
+                                                                    value={emp.jobProfile || ''}
+                                                                    onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], jobProfile: e.target.value }; setEmploymentHistory(c); }}
+                                                                    rows={2}
+                                                                    className="w-full rounded-md border px-3 py-2 text-sm outline-none transition-all resize-none bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20"
                                                                 />
-                                                                <Input
-                                                                    placeholder="Role / Job Title"
-                                                                    value={emp.role || ''}
-                                                                    onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], role: e.target.value }; setEmploymentHistory(c); }}
-                                                                    className="h-9 rounded-lg text-sm"
-                                                                />
+                                                                <div className="flex justify-end">
+                                                                    <Button
+                                                                        type="button"
+                                                                        onClick={() => setEmploymentHistory(employmentHistory.filter((_, i) => i !== idx))}
+                                                                        variant="outline"
+                                                                        className="h-7 rounded-lg text-xs font-bold text-destructive border-destructive/20 hover:bg-destructive/5 px-2"
+                                                                    >Remove</Button>
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <div className="flex flex-col gap-1">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-sm font-semibold">{emp.companyName || '—'}</span>
+                                                                    {emp.isCurrentEmployment && <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-100 text-blue-700">Current</span>}
+                                                                </div>
+                                                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                                    {emp.jobTitle && <span className="font-medium text-foreground">{emp.jobTitle}</span>}
+                                                                    {empTypeName && <span className="px-1.5 py-0.5 rounded bg-muted font-semibold">{empTypeName}</span>}
+                                                                    {emp.joiningDate && <span>Joined: {emp.joiningDate}</span>}
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground mt-0.5">
+                                                                    {(emp.totalExperienceYears != null || emp.totalExperienceMonths != null) && (
+                                                                        <span>Experience: {emp.totalExperienceYears || 0} yrs {emp.totalExperienceMonths || 0} mos</span>
+                                                                    )}
+                                                                    {emp.noticePeriod && <span>Notice: {emp.noticePeriod}</span>}
+                                                                    {emp.currentSalary && <span>Salary: {emp.currentSalary}</span>}
+                                                                </div>
+                                                                {emp.jobProfile && <span className="text-xs text-muted-foreground mt-1">{emp.jobProfile}</span>}
                                                             </div>
-                                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                                                <Input
-                                                                    placeholder="Start Date (e.g. 2021-06)"
-                                                                    value={emp.startDate || ''}
-                                                                    onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], startDate: e.target.value }; setEmploymentHistory(c); }}
-                                                                    className="h-9 rounded-lg text-sm"
-                                                                />
-                                                                <Input
-                                                                    placeholder="End Date (e.g. 2023-08)"
-                                                                    value={emp.endDate || ''}
-                                                                    disabled={!!emp.isCurrent}
-                                                                    onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], endDate: e.target.value }; setEmploymentHistory(c); }}
-                                                                    className="h-9 rounded-lg text-sm disabled:opacity-50"
-                                                                />
-                                                                {/* Current salary kept as string per spec */}
-                                                                <Input
-                                                                    placeholder="Current Salary (e.g. 50000)"
-                                                                    value={emp.currentSalary || ''}
-                                                                    onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], currentSalary: e.target.value }; setEmploymentHistory(c); }}
-                                                                    className="h-9 rounded-lg text-sm"
-                                                                />
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    id={`emp-current-${idx}`}
-                                                                    checked={!!emp.isCurrent}
-                                                                    onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], isCurrent: e.target.checked, endDate: e.target.checked ? '' : c[idx].endDate }; setEmploymentHistory(c); }}
-                                                                    className="rounded border-gray-300 w-4 h-4 cursor-pointer"
-                                                                />
-                                                                <label htmlFor={`emp-current-${idx}`} className="text-xs font-semibold text-muted-foreground cursor-pointer select-none">Currently working here</label>
-                                                            </div>
-                                                            <textarea
-                                                                placeholder="Brief description of responsibilities..."
-                                                                value={emp.description || ''}
-                                                                onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], description: e.target.value }; setEmploymentHistory(c); }}
-                                                                rows={2}
-                                                                className="w-full rounded-md border px-3 py-2 text-sm outline-none transition-all resize-none bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20"
-                                                            />
-                                                            <div className="flex justify-end">
-                                                                <Button
-                                                                    type="button"
-                                                                    onClick={() => setEmploymentHistory(employmentHistory.filter((_, i) => i !== idx))}
-                                                                    variant="outline"
-                                                                    className="h-7 rounded-lg text-xs font-bold text-destructive border-destructive/20 hover:bg-destructive/5 px-2"
-                                                                >Remove</Button>
-                                                            </div>
-                                                        </>
-                                                    ) : (
-                                                        <div className="flex flex-col gap-0.5">
-                                                            <div className="flex items-center justify-between">
-                                                                <span className="text-sm font-semibold">{emp.companyName || '—'}</span>
-                                                                {emp.isCurrent && <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-100 text-blue-700">Current</span>}
-                                                            </div>
-                                                            <span className="text-xs text-muted-foreground">{emp.role}{(emp.startDate || emp.endDate) ? ` · ${emp.startDate || ''}${emp.isCurrent ? ' – Present' : emp.endDate ? ` – ${emp.endDate}` : ''}` : ''}</span>
-                                                            {emp.description && <span className="text-xs text-muted-foreground mt-0.5">{emp.description}</span>}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ))}
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>
@@ -1829,17 +2041,29 @@ export function StudentProfile() {
                                     )}
                                 </div>
 
-                                {/* ── PROJECTS & ACHIEVEMENTS SECTION ── */}
+                                 {/* ── PROJECTS & ACHIEVEMENTS SECTION ── */}
                                 <div className="pt-4 border-t border-border/60">
                                     <div className="space-y-4">
-                                        {/* Projects — structured array, PUT replaces whole array */}
+                                        {/* Projects — structured array per backend schema */}
                                         <div className="space-y-2">
                                             <div className="flex justify-between items-center">
                                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Key Projects</label>
                                                 {isEditing && (
                                                     <Button
                                                         type="button"
-                                                        onClick={() => setProjects([...projects, { title: '', description: '', status: 'ongoing', siteLink: '', teamSize: '' }])}
+                                                        onClick={() => setProjects([...projects, {
+                                                            title: '',
+                                                            tag: '',
+                                                            client: '',
+                                                            status: 'Ongoing',
+                                                            details: '',
+                                                            location: '',
+                                                            projectSite: 'Onsite',
+                                                            teamSize: '1-5',
+                                                            role: '',
+                                                            roleDescription: '',
+                                                            skillsUsed: ''
+                                                        }])}
                                                         variant="outline"
                                                         className="h-7 rounded-lg text-xs font-bold px-3 border-border/60"
                                                     >
@@ -1851,75 +2075,138 @@ export function StudentProfile() {
                                                 <p className="text-xs text-muted-foreground italic">{isEditing ? 'No projects added. Click + Add Project to get started.' : 'No projects listed.'}</p>
                                             ) : (
                                                 <div className="space-y-3">
-                                                    {projects.map((proj, idx) => (
-                                                        <div key={idx} className="bg-muted/20 p-3 rounded-xl border border-border/40 space-y-2">
-                                                            {isEditing ? (
-                                                                <>
-                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                                        <Input
-                                                                            placeholder="Project Title"
-                                                                            value={proj.title || ''}
-                                                                            onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], title: e.target.value }; setProjects(c); }}
-                                                                            className="h-9 rounded-lg text-sm"
+                                                    {projects.map((proj, idx) => {
+                                                        const roleName = rolesData?.data?.find((r: any) => r._id === proj.role)?.name || proj.role || '';
+                                                        return (
+                                                            <div key={idx} className="bg-muted/20 p-3.5 rounded-xl border border-border/40 space-y-2.5">
+                                                                {isEditing ? (
+                                                                    <>
+                                                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                                            <Input
+                                                                                placeholder="Project Title *"
+                                                                                value={proj.title || ''}
+                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], title: e.target.value }; setProjects(c); }}
+                                                                                className="h-9 rounded-lg text-sm"
+                                                                            />
+                                                                            <Input
+                                                                                placeholder="Tag (e.g. Mobile App)"
+                                                                                value={proj.tag || ''}
+                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], tag: e.target.value }; setProjects(c); }}
+                                                                                className="h-9 rounded-lg text-sm"
+                                                                            />
+                                                                            <Input
+                                                                                placeholder="Client (e.g. Internal / ACME)"
+                                                                                value={proj.client || ''}
+                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], client: e.target.value }; setProjects(c); }}
+                                                                                className="h-9 rounded-lg text-sm"
+                                                                            />
+                                                                        </div>
+
+                                                                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                                                                            {/* Status: exact casing 'Ongoing' | 'Completed' */}
+                                                                            <select
+                                                                                value={proj.status === 'Completed' ? 'Completed' : 'Ongoing'}
+                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], status: e.target.value as 'Ongoing' | 'Completed' }; setProjects(c); }}
+                                                                                className="h-9 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 font-medium"
+                                                                            >
+                                                                                <option value="Ongoing">Ongoing</option>
+                                                                                <option value="Completed">Completed</option>
+                                                                            </select>
+
+                                                                            {/* Project Site */}
+                                                                            <select
+                                                                                value={proj.projectSite || 'Onsite'}
+                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], projectSite: e.target.value as 'Onsite' | 'Remote' | 'Hybrid' }; setProjects(c); }}
+                                                                                className="h-9 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 font-medium"
+                                                                            >
+                                                                                <option value="Onsite">Onsite</option>
+                                                                                <option value="Remote">Remote</option>
+                                                                                <option value="Hybrid">Hybrid</option>
+                                                                            </select>
+
+                                                                            {/* Team Size */}
+                                                                            <select
+                                                                                value={proj.teamSize || ''}
+                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], teamSize: e.target.value as any }; setProjects(c); }}
+                                                                                className="h-9 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 font-medium"
+                                                                            >
+                                                                                <option value="">Team Size</option>
+                                                                                <option value="1-5">1-5</option>
+                                                                                <option value="6-10">6-10</option>
+                                                                                <option value="11-20">11-20</option>
+                                                                                <option value="21-50">21-50</option>
+                                                                                <option value="50+">50+</option>
+                                                                            </select>
+
+                                                                            {/* Role (ObjectId from rolesData lookup) */}
+                                                                            <select
+                                                                                value={proj.role || ''}
+                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], role: e.target.value }; setProjects(c); }}
+                                                                                className="h-9 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 font-medium"
+                                                                            >
+                                                                                <option value="">Select Role</option>
+                                                                                {rolesData?.data?.map((r: any) => (
+                                                                                    <option key={r._id} value={r._id}>{r.name}</option>
+                                                                                ))}
+                                                                            </select>
+                                                                        </div>
+
+                                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                            <Input
+                                                                                placeholder="Location (e.g. London)"
+                                                                                value={proj.location || ''}
+                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], location: e.target.value }; setProjects(c); }}
+                                                                                className="h-9 rounded-lg text-sm"
+                                                                            />
+                                                                            <Input
+                                                                                placeholder="Skills Used (e.g. React, Node.js)"
+                                                                                value={proj.skillsUsed || ''}
+                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], skillsUsed: e.target.value }; setProjects(c); }}
+                                                                                className="h-9 rounded-lg text-sm"
+                                                                            />
+                                                                        </div>
+
+                                                                        {/* Details (NOT description per spec) */}
+                                                                        <textarea
+                                                                            placeholder="Project details..."
+                                                                            value={proj.details || ''}
+                                                                            onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], details: e.target.value }; setProjects(c); }}
+                                                                            rows={2}
+                                                                            className="w-full rounded-md border px-3 py-2 text-sm outline-none transition-all resize-none bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20"
                                                                         />
-                                                                        {/* Status: allowed values per spec — ongoing | completed | paused */}
-                                                                        <select
-                                                                            value={proj.status || 'ongoing'}
-                                                                            onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], status: e.target.value as 'ongoing' | 'completed' | 'paused' }; setProjects(c); }}
-                                                                            className="h-9 rounded-lg border border-input bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-                                                                        >
-                                                                            <option value="ongoing">Ongoing</option>
-                                                                            <option value="completed">Completed</option>
-                                                                            <option value="paused">Paused</option>
-                                                                        </select>
+
+                                                                        <div className="flex justify-end">
+                                                                            <Button
+                                                                                type="button"
+                                                                                onClick={() => setProjects(projects.filter((_, i) => i !== idx))}
+                                                                                variant="outline"
+                                                                                className="h-7 rounded-lg text-xs font-bold text-destructive border-destructive/20 hover:bg-destructive/5 px-2"
+                                                                            >Remove</Button>
+                                                                        </div>
+                                                                    </>
+                                                                ) : (
+                                                                    <div className="flex flex-col gap-1">
+                                                                        <div className="flex items-center justify-between">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="text-sm font-semibold">{proj.title || '—'}</span>
+                                                                                {proj.tag && <span className="text-[11px] px-2 py-0.5 rounded bg-muted font-medium text-muted-foreground">{proj.tag}</span>}
+                                                                            </div>
+                                                                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${proj.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                                                {proj.status === 'Completed' ? 'Completed' : 'Ongoing'}
+                                                                            </span>
+                                                                        </div>
+                                                                        {proj.details && <span className="text-xs text-muted-foreground">{proj.details}</span>}
+                                                                        <div className="flex gap-3 mt-0.5 flex-wrap text-[11px] text-muted-foreground font-medium">
+                                                                            {proj.projectSite && <span>Site: {proj.projectSite}</span>}
+                                                                            {roleName && <span>Role: {roleName}</span>}
+                                                                            {proj.teamSize && <span>Team: {proj.teamSize}</span>}
+                                                                            {proj.client && <span>Client: {proj.client}</span>}
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                                        <Input
-                                                                            placeholder="Site Link / GitHub URL"
-                                                                            value={proj.siteLink || ''}
-                                                                            onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], siteLink: e.target.value }; setProjects(c); }}
-                                                                            className="h-9 rounded-lg text-sm"
-                                                                        />
-                                                                        <Input
-                                                                            placeholder="Team Size (e.g. 3)"
-                                                                            value={proj.teamSize !== undefined ? String(proj.teamSize) : ''}
-                                                                            onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], teamSize: e.target.value }; setProjects(c); }}
-                                                                            className="h-9 rounded-lg text-sm"
-                                                                        />
-                                                                    </div>
-                                                                    <textarea
-                                                                        placeholder="Project description..."
-                                                                        value={proj.description || ''}
-                                                                        onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], description: e.target.value }; setProjects(c); }}
-                                                                        rows={2}
-                                                                        className="w-full rounded-md border px-3 py-2 text-sm outline-none transition-all resize-none bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20"
-                                                                    />
-                                                                    <div className="flex justify-end">
-                                                                        <Button
-                                                                            type="button"
-                                                                            onClick={() => setProjects(projects.filter((_, i) => i !== idx))}
-                                                                            variant="outline"
-                                                                            className="h-7 rounded-lg text-xs font-bold text-destructive border-destructive/20 hover:bg-destructive/5 px-2"
-                                                                        >Remove</Button>
-                                                                    </div>
-                                                                </>
-                                                            ) : (
-                                                                <div className="flex flex-col gap-0.5">
-                                                                    <div className="flex items-center justify-between">
-                                                                        <span className="text-sm font-semibold">{proj.title || '—'}</span>
-                                                                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${proj.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : proj.status === 'paused' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                                            {proj.status === 'completed' ? 'Completed' : proj.status === 'paused' ? 'Paused' : 'Ongoing'}
-                                                                        </span>
-                                                                    </div>
-                                                                    {proj.description && <span className="text-xs text-muted-foreground">{proj.description}</span>}
-                                                                    <div className="flex gap-3 mt-0.5 flex-wrap">
-                                                                        {proj.siteLink && <a href={proj.siteLink} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline underline-offset-2">View Site</a>}
-                                                                        {proj.teamSize && <span className="text-xs text-muted-foreground">Team: {proj.teamSize}</span>}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    ))}
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
                                             )}
                                         </div>
@@ -2052,6 +2339,7 @@ export function StudentProfile() {
                                                 <input
                                                     ref={cvReplaceInputRef}
                                                     type="file"
+                                                    onClick={e => (e.currentTarget.value = '')}
                                                     onChange={handleCVUpload}
                                                     disabled={isUploadingCV}
                                                     accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -2074,11 +2362,12 @@ export function StudentProfile() {
                                                 <UploadCloud size={28} />
                                             </div>
                                             <h4 className="font-bold mb-1">Upload your CV</h4>
-                                            <p className="text-sm text-muted-foreground max-w-[200px]">PDF, DOC, DOCX up to 5MB</p>
+                                            <p className="text-sm text-muted-foreground max-w-[200px]">PDF, DOC, DOCX up to 2MB</p>
                                             <Button size="sm" className="mt-6 font-medium px-6">Select File</Button>
                                             <input
                                                 type="file"
                                                 ref={cvInputRef}
+                                                onClick={e => (e.currentTarget.value = '')}
                                                 onChange={handleCVUpload}
                                                 disabled={isUploadingCV}
                                                 accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"

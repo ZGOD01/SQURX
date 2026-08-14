@@ -234,8 +234,25 @@ export function Onboarding() {
             setJobType(initialJobType);
             setJobTypeQuery(initialJobType);
 
-            setExpectedSalary(profile?.expectedSalary || '');
-            setCurrentSalary(profile?.currentSalary || '');
+            if (profile?.expectedSalary) {
+                if (typeof profile.expectedSalary === 'object') {
+                    setExpectedSalaryAmount(profile.expectedSalary.amount != null ? String(profile.expectedSalary.amount) : '');
+                    const curr = profile.expectedSalary.currency;
+                    setExpectedSalaryCurrency(typeof curr === 'object' && curr ? curr._id : String(curr || ''));
+                } else {
+                    setExpectedSalaryAmount(String(profile.expectedSalary));
+                }
+            }
+
+            if (profile?.currentSalary) {
+                if (typeof profile.currentSalary === 'object') {
+                    setCurrentSalaryAmount(profile.currentSalary.amount != null ? String(profile.currentSalary.amount) : '');
+                    const curr = profile.currentSalary.currency;
+                    setCurrentSalaryCurrency(typeof curr === 'object' && curr ? curr._id : String(curr || ''));
+                } else {
+                    setCurrentSalaryAmount(String(profile.currentSalary));
+                }
+            }
 
             setGender(profile?.gender || '');
             setDob(profile?.dob || '');
@@ -248,10 +265,10 @@ export function Onboarding() {
                 setUgUniversity(firstEdu.university || firstEdu.customUniversity || '');
                 setSchoolCollegeName(firstEdu.university || firstEdu.customUniversity || '');
             }
-            setLanguages(profile?.languages || '');
+            setLanguages(Array.isArray(profile?.languagesKnown) ? profile!.languagesKnown.map(l => l.languageName || l.language).join(', ') : '');
             setCertifications(profile?.certifications || []);
             setAwards(profile?.awards || '');
-            setProjects(profile?.projects || '');
+            setProjects(Array.isArray(profile?.projects) ? profile!.projects.map(p => p.title).join(', ') : '');
             setInternships(profile?.internships || []);
             setProfileSummary(profile?.profileSummary || '');
             setOtherAchievements(profile?.otherAchievements || '');
@@ -285,12 +302,12 @@ export function Onboarding() {
         if (!user) return;
         if (isProfileSaving) return;
 
-        if (!fullName || !email || !phone || !education || !skills || !careerGoal || !location || !jobType || !expectedSalary) {
+        if (!fullName || !email || !phone || !education || !skills || !careerGoal || !location || !jobType || !expectedSalaryAmount) {
             alert("All fields are required.");
             return;
         }
 
-        if (experienceLevel !== 'Fresher' && !currentSalary) {
+        if (experienceLevel !== 'Fresher' && !currentSalaryAmount) {
             alert("Current salary is required for experienced candidates.");
             return;
         }
@@ -358,10 +375,9 @@ export function Onboarding() {
                 currentLocation,
                 hometown,
                 educationHistory: [firstEduItem],
-                languages,
                 certifications,
                 awards,
-                projects,
+                projects: projects ? [{ title: projects }] : [],
                 internships,
                 profileSummary,
                 otherAchievements

@@ -101,25 +101,29 @@ export const consultationApi = {
     return res.json();
   },
 
-  // POST /user/me/resume — upload CV/resume (PDF only, max 5MB)
+  // POST /user/me/resume — upload CV/resume (.pdf, .doc, .docx, max 5MB)
   // Backend derives the user from the JWT token; no userId in URL needed.
   uploadCv: async (file: File): Promise<string> => {
     const token = getAuthToken();
     if (!token) throw new Error('Authentication required to upload CV.');
 
-    // Ensure the file is a PDF (enforce correct MIME type in case browser reports octet-stream)
+    const lowerName = file.name.toLowerCase();
     let mimeType = file.type;
     if (!mimeType || mimeType === 'application/octet-stream') {
-      if (file.name.toLowerCase().endsWith('.pdf')) {
+      if (lowerName.endsWith('.pdf')) {
         mimeType = 'application/pdf';
+      } else if (lowerName.endsWith('.doc')) {
+        mimeType = 'application/msword';
+      } else if (lowerName.endsWith('.docx')) {
+        mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       }
     }
 
-    // Re-wrap with the correct MIME type so the multipart field header is correct
+    // Re-wrap with normalized MIME type so multipart header is correct
     const normalizedFile = new File([file], file.name, { type: mimeType });
 
     const formData = new FormData();
-    // Backend expects the field to be named 'resume'
+    // Backend accepts multipart field name = "resume"
     formData.append('resume', normalizedFile);
 
     // Do NOT set Content-Type manually — browser sets it with the correct multipart boundary
@@ -129,17 +133,25 @@ export const consultationApi = {
         'Authorization': `Bearer ${token}`,
       },
       body: formData,
-      timeout: 30000, // 30s — file uploads can be slow on cold servers
+      timeout: 30000,
     });
+
+    if (res.status === 413) {
+      throw new Error('File size is too large for the server (HTTP 413 Content Too Large). Please upload a smaller file (under 2MB) or ask your backend developer to increase Nginx/Express body size limit (client_max_body_size).');
+    }
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || 'CV upload failed');
+      throw new Error(err.message || `Resume upload failed with status ${res.status}`);
     }
 
     const result = await res.json();
-    // Backend returns the updated UserProfile; resume URL may be at data.resume or data.cvUrl
-    return result?.data?.resume || result?.data?.cvUrl || result?.data?.resumeUrl || '';
+    const data = result?.data || result;
+    const resumeUrl = typeof data === 'string' ? data : (data?.resume || data?.cvUrl || data?.resumeUrl || data?.url || data?.path || '');
+    if (!resumeUrl) {
+      throw new Error(result?.message || 'Backend response did not include a valid resume URL.');
+    }
+    return resumeUrl;
   },
 
   /**

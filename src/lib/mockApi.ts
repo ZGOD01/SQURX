@@ -1,6 +1,5 @@
 import { MockDB } from './mockDb';
 import type { User, StudentProfile, CompanyProfile, JobVacancy, JobApplication, ConsultationBooking, SystemActivity } from './mockDb/schema';
-import type { EmploymentHistoryItem, ProjectItem, LanguageKnownItem } from './mockDb/schema';
 import { API_BASE_URL } from './config';
 import { getInMemToken } from '@/features/auth/store';
 
@@ -74,7 +73,7 @@ export const mockApi = {
                 headers: { 'Authorization': `Bearer ${token}` },
                 // Always bypass stale browser cache for profile data
                 cache: 'no-store',
-                timeout: 3000
+                timeout: 15000
             } as any);
             if (res.ok) {
                 const json = await res.json();
@@ -196,28 +195,53 @@ export const mockApi = {
                     }
 
                     // Map all new fields from backend
+                    // Map all candidate fields from backend
                     profile.gender = data.gender || '';
                     profile.dob = data.dob || '';
                     profile.currentLocation = data.currentLocation || '';
                     profile.hometown = data.hometown || '';
+                    profile.hometownCountry = data.hometownCountry || '';
 
-                    // languagesKnown[] — array replaces old `languages` string
+                    // languagesKnown[] — array of { language, proficiency, read, write, speak }
                     if (Array.isArray(data.languagesKnown)) {
-                        profile.languagesKnown = data.languagesKnown as LanguageKnownItem[];
+                        profile.languagesKnown = data.languagesKnown.map((l: any) => ({
+                            language: typeof l.language === 'object' && l.language ? l.language._id : (l.language || ''),
+                            proficiency: typeof l.proficiency === 'object' && l.proficiency ? l.proficiency._id : (l.proficiency || ''),
+                            read: l.read ?? false,
+                            write: l.write ?? false,
+                            speak: l.speak ?? false,
+                            languageName: l.languageName || (typeof l.language === 'object' ? l.language.name : undefined),
+                            proficiencyName: l.proficiencyName || (typeof l.proficiency === 'object' ? l.proficiency.name : undefined)
+                        }));
                     } else if (Array.isArray(data.languages)) {
-                        // backend may send as `languages` array of objects
-                        profile.languagesKnown = (data.languages as any[]).map((l: any) =>
-                            typeof l === 'string'
-                                ? ({ languageName: l } as LanguageKnownItem)
-                                : ({ language: l._id || l.language, languageName: l.name || l.languageName, proficiency: l.proficiency?._id || l.proficiency, proficiencyName: l.proficiency?.name || l.proficiencyName } as LanguageKnownItem)
-                        );
+                        profile.languagesKnown = (data.languages as any[]).map((l: any) => ({
+                            language: typeof l === 'string' ? l : (l._id || l.language || ''),
+                            proficiency: typeof l.proficiency === 'object' && l.proficiency ? l.proficiency._id : (l.proficiency || ''),
+                            read: l.read ?? false,
+                            write: l.write ?? false,
+                            speak: l.speak ?? false,
+                            languageName: typeof l === 'object' ? (l.name || l.languageName) : l,
+                            proficiencyName: l.proficiency?.name || l.proficiencyName
+                        }));
                     } else {
                         profile.languagesKnown = [];
                     }
 
-                    // employmentHistory[] — PUT replaces whole array; currentSalary is a string
+                    // employmentHistory[] — exact backend fields
                     if (Array.isArray(data.employmentHistory)) {
-                        profile.employmentHistory = data.employmentHistory as EmploymentHistoryItem[];
+                        profile.employmentHistory = data.employmentHistory.map((e: any) => ({
+                            employmentType: typeof e.employmentType === 'object' && e.employmentType ? e.employmentType._id : (e.employmentType || ''),
+                            isCurrentEmployment: e.isCurrentEmployment ?? e.isCurrent ?? false,
+                            totalExperienceYears: e.totalExperienceYears != null ? Number(e.totalExperienceYears) : undefined,
+                            totalExperienceMonths: e.totalExperienceMonths != null ? Number(e.totalExperienceMonths) : undefined,
+                            companyName: e.companyName || e.company || '',
+                            jobTitle: e.jobTitle || e.role || '',
+                            joiningDate: e.joiningDate || e.startDate || '',
+                            currentSalary: e.currentSalary != null ? String(e.currentSalary) : '',
+                            skillsUsed: Array.isArray(e.skillsUsed) ? e.skillsUsed : [],
+                            jobProfile: e.jobProfile || e.description || '',
+                            noticePeriod: e.noticePeriod || ''
+                        }));
                     } else {
                         profile.employmentHistory = [];
                     }
@@ -225,9 +249,26 @@ export const mockApi = {
                     profile.certifications = Array.isArray(data.certifications) ? data.certifications : [];
                     profile.awards = data.awards || '';
 
-                    // projects[] — structured array (status/siteLink/teamSize), PUT replaces whole array
+                    // projects[] — exact backend fields (title, tag, client, status: "Ongoing"|"Completed", details, projectSite, teamSize, role, etc.)
                     if (Array.isArray(data.projects)) {
-                        profile.projects = data.projects as ProjectItem[];
+                        profile.projects = data.projects.map((p: any) => ({
+                            title: p.title || '',
+                            tag: p.tag || '',
+                            client: p.client || '',
+                            status: p.status === 'Completed' || p.status === 'completed' ? 'Completed' : 'Ongoing',
+                            workedFromYear: p.workedFromYear != null ? Number(p.workedFromYear) : undefined,
+                            workedFromMonth: p.workedFromMonth != null ? Number(p.workedFromMonth) : undefined,
+                            workedTillYear: p.workedTillYear != null ? Number(p.workedTillYear) : undefined,
+                            workedTillMonth: p.workedTillMonth != null ? Number(p.workedTillMonth) : undefined,
+                            details: p.details || p.description || '',
+                            location: p.location || '',
+                            projectSite: p.projectSite || 'Onsite',
+                            natureOfEmployment: typeof p.natureOfEmployment === 'object' && p.natureOfEmployment ? p.natureOfEmployment._id : (p.natureOfEmployment || ''),
+                            teamSize: p.teamSize || undefined,
+                            role: typeof p.role === 'object' && p.role ? p.role._id : (p.role || ''),
+                            roleDescription: p.roleDescription || '',
+                            skillsUsed: p.skillsUsed || ''
+                        }));
                     } else {
                         profile.projects = [];
                     }
@@ -258,15 +299,19 @@ export const mockApi = {
             // Build payload purely from the incoming `data` argument — no sessionStorage fallbacks.
             const payload: Record<string, any> = {};
 
+            const isValidObjectId = (id: any): boolean => {
+                return typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id);
+            };
+
             const formatSalaryPayload = (sal: any) => {
                 if (!sal) return null;
                 if (typeof sal === 'object') {
                     if (sal.amount === null || sal.amount === undefined || sal.amount === '') return null;
-                    const currId = typeof sal.currency === 'object' && sal.currency ? sal.currency._id : sal.currency;
-                    return {
-                        amount: Number(sal.amount),
-                        currency: currId || null,
-                    };
+                    const rawCurr = typeof sal.currency === 'object' && sal.currency ? sal.currency._id : sal.currency;
+                    const validCurr = isValidObjectId(rawCurr) ? rawCurr : null;
+                    const resObj: Record<string, any> = { amount: Number(sal.amount) };
+                    if (validCurr) resObj.currency = validCurr;
+                    return resObj;
                 }
                 return sal;
             };
@@ -289,66 +334,190 @@ export const mockApi = {
                 payload.currentSalary = null;
             }
 
-            if (data.preferredDomains !== undefined) payload.preferredDomains = data.preferredDomains;
+            if (data.preferredDomains !== undefined) {
+                payload.preferredDomains = Array.isArray(data.preferredDomains) ? data.preferredDomains.filter(isValidObjectId) : [];
+            }
             
-            if (data.educationHistory !== undefined) payload.educationHistory = data.educationHistory;
+            if (data.educationHistory !== undefined) {
+                payload.educationHistory = Array.isArray(data.educationHistory) ? data.educationHistory.map((item: any) => {
+                    const edu: Record<string, any> = {};
+                    if (isValidObjectId(item.education)) edu.education = item.education;
+                    if (isValidObjectId(item.university)) edu.university = item.university;
+                    if (isValidObjectId(item.course)) edu.course = item.course;
+                    if (isValidObjectId(item.specialization)) edu.specialization = item.specialization;
+                    if (item.courseType) edu.courseType = item.courseType;
+                    if (item.passingYear != null && item.passingYear !== '') edu.passingYear = Number(item.passingYear);
+                    if (item.gradingSystem) edu.gradingSystem = item.gradingSystem;
+                    if (item.marks != null && item.marks !== '') edu.marks = Number(item.marks);
+                    return edu;
+                }) : [];
+            }
 
-            if (data.experienceLevel !== undefined) payload.experienceLevel = data.experienceLevel;
-            if (data.experienceLevelId) payload.experienceLevel = data.experienceLevelId;
-            if (data.preferredJobTypes !== undefined) payload.preferredJobTypes = data.preferredJobTypes;
-            if (data.skills !== undefined) payload.skills = data.skills;
-            if (data.preferredLocations !== undefined) payload.preferredLocations = data.preferredLocations;
+            if (isValidObjectId(data.experienceLevelId)) {
+                payload.experienceLevel = data.experienceLevelId;
+            } else if (isValidObjectId(data.experienceLevel)) {
+                payload.experienceLevel = data.experienceLevel;
+            }
+
+            if (data.preferredJobTypes !== undefined) {
+                payload.preferredJobTypes = Array.isArray(data.preferredJobTypes) ? data.preferredJobTypes.filter(isValidObjectId) : [];
+            }
+            if (data.skills !== undefined) {
+                payload.skills = Array.isArray(data.skills) ? data.skills.filter(isValidObjectId) : [];
+            }
+            if (data.preferredLocations !== undefined) {
+                payload.preferredLocations = Array.isArray(data.preferredLocations) ? data.preferredLocations.filter(isValidObjectId) : [];
+            }
             if (data.cvUrl !== undefined) payload.resume = data.cvUrl;
             if (data.resume !== undefined) payload.resume = data.resume;
             if (data.cvName !== undefined) payload.cvName = data.cvName;
             if (data.resumeName !== undefined) payload.resumeName = data.resumeName;
 
-            // Sync new fields with backend
-            if (data.gender !== undefined) payload.gender = data.gender;
-            if (data.dob !== undefined) payload.dob = data.dob;
-            if (data.currentLocation !== undefined) payload.currentLocation = data.currentLocation;
-            if (data.hometown !== undefined) payload.hometown = data.hometown;
+            // Format Date of Birth (dob) as valid ISO YYYY-MM-DD date string
+            const formatDobPayload = (dobVal: any) => {
+                if (!dobVal || typeof dobVal !== 'string' || !dobVal.trim()) return undefined;
+                const trimmed = dobVal.trim();
+                if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
+                    const [day, month, year] = trimmed.split('/');
+                    const isoStr = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+                    const d = new Date(isoStr);
+                    return !isNaN(d.getTime()) ? isoStr : undefined;
+                }
+                const d = new Date(trimmed);
+                if (!isNaN(d.getTime())) {
+                    return d.toISOString().split('T')[0];
+                }
+                return undefined;
+            };
 
-            // languagesKnown[] — PUT replaces whole stored array
-            if (data.languagesKnown !== undefined) payload.languagesKnown = data.languagesKnown;
+            // Sync candidate fields with backend using exact property names
+            if (data.gender && data.gender.trim()) payload.gender = data.gender.trim();
+            const dobFormatted = formatDobPayload(data.dob);
+            if (dobFormatted) payload.dob = dobFormatted;
+            if (data.currentLocation && data.currentLocation.trim()) payload.currentLocation = data.currentLocation.trim();
+            if (data.hometown && data.hometown.trim()) payload.hometown = data.hometown.trim();
+            if (isValidObjectId(data.hometownCountry)) payload.hometownCountry = data.hometownCountry;
 
-            // employmentHistory[] — PUT replaces whole stored array; currentSalary kept as string per spec
-            if (data.employmentHistory !== undefined) payload.employmentHistory = data.employmentHistory;
+            // languagesKnown[] — array of { language, proficiency, read, write, speak }
+            if (data.languagesKnown !== undefined) {
+                payload.languagesKnown = Array.isArray(data.languagesKnown) ? data.languagesKnown
+                    .filter((l: any) => isValidObjectId(l.language) && isValidObjectId(l.proficiency))
+                    .map((l: any) => ({
+                        language: l.language,
+                        proficiency: l.proficiency,
+                        read: !!l.read,
+                        write: !!l.write,
+                        speak: !!l.speak
+                    })) : [];
+            }
+
+            // employmentHistory[] — exact backend structure
+            if (data.employmentHistory !== undefined) {
+                payload.employmentHistory = Array.isArray(data.employmentHistory) ? data.employmentHistory.map((e: any) => {
+                    const emp: Record<string, any> = {
+                        isCurrentEmployment: !!e.isCurrentEmployment,
+                        companyName: e.companyName || '',
+                        jobTitle: e.jobTitle || '',
+                        joiningDate: e.joiningDate || '',
+                        currentSalary: e.currentSalary != null ? String(e.currentSalary) : '',
+                        skillsUsed: Array.isArray(e.skillsUsed) ? e.skillsUsed.filter(isValidObjectId) : [],
+                        jobProfile: e.jobProfile || '',
+                        noticePeriod: e.noticePeriod || ''
+                    };
+                    if (isValidObjectId(e.employmentType)) {
+                        emp.employmentType = e.employmentType;
+                    }
+                    if (e.totalExperienceYears != null && e.totalExperienceYears !== '') emp.totalExperienceYears = Number(e.totalExperienceYears);
+                    if (e.totalExperienceMonths != null && e.totalExperienceMonths !== '') emp.totalExperienceMonths = Number(e.totalExperienceMonths);
+                    return emp;
+                }) : [];
+            }
 
             if (data.certifications !== undefined) payload.certifications = data.certifications;
             if (data.awards !== undefined) payload.awards = data.awards;
 
-            // projects[] — PUT replaces whole stored array
-            if (data.projects !== undefined) payload.projects = data.projects;
+            // projects[] — exact backend structure: title, tag, client, status ('Ongoing'|'Completed'), details, location, projectSite, teamSize, role, etc.
+            if (data.projects !== undefined) {
+                payload.projects = Array.isArray(data.projects) ? data.projects.map((p: any) => {
+                    const proj: Record<string, any> = {
+                        title: p.title || '',
+                        status: p.status === 'Completed' ? 'Completed' : 'Ongoing',
+                        details: p.details || ''
+                    };
+                    if (p.tag) proj.tag = p.tag;
+                    if (p.client) proj.client = p.client;
+                    if (p.workedFromYear != null && p.workedFromYear !== '') proj.workedFromYear = Number(p.workedFromYear);
+                    if (p.workedFromMonth != null && p.workedFromMonth !== '') proj.workedFromMonth = Number(p.workedFromMonth);
+                    if (p.workedTillYear != null && p.workedTillYear !== '') proj.workedTillYear = Number(p.workedTillYear);
+                    if (p.workedTillMonth != null && p.workedTillMonth !== '') proj.workedTillMonth = Number(p.workedTillMonth);
+                    if (p.location) proj.location = p.location;
+                    if (p.projectSite) proj.projectSite = p.projectSite;
+                    if (isValidObjectId(p.natureOfEmployment)) proj.natureOfEmployment = p.natureOfEmployment;
+                    if (p.teamSize) proj.teamSize = p.teamSize;
+                    if (isValidObjectId(p.role)) proj.role = p.role;
+                    if (p.roleDescription) proj.roleDescription = p.roleDescription;
+                    if (p.skillsUsed) proj.skillsUsed = p.skillsUsed;
+                    return proj;
+                }) : [];
+            }
 
             if (data.internships !== undefined) payload.internships = data.internships;
             if (data.profileSummary !== undefined) payload.profileSummary = data.profileSummary;
             if (data.otherAchievements !== undefined) payload.otherAchievements = data.otherAchievements;
 
-            await fetchWithTimeout(`${API_BASE_URL}/user/me`, {
+            const res = await fetchWithTimeout(`${API_BASE_URL}/user/me`, {
                 method: 'PUT',
                 headers: { 
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(payload),
-                timeout: 3000
+                timeout: 15000
             });
+
+            if (!res.ok) {
+                const errJson = await res.json().catch(() => ({}));
+                console.error("Backend PUT /user/me Error Response:", errJson);
+                let errMsg = errJson.message || errJson.error || '';
+                if (errJson.errors) {
+                    if (typeof errJson.errors === 'object') {
+                        const detailStr = Object.entries(errJson.errors)
+                            .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+                            .join(', ');
+                        errMsg = errMsg ? `${errMsg} (${detailStr})` : detailStr;
+                    } else {
+                        errMsg = errMsg ? `${errMsg} (${errJson.errors})` : String(errJson.errors);
+                    }
+                }
+                if (!errMsg) errMsg = `PUT /user/me failed with status ${res.status}`;
+                throw new Error(errMsg);
+            }
         }
-    } catch(e) {
-        console.error("Failed to sync profile update with backend", e);
+    } catch(e: any) {
+        console.error("Failed to sync profile update with backend:", e);
+        throw e;
     }
   },
 
   /**
-   * Upload a CV/resume PDF to the backend via POST /user/me/resume (multipart/form-data).
-   * Returns the updated user profile data.resume (S3 URL) on success.
+   * Upload a CV/resume (.pdf, .doc, .docx) to backend via POST /user/me/resume (multipart/form-data).
    */
   uploadResume: async (file: File): Promise<string | null> => {
     const token = getInMemToken();
     if (!token) throw new Error('Not authenticated');
+    
+    const lowerName = file.name.toLowerCase();
+    let mimeType = file.type;
+    if (!mimeType || mimeType === 'application/octet-stream') {
+      if (lowerName.endsWith('.pdf')) mimeType = 'application/pdf';
+      else if (lowerName.endsWith('.doc')) mimeType = 'application/msword';
+      else if (lowerName.endsWith('.docx')) mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    }
+
+    const normalizedFile = new File([file], file.name, { type: mimeType });
     const formData = new FormData();
-    formData.append('resume', file);
+    formData.append('resume', normalizedFile);
+
     const res = await fetch(`${API_BASE_URL}/user/me/resume`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },

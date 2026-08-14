@@ -209,7 +209,7 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
     let score = 10; // Base score for registration
     if (p.educationHistory && p.educationHistory.length > 0) score += 10;
     if (p.experienceLevel && p.experienceLevel.trim().length > 0) score += 10;
-    if (p.expectedSalary && p.expectedSalary.trim().length > 0) score += 10;
+    if (p.expectedSalary && (typeof p.expectedSalary === 'string' ? p.expectedSalary.trim().length > 0 : (p.expectedSalary as any).amount != null)) score += 10;
     if (p.location && p.location.trim().length > 0) score += 10;
     if (p.jobType && p.jobType.trim().length > 0) score += 10;
     if (p.careerGoal && p.careerGoal.trim().length > 0) score += 10;
