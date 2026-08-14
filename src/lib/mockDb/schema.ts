@@ -40,7 +40,7 @@ export interface EmploymentHistoryItem {
   companyName?: string;
   jobTitle?: string;
   joiningDate?: string;
-  currentSalary?: string; // kept as string per backend spec
+  currentSalary?: SalaryValue | string | null; // structured { amount, currency } or string/null
   skillsUsed?: string[];
   jobProfile?: string;
   noticePeriod?: string;

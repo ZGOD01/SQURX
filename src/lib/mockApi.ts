@@ -237,7 +237,10 @@ export const mockApi = {
                             companyName: e.companyName || e.company || '',
                             jobTitle: e.jobTitle || e.role || '',
                             joiningDate: e.joiningDate || e.startDate || '',
-                            currentSalary: e.currentSalary != null ? String(e.currentSalary) : '',
+                            currentSalary: typeof e.currentSalary === 'object' && e.currentSalary ? {
+                                amount: e.currentSalary.amount != null ? Number(e.currentSalary.amount) : null,
+                                currency: typeof e.currentSalary.currency === 'object' && e.currentSalary.currency ? e.currentSalary.currency : (e.currentSalary.currency || null)
+                            } : (e.currentSalary != null && e.currentSalary !== '' ? (isNaN(Number(e.currentSalary)) ? String(e.currentSalary) : { amount: Number(e.currentSalary), currency: null }) : null),
                             skillsUsed: Array.isArray(e.skillsUsed) ? e.skillsUsed : [],
                             jobProfile: e.jobProfile || e.description || '',
                             noticePeriod: e.noticePeriod || ''
@@ -419,7 +422,7 @@ export const mockApi = {
                         companyName: e.companyName || '',
                         jobTitle: e.jobTitle || '',
                         joiningDate: e.joiningDate || '',
-                        currentSalary: e.currentSalary != null ? String(e.currentSalary) : '',
+                        currentSalary: formatSalaryPayload(e.currentSalary),
                         skillsUsed: Array.isArray(e.skillsUsed) ? e.skillsUsed.filter(isValidObjectId) : [],
                         jobProfile: e.jobProfile || '',
                         noticePeriod: e.noticePeriod || ''

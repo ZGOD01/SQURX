@@ -622,7 +622,7 @@ export function StudentProfile() {
             const isFresherUser = experienceLevel === 'Fresher' || experienceLevelId === 'Fresher' || (expMatch?.name === 'Fresher');
             const currentSalaryPayload = (!isFresherUser && currentSalaryAmount) ? {
                 amount: Number(currentSalaryAmount),
-                currency: expectedSalaryCurrency || defaultCurrId
+                currency: currentSalaryCurrency || defaultCurrId
             } : null;
 
             await updateProfile(user.id, {
@@ -652,19 +652,39 @@ export function StudentProfile() {
                     speak: !!lk.speak
                 })),
                 educationHistory: processedEducationHistory,
-                employmentHistory: employmentHistory.map(e => ({
-                    employmentType: e.employmentType || '',
-                    isCurrentEmployment: !!e.isCurrentEmployment,
-                    totalExperienceYears: e.totalExperienceYears ? Number(e.totalExperienceYears) : undefined,
-                    totalExperienceMonths: e.totalExperienceMonths ? Number(e.totalExperienceMonths) : undefined,
-                    companyName: e.companyName || '',
-                    jobTitle: e.jobTitle || '',
-                    joiningDate: e.joiningDate || '',
-                    currentSalary: e.currentSalary != null ? String(e.currentSalary) : '',
-                    skillsUsed: Array.isArray(e.skillsUsed) ? e.skillsUsed : [],
-                    jobProfile: e.jobProfile || '',
-                    noticePeriod: e.noticePeriod || ''
-                })),
+                employmentHistory: employmentHistory.map(e => {
+                    let salaryPayload: any = null;
+                    if (e.currentSalary) {
+                        if (typeof e.currentSalary === 'object') {
+                            const salObj = e.currentSalary as any;
+                            if (salObj && salObj.amount != null && salObj.amount !== '') {
+                                const currId = typeof salObj.currency === 'object' && salObj.currency ? salObj.currency._id : salObj.currency;
+                                salaryPayload = {
+                                    amount: Number(salObj.amount),
+                                    currency: currId || defaultCurrId
+                                };
+                            }
+                        } else if (!isNaN(Number(e.currentSalary)) && String(e.currentSalary) !== '') {
+                            salaryPayload = {
+                                amount: Number(e.currentSalary),
+                                currency: defaultCurrId
+                            };
+                        }
+                    }
+                    return {
+                        employmentType: e.employmentType || '',
+                        isCurrentEmployment: !!e.isCurrentEmployment,
+                        totalExperienceYears: e.totalExperienceYears ? Number(e.totalExperienceYears) : undefined,
+                        totalExperienceMonths: e.totalExperienceMonths ? Number(e.totalExperienceMonths) : undefined,
+                        companyName: e.companyName || '',
+                        jobTitle: e.jobTitle || '',
+                        joiningDate: e.joiningDate || '',
+                        currentSalary: salaryPayload,
+                        skillsUsed: Array.isArray(e.skillsUsed) ? e.skillsUsed : [],
+                        jobProfile: e.jobProfile || '',
+                        noticePeriod: e.noticePeriod || ''
+                    };
+                }),
                 certifications,
                 awards,
                 projects: projects.map(p => ({
@@ -1842,12 +1862,53 @@ export function StudentProfile() {
                                                                     />
                                                                 </div>
                                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                                    <Input
-                                                                        placeholder="Current Salary (e.g. 50000)"
-                                                                        value={emp.currentSalary || ''}
-                                                                        onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], currentSalary: e.target.value }; setEmploymentHistory(c); }}
-                                                                        className="h-9 rounded-lg text-sm"
-                                                                    />
+                                                                    <div className="flex gap-2">
+                                                                        <select
+                                                                            value={typeof emp.currentSalary === 'object' && emp.currentSalary 
+                                                                                ? (typeof emp.currentSalary.currency === 'object' && emp.currentSalary.currency ? emp.currentSalary.currency._id : String(emp.currentSalary.currency || ''))
+                                                                                : ''}
+                                                                            onChange={(e) => {
+                                                                                const c = [...employmentHistory];
+                                                                                const prevAmt = typeof c[idx].currentSalary === 'object' && c[idx].currentSalary ? c[idx].currentSalary.amount : c[idx].currentSalary;
+                                                                                c[idx] = { 
+                                                                                    ...c[idx], 
+                                                                                    currentSalary: { 
+                                                                                        amount: prevAmt != null && prevAmt !== '' ? Number(prevAmt) : null, 
+                                                                                        currency: e.target.value 
+                                                                                    } 
+                                                                                };
+                                                                                setEmploymentHistory(c);
+                                                                            }}
+                                                                            className="h-9 w-24 bg-background border border-input rounded-lg px-2 text-xs font-semibold outline-none focus:border-ring shrink-0"
+                                                                        >
+                                                                            <option value="">Currency</option>
+                                                                            {currenciesData?.data?.map((curr: any) => (
+                                                                                <option key={curr._id} value={curr._id}>{curr.code} ({curr.symbol})</option>
+                                                                            ))}
+                                                                        </select>
+                                                                        <Input
+                                                                            type="number"
+                                                                            placeholder="Current Salary (e.g. 50000)"
+                                                                            value={typeof emp.currentSalary === 'object' && emp.currentSalary 
+                                                                                ? (emp.currentSalary.amount != null ? String(emp.currentSalary.amount) : '')
+                                                                                : (emp.currentSalary || '')}
+                                                                            onChange={(e) => {
+                                                                                const c = [...employmentHistory];
+                                                                                const prevCurr = typeof c[idx].currentSalary === 'object' && c[idx].currentSalary 
+                                                                                    ? (typeof c[idx].currentSalary.currency === 'object' && c[idx].currentSalary.currency ? c[idx].currentSalary.currency._id : c[idx].currentSalary.currency)
+                                                                                    : (currenciesData?.data?.[0]?._id || '');
+                                                                                c[idx] = { 
+                                                                                    ...c[idx], 
+                                                                                    currentSalary: { 
+                                                                                        amount: e.target.value ? Number(e.target.value) : null, 
+                                                                                        currency: prevCurr || (currenciesData?.data?.[0]?._id || '')
+                                                                                    } 
+                                                                                };
+                                                                                setEmploymentHistory(c);
+                                                                            }}
+                                                                            className="h-9 rounded-lg text-sm flex-1"
+                                                                        />
+                                                                    </div>
                                                                     <Input
                                                                         placeholder="Notice Period (e.g. 1 Month)"
                                                                         value={emp.noticePeriod || ''}
@@ -1897,7 +1958,20 @@ export function StudentProfile() {
                                                                         <span>Experience: {emp.totalExperienceYears || 0} yrs {emp.totalExperienceMonths || 0} mos</span>
                                                                     )}
                                                                     {emp.noticePeriod && <span>Notice: {emp.noticePeriod}</span>}
-                                                                    {emp.currentSalary && <span>Salary: {emp.currentSalary}</span>}
+                                                                    {(() => {
+                                                                        if (!emp.currentSalary) return null;
+                                                                        if (typeof emp.currentSalary === 'object') {
+                                                                            const salObj = emp.currentSalary as any;
+                                                                            const amt = salObj?.amount;
+                                                                            if (amt == null || amt === '') return null;
+                                                                            const currObj = typeof salObj?.currency === 'object' && salObj.currency 
+                                                                                ? salObj.currency 
+                                                                                : currenciesData?.data?.find((c: any) => c._id === salObj?.currency);
+                                                                            const currLabel = currObj?.code ? `${currObj.code} (${currObj.symbol || ''})` : '';
+                                                                            return <span>Salary: {currLabel} {Number(amt).toLocaleString()}</span>;
+                                                                        }
+                                                                        return <span>Salary: {String(emp.currentSalary)}</span>;
+                                                                    })()}
                                                                 </div>
                                                                 {emp.jobProfile && <span className="text-xs text-muted-foreground mt-1">{emp.jobProfile}</span>}
                                                             </div>

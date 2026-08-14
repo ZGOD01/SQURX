@@ -7,7 +7,6 @@ import {
     Building2, 
     Briefcase, 
     Filter, 
-    IndianRupee, 
     Sparkles, 
     Award, 
     Clock, 
@@ -19,7 +18,8 @@ import {
     ChevronRight,
     Globe,
     Loader2,
-    Star
+    Star,
+    Banknote
 } from 'lucide-react';
 import { fetchJobs, fetchJobDetails, fetchRelevantJobs, type ApiJobItem } from '@/lib/jobsApi';
 import { useGetCurrenciesQuery } from '@/lib/store/authApi';
@@ -408,11 +408,16 @@ export function StudentJobs() {
                             >
                                 <option value="">Any Currency</option>
                                 {currenciesData?.data?.map((c: any) => (
-                                    <option key={c._id} value={c._id}>{c.code} – {c.name}</option>
+                                    <option key={c._id} value={c.code}>{c.code} – {c.name}</option>
                                 ))}
                             </select>
                             <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors flex-1">
-                                <IndianRupee className="absolute left-3 text-muted-foreground w-4 h-4 pointer-events-none" />
+                                <div className="absolute left-3 text-muted-foreground text-xs font-bold pointer-events-none flex items-center gap-1">
+                                    {(() => {
+                                        const match = currenciesData?.data?.find((c: any) => c.code === currency);
+                                        return match?.symbol ? <span className="text-sm font-semibold">{match.symbol}</span> : <Banknote size={15} />;
+                                    })()}
+                                </div>
                                 <input
                                     type="number"
                                     placeholder="Min Salary"
@@ -423,7 +428,12 @@ export function StudentJobs() {
                             </div>
                             <span className="hidden sm:flex items-center text-muted-foreground text-sm font-medium">to</span>
                             <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors flex-1">
-                                <IndianRupee className="absolute left-3 text-muted-foreground w-4 h-4 pointer-events-none" />
+                                <div className="absolute left-3 text-muted-foreground text-xs font-bold pointer-events-none flex items-center gap-1">
+                                    {(() => {
+                                        const match = currenciesData?.data?.find((c: any) => c.code === currency);
+                                        return match?.symbol ? <span className="text-sm font-semibold">{match.symbol}</span> : <Banknote size={15} />;
+                                    })()}
+                                </div>
                                 <input
                                     type="number"
                                     placeholder="Max Salary"
@@ -625,8 +635,8 @@ export function StudentJobs() {
                                                         )}
                                                         {job.relevanceScore !== undefined && (
                                                             <Badge variant="secondary" className="bg-gradient-to-r from-blue-500/15 to-purple-500/15 text-blue-700 border-blue-400/30 flex items-center gap-1 text-[10px] font-bold">
-                                                                <Star size={9} className="fill-blue-500 text-blue-500" />
-                                                                {Math.round(job.relevanceScore * 100)}% Match
+                                                                <Sparkles size={9} className="fill-blue-500 text-blue-500" />
+                                                                Recommended
                                                             </Badge>
                                                         )}
                                                         {job.source && (
@@ -678,7 +688,7 @@ export function StudentJobs() {
                                                     )}
                                                     {job.salary && (
                                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted/50 text-[10px] font-semibold text-muted-foreground border border-border/50">
-                                                            <IndianRupee size={10} /> {job.salary}
+                                                            <Banknote size={11} /> {job.salary}
                                                         </span>
                                                     )}
                                                     {job.experienceLevel && (
@@ -803,7 +813,7 @@ export function StudentJobs() {
                             )}
                             {selectedJob.salary && (
                                 <div className="bg-muted/30 p-3 rounded-xl border border-border/50 col-span-2 md:col-span-1">
-                                    <div className="text-xs text-muted-foreground uppercase font-bold tracking-wider mb-1 flex items-center gap-1"><IndianRupee size={12} /> Salary Range</div>
+                                    <div className="text-xs text-muted-foreground uppercase font-bold tracking-wider mb-1 flex items-center gap-1"><Banknote size={12} /> Salary Range</div>
                                     <div className="font-medium text-sm">{selectedJob.salary}</div>
                                 </div>
                             )}

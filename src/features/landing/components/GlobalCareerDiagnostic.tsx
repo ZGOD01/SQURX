@@ -12,7 +12,7 @@ import {
     TrendingUp, Home, Microscope, Handshake, 
     HelpCircle, Calculator, Star, Map, CheckCircle2,
     CalendarDays, LogIn, ArrowRight, ArrowLeft, Clock, Loader2,
-    Eye, EyeOff
+    Eye, EyeOff, ChevronLeft, ChevronRight, Calendar
 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -117,6 +117,67 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
     const [bookingError, setBookingError] = useState<string | null>(null);
     const [passwordRequired, setPasswordRequired] = useState(false);
     const [customPassword, setCustomPassword] = useState('');
+
+    // Calendar Month Grid state (GET /time-slots/calendar?month=YYYY-MM)
+    const [currentMonthDate, setCurrentMonthDate] = useState<Date>(new Date());
+    const [calendarDays, setCalendarDays] = useState<any[]>([]);
+    const [isCalendarLoading, setIsCalendarLoading] = useState(false);
+
+    const formatMonthParam = (d: Date) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        return `${year}-${month}`;
+    };
+
+    const loadCalendarMonth = async (targetDate: Date) => {
+        setIsCalendarLoading(true);
+        const monthParam = formatMonthParam(targetDate);
+        try {
+            const res = await consultationApi.getCalendarSlots(monthParam);
+            let daysList: any[] = [];
+            const dataObj = res?.data || res;
+            if (Array.isArray(dataObj)) {
+                daysList = dataObj;
+            } else if (Array.isArray(dataObj?.months)) {
+                daysList = dataObj.months;
+            } else if (Array.isArray(dataObj?.days)) {
+                daysList = dataObj.days;
+            } else if (Array.isArray(dataObj?.calendar)) {
+                daysList = dataObj.calendar;
+            }
+            if (daysList.length > 0) {
+                setCalendarDays(daysList);
+            } else {
+                // Fallback to rolling time-slots if calendar month returns empty
+                const tsRes = await consultationApi.getTimeSlots();
+                if (tsRes?.success && tsRes.data) {
+                    setSlotsData(tsRes.data);
+                }
+            }
+        } catch (err) {
+            console.warn('[GCD] /time-slots/calendar fetch error, falling back to /time-slots:', err);
+            try {
+                const tsRes = await consultationApi.getTimeSlots();
+                if (tsRes?.success && tsRes.data) {
+                    setSlotsData(tsRes.data);
+                }
+            } catch (fbErr) {
+                console.error('[GCD] Fallback /time-slots error:', fbErr);
+            }
+        } finally {
+            setIsCalendarLoading(false);
+        }
+    };
+
+    const handlePrevMonth = () => {
+        const prev = new Date(currentMonthDate.getFullYear(), currentMonthDate.getMonth() - 1, 1);
+        setCurrentMonthDate(prev);
+    };
+
+    const handleNextMonth = () => {
+        const next = new Date(currentMonthDate.getFullYear(), currentMonthDate.getMonth() + 1, 1);
+        setCurrentMonthDate(next);
+    };
 
     const handleConfirmSuccessRedirect = () => {
         if (redirectTimerRef.current) {
@@ -281,17 +342,17 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
             });
 
         consultationApi.getTimeSlots().then(res => {
-            console.log('[GCD] /time-slots raw response:', res);
             if(res.success && res.data) {
                setSlotsData(res.data);
-               console.log('[GCD] Loaded', res.data.length, 'date slots from backend');
-            } else {
-               console.warn('[GCD] /time-slots returned unexpected shape:', res);
             }
-        }).catch(err => {
-            console.error('[GCD] /time-slots fetch error:', err);
-        });
+        }).catch(() => {});
+
+        loadCalendarMonth(currentMonthDate);
     }, []);
+
+    useEffect(() => {
+        loadCalendarMonth(currentMonthDate);
+    }, [currentMonthDate]);
 
     useEffect(() => {
         if (directBooking && user) {
@@ -577,7 +638,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
             }
 
             // Send notification email to Counselling@squarex.com (fire-and-forget)
-            const selectedDateObj = slotsData.find(d => d._id === selectedDate);
+            const selectedDateObj = calendarDays.find(d => (d.dateId || d._id) === selectedDate || d.date === selectedDate) || slotsData.find(d => (d._id || d.date) === selectedDate);
             const selectedSlotObj = selectedDateObj?.slots?.find((s: any) => s._id === selectedTime);
             consultationApi.sendBookingNotification({
                 studentName: leadData.name || loggedInUser?.name || loggedInUser?.fullName || 'Student',
@@ -1249,30 +1310,122 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                     </div>
                                     <h3 className="text-xl md:text-2xl font-black text-gray-900 mb-2 tracking-tight">Select Date & Time</h3>
                                     <p className="text-sm text-gray-500 mb-6 leading-relaxed">Book a fast-track 1-on-1 session with our experts to review your customized roadmap.</p>
-                                    
-                                    {/* Date Selector — 7 Columns Grid */}
+                                                        {/* Date Selector — Full Month Grid with Reason Codes */}
                                     <div className="space-y-3 mb-6">
-                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between">
-                                            <span>Available Dates (7 Days Calendar)</span>
-                                            <span className="text-[9px] font-semibold text-gray-400">Sundays Closed</span>
-                                        </label>
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                                                <span>Select Date</span>
+                                                {isCalendarLoading && <Loader2 size={12} className="animate-spin text-blue-500" />}
+                                            </label>
+                                            <span className="text-[9px] font-semibold text-gray-400">Available Slots</span>
+                                        </div>
+
+                                        {/* Month Header Navigation */}
+                                        <div className="flex items-center justify-between bg-gray-50/90 px-3 py-2 rounded-2xl border border-gray-100 shadow-sm">
+                                            <button
+                                                type="button"
+                                                onClick={handlePrevMonth}
+                                                className="p-1.5 rounded-xl hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-200 text-gray-600 transition-all cursor-pointer"
+                                                aria-label="Previous Month"
+                                            >
+                                                <ChevronLeft size={16} strokeWidth={2.5} />
+                                            </button>
+                                            <div className="flex items-center gap-2">
+                                                <Calendar size={15} className="text-blue-600" />
+                                                <span className="font-extrabold text-sm text-gray-900 tracking-tight">
+                                                    {currentMonthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                                                </span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={handleNextMonth}
+                                                className="p-1.5 rounded-xl hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-200 text-gray-600 transition-all cursor-pointer"
+                                                aria-label="Next Month"
+                                            >
+                                                <ChevronRight size={16} strokeWidth={2.5} />
+                                            </button>
+                                        </div>
+
+                                        {/* Day of Week Column Headers (Mon to Sun) */}
+                                        <div className="grid grid-cols-7 gap-1 text-center mb-1">
+                                            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
+                                                <span key={day} className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                                                    {day}
+                                                </span>
+                                            ))}
+                                        </div>
+
+                                        {/* Month Day Grid */}
                                         <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
                                             {(() => {
-                                                const now = new Date();
-                                                const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                                                const tomorrow = new Date(todayMidnight);
-                                                tomorrow.setDate(tomorrow.getDate() + 1);
-                                                const rangeEnd = new Date(todayMidnight);
-                                                rangeEnd.setDate(rangeEnd.getDate() + 15);
+                                                const year = currentMonthDate.getFullYear();
+                                                const month = currentMonthDate.getMonth();
+                                                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                                                const firstDayIndex = new Date(year, month, 1).getDay(); // 0 is Sun
+                                                const startOffset = (firstDayIndex + 6) % 7; // Mon=0, Sun=6
 
-                                                const filtered = slotsData.filter((dateObj) => {
-                                                    const d = new Date(dateObj.date);
-                                                    const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-                                                    if (dMidnight < tomorrow) return false;
-                                                    if (dMidnight > rangeEnd) return false;
-                                                    return true;
-                                                });
+                                                // If we have calendarDays, generate cells for the full month
+                                                if (calendarDays.length > 0) {
+                                                    const cells = [];
+                                                    // Padding before the first day
+                                                    for (let p = 0; p < startOffset; p++) {
+                                                        cells.push(
+                                                            <div key={`pad-${p}`} className="h-12 rounded-xl bg-transparent" />
+                                                        );
+                                                    }
 
+                                                    for (let d = 1; d <= daysInMonth; d++) {
+                                                        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                                                        const dayData = calendarDays.find((item: any) => item.date === dateStr || (item.date && item.date.startsWith(dateStr)));
+
+                                                        const isAvail = dayData ? (dayData.isAvailable ?? (Array.isArray(dayData.slots) && dayData.slots.some((s: any) => s.isAvailable))) : false;
+                                                        const reason = dayData?.reason;
+                                                        const dateId = dayData?.dateId || dayData?._id || dateStr;
+                                                        const isSelected = selectedDate === dateId || selectedDate === dateStr;
+
+                                                        if (isAvail) {
+                                                            cells.push(
+                                                                <button
+                                                                    key={`day-${d}`}
+                                                                    type="button"
+                                                                    onClick={() => { setSelectedDate(dateId); setSelectedTime(''); setBookingError(null); }}
+                                                                    className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-xl border transition-all cursor-pointer h-12 ${isSelected
+                                                                        ? 'bg-blue-600 text-white shadow-md scale-[1.05] border-blue-600 ring-2 ring-blue-600/20'
+                                                                        : 'bg-white hover:border-blue-400 border-gray-200 text-gray-800 hover:text-gray-900 shadow-sm'
+                                                                    }`}
+                                                                >
+                                                                    <span className="text-sm font-black leading-none">{d}</span>
+                                                                    <span className={`text-[7px] font-extrabold uppercase mt-0.5 tracking-tight px-1 rounded ${isSelected ? 'text-blue-100' : 'text-emerald-600 bg-emerald-50'}`}>
+                                                                        Open
+                                                                    </span>
+                                                                </button>
+                                                            );
+                                                        } else {
+                                                            let reasonBadge = null;
+                                                            if (reason === 'blackout') {
+                                                                reasonBadge = <span className="text-[7px] font-extrabold uppercase mt-0.5 tracking-tight text-rose-500 bg-rose-50 px-1 rounded">Closed</span>;
+                                                            } else if (reason === 'fully_booked' || reason === 'no_slots') {
+                                                                reasonBadge = <span className="text-[7px] font-extrabold uppercase mt-0.5 tracking-tight text-amber-600 bg-amber-50 px-1 rounded">Full</span>;
+                                                            } else if (reason === 'outside_window') {
+                                                                reasonBadge = <span className="text-[7px] font-extrabold uppercase mt-0.5 tracking-tight text-gray-400">Off</span>;
+                                                            }
+
+                                                            cells.push(
+                                                                <div
+                                                                    key={`day-${d}`}
+                                                                    className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-xl border border-gray-100 bg-gray-50/50 text-gray-300 cursor-not-allowed select-none h-12 ${reason === 'past' ? 'opacity-30' : 'opacity-60'}`}
+                                                                    title={reason ? `Unavailable: ${reason}` : 'Unavailable'}
+                                                                >
+                                                                    <span className="text-xs font-bold leading-none">{d}</span>
+                                                                    {reasonBadge}
+                                                                </div>
+                                                            );
+                                                        }
+                                                    }
+                                                    return cells;
+                                                }
+
+                                                // Fallback to slotsData if calendarDays is not yet populated
                                                 if (slotsData.length === 0) {
                                                     return (
                                                         <p className="text-xs text-gray-400 col-span-7 py-3 text-center">
@@ -1281,16 +1434,8 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                                     );
                                                 }
 
-                                                if (filtered.length === 0) {
-                                                    return (
-                                                        <p className="text-xs text-gray-400 col-span-7 py-3 text-center">
-                                                            No available dates found. Please check back later.
-                                                        </p>
-                                                    );
-                                                }
-
-                                                return filtered.map((dateObj, i) => {
-                                                    const dateStr = dateObj._id;
+                                                return slotsData.map((dateObj: any, i: number) => {
+                                                    const dateStr = dateObj._id || dateObj.date;
                                                     const isSelected = selectedDate === dateStr;
                                                     const date = new Date(dateObj.date);
                                                     const isSunday = date.getDay() === 0 || dateObj.isSunday === true;
@@ -1299,18 +1444,11 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                                         return (
                                                             <div
                                                                 key={`sun_${i}`}
-                                                                className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-gray-100 bg-gray-50/70 text-gray-300 cursor-not-allowed select-none opacity-50"
+                                                                className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-gray-100 bg-gray-50/70 text-gray-300 cursor-not-allowed select-none opacity-50 h-12"
                                                                 title="Sunday - Closed"
                                                             >
-                                                                <span className="text-[10px] uppercase font-bold tracking-wider mb-1 text-gray-400">
-                                                                    Sun
-                                                                </span>
-                                                                <span className="text-base font-bold leading-none text-gray-400">
-                                                                    {date.getDate()}
-                                                                </span>
-                                                                <span className="text-[8px] font-extrabold uppercase mt-1 tracking-tighter text-gray-400 bg-gray-200/60 px-1 rounded">
-                                                                    Off
-                                                                </span>
+                                                                <span className="text-[10px] uppercase font-bold tracking-wider mb-0.5 text-gray-400">Sun</span>
+                                                                <span className="text-sm font-bold leading-none text-gray-400">{date.getDate()}</span>
                                                             </div>
                                                         );
                                                     }
@@ -1320,17 +1458,15 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                                             key={i}
                                                             type="button"
                                                             onClick={() => { setSelectedDate(dateStr); setSelectedTime(''); setBookingError(null); }}
-                                                            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all cursor-pointer ${isSelected
+                                                            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all cursor-pointer h-12 ${isSelected
                                                                 ? 'bg-blue-600 text-white shadow-md scale-[1.05] border-blue-600 ring-2 ring-blue-600/20'
                                                                 : 'bg-white hover:border-blue-400 border-gray-200 text-gray-600 hover:text-gray-900 shadow-sm'
-                                                                }`}
+                                                            }`}
                                                         >
-                                                            <span className="text-[10px] uppercase font-bold tracking-wider mb-1 opacity-80">
+                                                            <span className="text-[9px] uppercase font-bold tracking-wider opacity-80">
                                                                 {date.toLocaleDateString(undefined, { weekday: 'short' })}
                                                             </span>
-                                                            <span className="text-base font-black leading-none">
-                                                                {date.getDate()}
-                                                            </span>
+                                                            <span className="text-sm font-black leading-none">{date.getDate()}</span>
                                                         </button>
                                                     );
                                                 });
@@ -1342,23 +1478,30 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                     <div className="space-y-3 mb-8">
                                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Available Times</label>
                                         <div className="grid grid-cols-2 gap-2">
-                                            {selectedDate && slotsData.find(d => d._id === selectedDate)?.slots.map((slot: any) => {
-                                                const isSelected = selectedTime === slot._id;
-                                                return (
-                                                    <button
-                                                        key={slot._id}
-                                                        disabled={!slot.isAvailable}
-                                                        onClick={() => { setSelectedTime(slot._id); setBookingError(null); }}
-                                                        className={`flex items-center justify-center py-2.5 rounded-xl border transition-all text-sm font-bold ${isSelected
-                                                            ? 'bg-blue-600 text-white shadow-sm border-blue-600'
-                                                            : slot.isAvailable ? 'bg-white hover:border-blue-400 border-gray-200 text-gray-600 hover:text-gray-900' : 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-100'
+                                            {selectedDate && (() => {
+                                                const dayObj = calendarDays.find(d => (d.dateId || d._id) === selectedDate || d.date === selectedDate) || slotsData.find(d => (d._id || d.date) === selectedDate);
+                                                const slots = dayObj?.slots || [];
+                                                if (slots.length === 0) {
+                                                    return <p className="text-sm text-gray-400 col-span-2">No available time slots for this date</p>;
+                                                }
+                                                return slots.map((slot: any) => {
+                                                    const isSelected = selectedTime === slot._id;
+                                                    return (
+                                                        <button
+                                                            key={slot._id}
+                                                            disabled={!slot.isAvailable}
+                                                            onClick={() => { setSelectedTime(slot._id); setBookingError(null); }}
+                                                            className={`flex items-center justify-center py-2.5 rounded-xl border transition-all text-sm font-bold ${isSelected
+                                                                ? 'bg-blue-600 text-white shadow-sm border-blue-600'
+                                                                : slot.isAvailable ? 'bg-white hover:border-blue-400 border-gray-200 text-gray-600 hover:text-gray-900' : 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-100'
                                                             }`}
-                                                    >
-                                                        <Clock size={14} className="mr-2" strokeWidth={2.5} />
-                                                        {slot.time}
-                                                    </button>
-                                                );
-                                            })}
+                                                        >
+                                                            <Clock size={14} className="mr-2" strokeWidth={2.5} />
+                                                            {slot.time}
+                                                        </button>
+                                                    );
+                                                });
+                                            })()}
                                             {!selectedDate && <p className="text-sm text-gray-400 col-span-2">Select a date first</p>}
                                         </div>
                                     </div>
