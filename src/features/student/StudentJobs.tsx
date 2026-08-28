@@ -19,7 +19,9 @@ import {
     Globe,
     Loader2,
     Star,
-    Banknote
+    Banknote,
+    X,
+    SlidersHorizontal
 } from 'lucide-react';
 import { fetchJobs, fetchJobDetails, fetchRelevantJobs, type ApiJobItem } from '@/lib/jobsApi';
 import { useGetCurrenciesQuery } from '@/lib/store/authApi';
@@ -69,6 +71,18 @@ export function StudentJobs() {
     const [isDetailLoading, setIsDetailLoading] = useState(false);
     const [detailError, setDetailError] = useState<string | null>(null);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
+    const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+
+    // Temp filter state (inside drawer before applying)
+    const [tempExperienceLevel, setTempExperienceLevel] = useState('All');
+    const [tempLocation, setTempLocation] = useState('');
+    const [tempMinSalary, setTempMinSalary] = useState('');
+    const [tempMaxSalary, setTempMaxSalary] = useState('');
+    const [tempCurrency, setTempCurrency] = useState('');
+    const [tempIndustry, setTempIndustry] = useState('');
+    const [tempDomain, setTempDomain] = useState('');
+    const [tempPreferredLocations, setTempPreferredLocations] = useState<string[]>([]);
+    const [tempPrefLocInput, setTempPrefLocInput] = useState('');
 
     const appliedJobs = applications.map(app => app.vacancyId);
 
@@ -187,7 +201,56 @@ export function StudentJobs() {
         setPreferredLocations([]);
         setPrefLocInput('');
         setPage(1);
+        // also reset temp state
+        setTempExperienceLevel('All');
+        setTempLocation('');
+        setTempMinSalary('');
+        setTempMaxSalary('');
+        setTempCurrency('');
+        setTempIndustry('');
+        setTempDomain('');
+        setTempPreferredLocations([]);
+        setTempPrefLocInput('');
     };
+
+    const openFilterDrawer = () => {
+        // Sync temp state from current applied filters
+        setTempExperienceLevel(experienceLevel);
+        setTempLocation(location);
+        setTempMinSalary(minSalary);
+        setTempMaxSalary(maxSalary);
+        setTempCurrency(currency);
+        setTempIndustry(industry);
+        setTempDomain(domain);
+        setTempPreferredLocations([...preferredLocations]);
+        setTempPrefLocInput('');
+        setFilterDrawerOpen(true);
+    };
+
+    const applyFilters = () => {
+        setExperienceLevel(tempExperienceLevel);
+        setLocation(tempLocation);
+        setMinSalary(tempMinSalary);
+        setMaxSalary(tempMaxSalary);
+        setCurrency(tempCurrency);
+        setIndustry(tempIndustry);
+        setDomain(tempDomain);
+        setPreferredLocations([...tempPreferredLocations]);
+        setPrefLocInput('');
+        setPage(1);
+        setFilterDrawerOpen(false);
+    };
+
+    const activeFilterCount = [
+        experienceLevel !== 'All',
+        !!location,
+        !!minSalary,
+        !!maxSalary,
+        !!currency,
+        !!industry,
+        !!domain,
+        preferredLocations.length > 0
+    ].filter(Boolean).length;
 
     // When user clicks "View Details" on a job card:
     // 1. Show modal immediately with preview data
@@ -322,222 +385,334 @@ export function StudentJobs() {
                 </div>
             </div>
 
-            {/* Filter Navigation Panel */}
-            <div className="bg-gradient-to-br from-card to-muted/20 border border-border/50 rounded-3xl p-6 mb-8 mt-6 shadow-sm relative overflow-hidden">
-                <div className="absolute -top-24 -right-24 w-64 h-64 bg-blue-500/5 blur-[80px] rounded-full pointer-events-none" />
-                <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-purple-500/5 blur-[80px] rounded-full pointer-events-none" />
-                
-                <div className="space-y-6 relative z-10">
-                    {/* Career Stages Filter */}
-                    <div>
-                        <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Career Stage
-                        </p>
-                        <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-hide">
-                            {[
-                                { id: 'All', label: 'Any Stage', icon: Sparkles },
-                                { id: 'Fresher', label: 'Fresher', icon: Award },
-                                { id: '1-3 Years', label: '1-3 Years', icon: Award },
-                                { id: '3-5 Years', label: '3-5 Years', icon: Award },
-                                { id: '5+ Years', label: '5+ Years', icon: Award }
-                            ].map(stage => {
-                                const Icon = stage.icon;
-                                const isActive = experienceLevel === stage.id;
-                                return (
-                                    <button
-                                        key={stage.id}
-                                        onClick={() => handleExperienceChange(stage.id)}
-                                        className={`group relative flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold transition-all shrink-0 border overflow-hidden ${
-                                            isActive 
-                                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-transparent shadow-md shadow-blue-500/20' 
-                                            : 'bg-background hover:bg-muted text-muted-foreground border-border/40 hover:border-border hover:shadow-sm'
-                                        }`}
-                                    >
-                                        <Icon size={16} className={isActive ? 'text-white' : 'text-muted-foreground group-hover:text-foreground transition-colors'} />
-                                        <span className="relative z-10 transition-colors group-hover:text-foreground">{stage.label}</span>
-                                        {isActive && <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
+            {/* ── Compact Filter Bar ── */}
+            <div className="flex items-center gap-3 mb-6 mt-4 flex-wrap">
+                {/* Filter Trigger Button */}
+                <button
+                    onClick={openFilterDrawer}
+                    className="relative inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold border transition-all bg-background hover:bg-muted border-border/60 hover:border-border hover:shadow-sm"
+                >
+                    <SlidersHorizontal size={15} className="text-muted-foreground" />
+                    Filters
+                    {activeFilterCount > 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 text-white text-[10px] font-black flex items-center justify-center shadow-md">
+                            {activeFilterCount}
+                        </span>
+                    )}
+                </button>
 
-                    <div className="h-px w-full bg-border/40" />
-
-                    {/* Location & Reset Block */}
-                    <div className="flex flex-col md:flex-row gap-6 md:items-end justify-between">
-                        <div className="w-full md:max-w-md">
-                            <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Location
-                            </p>
-                            <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors">
-                                <MapPin className="absolute left-3 text-muted-foreground w-4 h-4 pointer-events-none" />
-                                <input
-                                    placeholder="Search location (e.g. San Francisco)..."
-                                    className="w-full h-11 pl-9 pr-3 bg-transparent text-sm focus:outline-none"
-                                    value={location}
-                                    onChange={(e) => handleLocationChange(e.target.value)}
-                                />
-                            </div>
-                        </div>
-
-                        {(q || location || experienceLevel !== 'All' || minSalary || maxSalary || currency || industry || domain || preferredLocations.length > 0) && (
-                            <Button 
-                                variant="outline" 
-                                className="rounded-xl font-bold h-11 border-dashed hover:bg-muted"
-                                onClick={clearAllFilters}
-                            >
-                                Clear All Filters
-                            </Button>
-                        )}
-                    </div>
-
-                    <div className="h-px w-full bg-border/40" />
-
-                    {/* Salary Range + Currency */}
-                    <div>
-                        <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Salary Range
-                        </p>
-                        <div className="flex flex-col sm:flex-row gap-3">
-                            {/* Currency selector */}
-                            <select
-                                value={currency}
-                                onChange={(e) => { setCurrency(e.target.value); setPage(1); }}
-                                className="h-11 w-36 bg-background border border-border/60 rounded-xl px-3 text-sm font-semibold outline-none focus:border-primary/50 transition-colors cursor-pointer shrink-0"
-                            >
-                                <option value="">Any Currency</option>
-                                {currenciesData?.data?.map((c: any) => (
-                                    <option key={c._id} value={c.code}>{c.code} – {c.name}</option>
-                                ))}
-                            </select>
-                            <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors flex-1">
-                                <div className="absolute left-3 text-muted-foreground text-xs font-bold pointer-events-none flex items-center gap-1">
-                                    {(() => {
-                                        const match = currenciesData?.data?.find((c: any) => c.code === currency);
-                                        return match?.symbol ? <span className="text-sm font-semibold">{match.symbol}</span> : <Banknote size={15} />;
-                                    })()}
-                                </div>
-                                <input
-                                    type="number"
-                                    placeholder="Min Salary"
-                                    className="w-full h-11 pl-9 pr-3 bg-transparent text-sm focus:outline-none"
-                                    value={minSalary}
-                                    onChange={(e) => { setMinSalary(e.target.value); setPage(1); }}
-                                />
-                            </div>
-                            <span className="hidden sm:flex items-center text-muted-foreground text-sm font-medium">to</span>
-                            <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors flex-1">
-                                <div className="absolute left-3 text-muted-foreground text-xs font-bold pointer-events-none flex items-center gap-1">
-                                    {(() => {
-                                        const match = currenciesData?.data?.find((c: any) => c.code === currency);
-                                        return match?.symbol ? <span className="text-sm font-semibold">{match.symbol}</span> : <Banknote size={15} />;
-                                    })()}
-                                </div>
-                                <input
-                                    type="number"
-                                    placeholder="Max Salary"
-                                    className="w-full h-11 pl-9 pr-3 bg-transparent text-sm focus:outline-none"
-                                    value={maxSalary}
-                                    onChange={(e) => { setMaxSalary(e.target.value); setPage(1); }}
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="h-px w-full bg-border/40" />
-
-                    {/* Industry & Domain */}
-                    <div className="grid sm:grid-cols-2 gap-4">
-                        <div>
-                            <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Industry
-                            </p>
-                            <select
-                                value={industry}
-                                onChange={(e) => { setIndustry(e.target.value); setPage(1); }}
-                                className="w-full h-11 bg-background border border-border/60 rounded-xl px-3 text-sm font-medium outline-none focus:border-primary/50 transition-colors cursor-pointer"
-                            >
-                                <option value="">All Industries</option>
-                                <option value="IT">IT / Software</option>
-                                <option value="Finance">Finance / Banking</option>
-                                <option value="Healthcare">Healthcare</option>
-                                <option value="Education">Education</option>
-                                <option value="Manufacturing">Manufacturing</option>
-                                <option value="Retail">Retail / E-Commerce</option>
-                                <option value="Consulting">Consulting</option>
-                                <option value="Media">Media / Entertainment</option>
-                                <option value="Telecom">Telecom</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                        <div>
-                            <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" /> Domain
-                            </p>
-                            <select
-                                value={domain}
-                                onChange={(e) => { setDomain(e.target.value); setPage(1); }}
-                                className="w-full h-11 bg-background border border-border/60 rounded-xl px-3 text-sm font-medium outline-none focus:border-primary/50 transition-colors cursor-pointer"
-                            >
-                                <option value="">All Domains</option>
-                                <option value="Engineering">Engineering</option>
-                                <option value="Data Science">Data Science</option>
-                                <option value="Design">Design / UX</option>
-                                <option value="Marketing">Marketing</option>
-                                <option value="Sales">Sales</option>
-                                <option value="HR">Human Resources</option>
-                                <option value="Operations">Operations</option>
-                                <option value="Legal">Legal</option>
-                                <option value="Product">Product Management</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="h-px w-full bg-border/40" />
-
-                    {/* Preferred Locations (Multi-Select Tags) */}
-                    <div>
-                        <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Preferred Locations
-                        </p>
-                        <div className="flex flex-wrap gap-2 mb-2">
-                            {preferredLocations.map((loc, i) => (
-                                <span key={i} className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-500/10 text-indigo-700 border border-indigo-500/20 rounded-lg text-xs font-semibold">
-                                    {loc}
-                                    <button
-                                        type="button"
-                                        onClick={() => { setPreferredLocations(preferredLocations.filter((_, idx) => idx !== i)); setPage(1); }}
-                                        className="ml-0.5 hover:text-destructive transition-colors font-bold"
-                                    >×</button>
-                                </span>
-                            ))}
-                        </div>
-                        <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors max-w-md">
-                            <MapPin className="absolute left-3 text-muted-foreground w-4 h-4 pointer-events-none" />
-                            <input
-                                placeholder="Type a location and press Enter..."
-                                className="w-full h-11 pl-9 pr-3 bg-transparent text-sm focus:outline-none"
-                                value={prefLocInput}
-                                onChange={(e) => setPrefLocInput(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if ((e.key === 'Enter' || e.key === ',') && prefLocInput.trim()) {
-                                        e.preventDefault();
-                                        const val = prefLocInput.trim().replace(/,$/,'');
-                                        if (val && !preferredLocations.includes(val)) {
-                                            setPreferredLocations([...preferredLocations, val]);
-                                            setPage(1);
-                                        }
-                                        setPrefLocInput('');
-                                    }
-                                }}
-                            />
-                        </div>
-                        <p className="text-[11px] text-muted-foreground mt-1.5">Press <kbd className="px-1 py-0.5 rounded bg-muted border text-[10px] font-mono">Enter</kbd> or <kbd className="px-1 py-0.5 rounded bg-muted border text-[10px] font-mono">,</kbd> to add a location.</p>
-                    </div>
-                </div>
+                {/* Active filter chips */}
+                {experienceLevel !== 'All' && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-700 border border-blue-500/20 text-xs font-semibold">
+                        <Award size={11} /> {experienceLevel}
+                        <button onClick={() => { setExperienceLevel('All'); setPage(1); }} className="ml-0.5 hover:text-blue-900 transition-colors"><X size={11} /></button>
+                    </span>
+                )}
+                {location && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 text-purple-700 border border-purple-500/20 text-xs font-semibold">
+                        <MapPin size={11} /> {location}
+                        <button onClick={() => { setLocation(''); setDebouncedLocation(''); setPage(1); }} className="ml-0.5 hover:text-purple-900 transition-colors"><X size={11} /></button>
+                    </span>
+                )}
+                {(minSalary || maxSalary) && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-700 border border-emerald-500/20 text-xs font-semibold">
+                        <Banknote size={11} /> {currency || ''} {minSalary && `${minSalary}`}{minSalary && maxSalary && ' – '}{maxSalary && `${maxSalary}`}
+                        <button onClick={() => { setMinSalary(''); setMaxSalary(''); setCurrency(''); setPage(1); }} className="ml-0.5 hover:text-emerald-900 transition-colors"><X size={11} /></button>
+                    </span>
+                )}
+                {industry && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-700 border border-amber-500/20 text-xs font-semibold">
+                        <Building2 size={11} /> {industry}
+                        <button onClick={() => { setIndustry(''); setPage(1); }} className="ml-0.5 hover:text-amber-900 transition-colors"><X size={11} /></button>
+                    </span>
+                )}
+                {domain && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 text-cyan-700 border border-cyan-500/20 text-xs font-semibold">
+                        <Globe size={11} /> {domain}
+                        <button onClick={() => { setDomain(''); setPage(1); }} className="ml-0.5 hover:text-cyan-900 transition-colors"><X size={11} /></button>
+                    </span>
+                )}
+                {preferredLocations.map((loc, i) => (
+                    <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 text-indigo-700 border border-indigo-500/20 text-xs font-semibold">
+                        <MapPin size={11} /> {loc}
+                        <button onClick={() => { setPreferredLocations(preferredLocations.filter((_, idx) => idx !== i)); setPage(1); }} className="ml-0.5 hover:text-indigo-900 transition-colors"><X size={11} /></button>
+                    </span>
+                ))}
+                {activeFilterCount > 0 && (
+                    <button
+                        onClick={clearAllFilters}
+                        className="ml-auto text-xs font-bold text-muted-foreground hover:text-foreground transition-colors border border-dashed border-border/60 hover:border-border px-3 py-1.5 rounded-xl"
+                    >
+                        Clear All
+                    </button>
+                )}
             </div>
+
+            {/* ── Filter Side Drawer ── */}
+            {filterDrawerOpen && (
+                <>
+                    {/* Backdrop */}
+                    <div
+                        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+                        style={{ animation: 'fadeIn 0.2s ease' }}
+                        onClick={() => setFilterDrawerOpen(false)}
+                    />
+                    {/* Drawer panel */}
+                    <div
+                        className="fixed top-0 right-0 h-full z-50 w-[360px] max-w-[95vw] bg-background border-l border-border/60 shadow-2xl flex flex-col"
+                        style={{ animation: 'slideInRight 0.28s cubic-bezier(0.16,1,0.3,1)' }}
+                    >
+                        {/* Drawer Header */}
+                        <div className="flex items-center justify-between px-6 py-5 border-b border-border/50 bg-gradient-to-br from-background to-muted/30 shrink-0">
+                            <div className="flex items-center gap-2">
+                                <SlidersHorizontal size={18} className="text-primary" />
+                                <span className="font-extrabold text-lg">Filters</span>
+                                {activeFilterCount > 0 && (
+                                    <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-black">{activeFilterCount} active</span>
+                                )}
+                            </div>
+                            <button
+                                onClick={() => setFilterDrawerOpen(false)}
+                                className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        {/* Scrollable Filter Body */}
+                        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-7">
+
+                            {/* Career Stage */}
+                            <div>
+                                <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Career Stage
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                    {[
+                                        { id: 'All', label: 'Any Stage', icon: Sparkles },
+                                        { id: 'Fresher', label: 'Fresher', icon: Award },
+                                        { id: '1-3 Years', label: '1-3 Years', icon: Award },
+                                        { id: '3-5 Years', label: '3-5 Years', icon: Award },
+                                        { id: '5+ Years', label: '5+ Years', icon: Award }
+                                    ].map(stage => {
+                                        const Icon = stage.icon;
+                                        const isActive = tempExperienceLevel === stage.id;
+                                        return (
+                                            <button
+                                                key={stage.id}
+                                                onClick={() => setTempExperienceLevel(stage.id)}
+                                                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                                                    isActive
+                                                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-transparent shadow-md shadow-blue-500/20'
+                                                    : 'bg-background hover:bg-muted text-muted-foreground border-border/40 hover:border-border'
+                                                }`}
+                                            >
+                                                <Icon size={13} className={isActive ? 'text-white' : ''} />
+                                                {stage.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="h-px w-full bg-border/40" />
+
+                            {/* Location */}
+                            <div>
+                                <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Location
+                                </p>
+                                <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors">
+                                    <MapPin className="absolute left-3 text-muted-foreground w-4 h-4 pointer-events-none" />
+                                    <input
+                                        placeholder="e.g. San Francisco..."
+                                        className="w-full h-11 pl-9 pr-3 bg-transparent text-sm focus:outline-none"
+                                        value={tempLocation}
+                                        onChange={(e) => setTempLocation(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="h-px w-full bg-border/40" />
+
+                            {/* Salary Range */}
+                            <div>
+                                <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Salary Range
+                                </p>
+                                <div className="flex flex-col gap-2.5">
+                                    <select
+                                        value={tempCurrency}
+                                        onChange={(e) => setTempCurrency(e.target.value)}
+                                        className="h-11 w-full bg-background border border-border/60 rounded-xl px-3 text-sm font-semibold outline-none focus:border-primary/50 transition-colors cursor-pointer"
+                                    >
+                                        <option value="">Any Currency</option>
+                                        {currenciesData?.data?.map((c: any) => (
+                                            <option key={c._id} value={c.code}>{c.code} – {c.name}</option>
+                                        ))}
+                                    </select>
+                                    <div className="flex gap-2 items-center">
+                                        <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors flex-1">
+                                            <div className="absolute left-3 text-muted-foreground text-xs font-bold pointer-events-none flex items-center gap-1">
+                                                {(() => {
+                                                    const match = currenciesData?.data?.find((c: any) => c.code === tempCurrency);
+                                                    return match?.symbol ? <span className="text-sm font-semibold">{match.symbol}</span> : <Banknote size={15} />;
+                                                })()}
+                                            </div>
+                                            <input
+                                                type="number"
+                                                placeholder="Min"
+                                                className="w-full h-11 pl-9 pr-3 bg-transparent text-sm focus:outline-none"
+                                                value={tempMinSalary}
+                                                onChange={(e) => setTempMinSalary(e.target.value)}
+                                            />
+                                        </div>
+                                        <span className="text-muted-foreground text-sm font-medium shrink-0">–</span>
+                                        <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors flex-1">
+                                            <div className="absolute left-3 text-muted-foreground text-xs font-bold pointer-events-none flex items-center gap-1">
+                                                {(() => {
+                                                    const match = currenciesData?.data?.find((c: any) => c.code === tempCurrency);
+                                                    return match?.symbol ? <span className="text-sm font-semibold">{match.symbol}</span> : <Banknote size={15} />;
+                                                })()}
+                                            </div>
+                                            <input
+                                                type="number"
+                                                placeholder="Max"
+                                                className="w-full h-11 pl-9 pr-3 bg-transparent text-sm focus:outline-none"
+                                                value={tempMaxSalary}
+                                                onChange={(e) => setTempMaxSalary(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="h-px w-full bg-border/40" />
+
+                            {/* Industry & Domain */}
+                            <div className="space-y-4">
+                                <div>
+                                    <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Industry
+                                    </p>
+                                    <select
+                                        value={tempIndustry}
+                                        onChange={(e) => setTempIndustry(e.target.value)}
+                                        className="w-full h-11 bg-background border border-border/60 rounded-xl px-3 text-sm font-medium outline-none focus:border-primary/50 transition-colors cursor-pointer"
+                                    >
+                                        <option value="">All Industries</option>
+                                        <option value="IT">IT / Software</option>
+                                        <option value="Finance">Finance / Banking</option>
+                                        <option value="Healthcare">Healthcare</option>
+                                        <option value="Education">Education</option>
+                                        <option value="Manufacturing">Manufacturing</option>
+                                        <option value="Retail">Retail / E-Commerce</option>
+                                        <option value="Consulting">Consulting</option>
+                                        <option value="Media">Media / Entertainment</option>
+                                        <option value="Telecom">Telecom</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" /> Domain
+                                    </p>
+                                    <select
+                                        value={tempDomain}
+                                        onChange={(e) => setTempDomain(e.target.value)}
+                                        className="w-full h-11 bg-background border border-border/60 rounded-xl px-3 text-sm font-medium outline-none focus:border-primary/50 transition-colors cursor-pointer"
+                                    >
+                                        <option value="">All Domains</option>
+                                        <option value="Engineering">Engineering</option>
+                                        <option value="Data Science">Data Science</option>
+                                        <option value="Design">Design / UX</option>
+                                        <option value="Marketing">Marketing</option>
+                                        <option value="Sales">Sales</option>
+                                        <option value="HR">Human Resources</option>
+                                        <option value="Operations">Operations</option>
+                                        <option value="Legal">Legal</option>
+                                        <option value="Product">Product Management</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="h-px w-full bg-border/40" />
+
+                            {/* Preferred Locations */}
+                            <div>
+                                <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Preferred Locations
+                                </p>
+                                <div className="flex flex-wrap gap-2 mb-2">
+                                    {tempPreferredLocations.map((loc, i) => (
+                                        <span key={i} className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-500/10 text-indigo-700 border border-indigo-500/20 rounded-lg text-xs font-semibold">
+                                            {loc}
+                                            <button
+                                                type="button"
+                                                onClick={() => setTempPreferredLocations(tempPreferredLocations.filter((_, idx) => idx !== i))}
+                                                className="ml-0.5 hover:text-destructive transition-colors font-bold"
+                                            >×</button>
+                                        </span>
+                                    ))}
+                                </div>
+                                <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors">
+                                    <MapPin className="absolute left-3 text-muted-foreground w-4 h-4 pointer-events-none" />
+                                    <input
+                                        placeholder="Type & press Enter to add..."
+                                        className="w-full h-11 pl-9 pr-3 bg-transparent text-sm focus:outline-none"
+                                        value={tempPrefLocInput}
+                                        onChange={(e) => setTempPrefLocInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if ((e.key === 'Enter' || e.key === ',') && tempPrefLocInput.trim()) {
+                                                e.preventDefault();
+                                                const val = tempPrefLocInput.trim().replace(/,$/, '');
+                                                if (val && !tempPreferredLocations.includes(val)) {
+                                                    setTempPreferredLocations([...tempPreferredLocations, val]);
+                                                }
+                                                setTempPrefLocInput('');
+                                            }
+                                        }}
+                                    />
+                                </div>
+                                <p className="text-[11px] text-muted-foreground mt-1.5">Press <kbd className="px-1 py-0.5 rounded bg-muted border text-[10px] font-mono">Enter</kbd> to add.</p>
+                            </div>
+                        </div>
+
+                        {/* Drawer Footer */}
+                        <div className="px-6 py-5 border-t border-border/50 flex gap-3 shrink-0 bg-background">
+                            <button
+                                onClick={() => {
+                                    setTempExperienceLevel('All');
+                                    setTempLocation('');
+                                    setTempMinSalary('');
+                                    setTempMaxSalary('');
+                                    setTempCurrency('');
+                                    setTempIndustry('');
+                                    setTempDomain('');
+                                    setTempPreferredLocations([]);
+                                    setTempPrefLocInput('');
+                                }}
+                                className="flex-1 h-11 rounded-xl border border-border/60 text-sm font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
+                            >
+                                Reset
+                            </button>
+                            <button
+                                onClick={applyFilters}
+                                className="flex-1 h-11 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-bold shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/30 transition-all"
+                            >
+                                Apply Filters
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Keyframe styles */}
+                    <style>{`
+                        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+                        @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+                    `}</style>
+                </>
+            )}
 
             {/* Layout bar: count + All/Recommended tabs */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-border/40">
