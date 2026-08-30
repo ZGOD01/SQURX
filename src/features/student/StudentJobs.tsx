@@ -52,7 +52,6 @@ export function StudentJobs() {
     const [industry, setIndustry] = useState('');
     const [domain, setDomain] = useState('');
     const [preferredLocations, setPreferredLocations] = useState<string[]>([]);
-    const [prefLocInput, setPrefLocInput] = useState('');
 
     // Tabs
     const [activeTab, setActiveTab] = useState<'all' | 'relevant'>('all');
@@ -179,16 +178,6 @@ export function StudentJobs() {
         setPage(1);
     };
 
-    const handleLocationChange = (val: string) => {
-        setLocation(val);
-        setPage(1);
-    };
-
-    const handleExperienceChange = (val: string) => {
-        setExperienceLevel(val);
-        setPage(1);
-    };
-
     const clearAllFilters = () => {
         setQ('');
         setLocation('');
@@ -199,7 +188,6 @@ export function StudentJobs() {
         setIndustry('');
         setDomain('');
         setPreferredLocations([]);
-        setPrefLocInput('');
         setPage(1);
         // also reset temp state
         setTempExperienceLevel('All');
@@ -236,7 +224,6 @@ export function StudentJobs() {
         setIndustry(tempIndustry);
         setDomain(tempDomain);
         setPreferredLocations([...tempPreferredLocations]);
-        setPrefLocInput('');
         setPage(1);
         setFilterDrawerOpen(false);
     };
