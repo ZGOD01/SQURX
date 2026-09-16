@@ -23,13 +23,12 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
       emails: [...state.emails, { id, subject, body, timestamp: new Date() }]
     }));
 
-    // Triggering a custom backend API server
+    // Triggering a custom backend API server if configured
     const currentUser = useAuthStore.getState().user;
-    if (currentUser?.email) {
-      
+    const emailApiUrl = (import.meta as any).env?.VITE_EMAIL_API_URL;
+    if (currentUser?.email && emailApiUrl) {
       try {
-        // This attempts to connect to a local Node.js backend (which we will build next)
-        fetch('http://localhost:5000/api/send-email', {
+        fetch(emailApiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -46,9 +45,8 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
                 }));
             }
         }).catch(err => {
-          console.warn('Custom backend is not running. Could not send real email.', err.message);
+          console.warn('Custom email backend is not reachable.', err.message);
         });
-
       } catch (err) {
         console.error("Failed to call email API", err);
       }

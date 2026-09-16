@@ -268,9 +268,26 @@ export function StudentProfile() {
             setJobType(profile.jobType || '');
             setJobTypeQuery(profile.jobType || '');
             setCareerGoal(profile.careerGoal || '');
-            setExperienceLevel(profile.experienceLevel || '');
-            setExperienceLevelQuery(profile.experienceLevel || '');
-            setExperienceLevelId(profile.experienceLevelId || '');
+            // Resolve experience level — avoid setting raw ObjectIDs as display text
+            const initExpLevel = profile.experienceLevel || '';
+            const initExpId = profile.experienceLevelId || '';
+            const isInitExpRawId = /^[0-9a-fA-F]{24}$/.test(initExpLevel);
+            if (isInitExpRawId || !initExpLevel) {
+                const resolveId = initExpId || initExpLevel;
+                const expMatch = resolveId ? experienceLevelsData?.data?.find((e: any) => e._id === resolveId) : null;
+                if (expMatch) {
+                    setExperienceLevel(expMatch.name);
+                    setExperienceLevelQuery(expMatch.name === 'Fresher' ? 'Fresher' : `${expMatch.name} Years`);
+                    setExperienceLevelId(expMatch._id);
+                } else {
+                    if (!isInitExpRawId) setExperienceLevel(initExpLevel);
+                    setExperienceLevelId(initExpId);
+                }
+            } else {
+                setExperienceLevel(initExpLevel);
+                setExperienceLevelQuery(initExpLevel === 'Fresher' ? 'Fresher' : `${initExpLevel} Years`);
+                setExperienceLevelId(initExpId);
+            }
 
             // Structured expected salary parsing
             if (profile.expectedSalary) {
@@ -293,13 +310,36 @@ export function StudentProfile() {
                 }
             }
 
-            setSkills(profile.skills || []);
+            // Resolve skills — avoid displaying raw ObjectIDs
+            const initSkills = profile.skills || [];
+            const initSkillIds = (profile as any).skillIds as string[] | undefined;
+            const hasInitRawIds = initSkills.some((s: string) => /^[0-9a-fA-F]{24}$/.test(s));
+            if (hasInitRawIds && initSkillIds && skillsData?.data) {
+                const resolved = initSkillIds.map((id: string) => {
+                    const match = skillsData.data.find((sd: any) => sd._id === id);
+                    return match ? match.name : null;
+                }).filter(Boolean) as string[];
+                setSkills(resolved.length > 0 ? resolved : initSkills);
+            } else {
+                setSkills(initSkills);
+            }
             setSelectedDomainIds(profile.preferredDomainIds || []);
             setSelectedLocationIds(profile.preferredLocationIds || []);
             setSelectedJobTypeIds(profile.preferredJobTypeIds || []);
 
             setGender(profile.gender || '');
-            setDob(profile.dob || '');
+            // Format ISO DOB to DD/MM/YYYY for user-friendly display
+            const rawDob = profile.dob || '';
+            let displayDob = rawDob;
+            if (rawDob && !/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(rawDob)) {
+                const d = new Date(rawDob);
+                if (!isNaN(d.getTime())) {
+                    const day = String(d.getUTCDate()).padStart(2, '0');
+                    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+                    displayDob = `${day}/${month}/${d.getUTCFullYear()}`;
+                }
+            }
+            setDob(displayDob);
             setCurrentLocation(profile.currentLocation || '');
             setHometown(profile.hometown || '');
             setHometownCountry(profile.hometownCountry || '');
@@ -326,6 +366,47 @@ export function StudentProfile() {
         }
     }, [currenciesData, expectedSalaryCurrency, currentSalaryCurrency]);
 
+    // ── Resolve Experience Level raw ObjectID → human-readable name ──
+    // When the backend returns an unpopulated ObjectID string (e.g. "6a26db577b8c3f3b4594e05a"),
+    // mockApi stores it in experienceLevelId only. This effect resolves it to a display name
+    // once the experienceLevels API data is available.
+    useEffect(() => {
+        if (!experienceLevelsData?.data || experienceLevelsData.data.length === 0) return;
+        const expId = experienceLevelId || profile?.experienceLevelId;
+        if (!expId) return;
+        // Only resolve if current experienceLevel is empty or is itself a raw ObjectID
+        const isRawId = !experienceLevel || /^[0-9a-fA-F]{24}$/.test(experienceLevel);
+        if (!isRawId) return;
+        const match = experienceLevelsData.data.find((e: any) => e._id === expId);
+        if (match) {
+            setExperienceLevel(match.name);
+            const displayName = match.name === 'Fresher' ? 'Fresher' : `${match.name} Years`;
+            setExperienceLevelQuery(displayName);
+            setExperienceLevelId(match._id);
+        }
+    }, [experienceLevelsData, experienceLevelId, experienceLevel, profile]);
+
+    // ── Resolve Skill raw ObjectIDs → human-readable names ──
+    // When the backend returns skills as unpopulated ObjectID strings,
+    // mockApi stores the IDs in profile.skillIds. This effect resolves them
+    // to skill names once the skills API data is available.
+    useEffect(() => {
+        if (!skillsData?.data || skillsData.data.length === 0) return;
+        if (!profile) return;
+        const skillIds = (profile as any).skillIds as string[] | undefined;
+        if (!skillIds || skillIds.length === 0) return;
+        // Check if current skills array contains raw ObjectIDs that need resolution
+        const hasRawIds = skills.some(s => /^[0-9a-fA-F]{24}$/.test(s));
+        if (!hasRawIds && skills.length > 0) return; // Already resolved
+        const resolvedSkills = skillIds.map((id: string) => {
+            const match = skillsData.data.find((sd: any) => sd._id === id);
+            return match ? match.name : null;
+        }).filter(Boolean) as string[];
+        if (resolvedSkills.length > 0) {
+            setSkills(resolvedSkills);
+        }
+    }, [skillsData, profile, skills]);
+
     useEffect(() => {
         if (profile && profileInitialized && !isEditing) {
             setLocation(profile.location || '');
@@ -333,9 +414,28 @@ export function StudentProfile() {
             setJobType(profile.jobType || '');
             setJobTypeQuery(profile.jobType || '');
             setCareerGoal(profile.careerGoal || '');
-            setExperienceLevel(profile.experienceLevel || '');
-            setExperienceLevelQuery(profile.experienceLevel || '');
-            setExperienceLevelId(profile.experienceLevelId || '');
+            // Resolve experience level — avoid setting raw ObjectIDs as display text
+            const rawExpLevel = profile.experienceLevel || '';
+            const rawExpId = profile.experienceLevelId || '';
+            const isExpRawId = /^[0-9a-fA-F]{24}$/.test(rawExpLevel);
+            if (isExpRawId || !rawExpLevel) {
+                // Try to resolve from API cache
+                const resolveId = rawExpId || rawExpLevel;
+                const expMatch = resolveId ? experienceLevelsData?.data?.find((e: any) => e._id === resolveId) : null;
+                if (expMatch) {
+                    setExperienceLevel(expMatch.name);
+                    setExperienceLevelQuery(expMatch.name === 'Fresher' ? 'Fresher' : `${expMatch.name} Years`);
+                    setExperienceLevelId(expMatch._id);
+                } else {
+                    // API data not loaded yet — leave empty, the resolution effect will handle it
+                    if (!isExpRawId) setExperienceLevel(rawExpLevel);
+                    setExperienceLevelId(rawExpId);
+                }
+            } else {
+                setExperienceLevel(rawExpLevel);
+                setExperienceLevelQuery(rawExpLevel === 'Fresher' ? 'Fresher' : `${rawExpLevel} Years`);
+                setExperienceLevelId(rawExpId);
+            }
 
             // Structured expected salary re-sync
             if (profile.expectedSalary) {
@@ -363,13 +463,35 @@ export function StudentProfile() {
                 setCurrentSalaryAmount('');
             }
 
-            setSkills(profile.skills || []);
+            // Resolve skills — if they contain raw ObjectIDs, resolve from API cache
+            const rawSkills = profile.skills || [];
+            const skillIdsList = (profile as any).skillIds as string[] | undefined;
+            const hasRawSkillIds = rawSkills.some((s: string) => /^[0-9a-fA-F]{24}$/.test(s));
+            if (hasRawSkillIds && skillIdsList && skillsData?.data) {
+                const resolved = skillIdsList.map((id: string) => {
+                    const match = skillsData.data.find((sd: any) => sd._id === id);
+                    return match ? match.name : null;
+                }).filter(Boolean) as string[];
+                setSkills(resolved.length > 0 ? resolved : rawSkills);
+            } else {
+                setSkills(rawSkills);
+            }
             setSelectedDomainIds(profile.preferredDomainIds || []);
             setSelectedLocationIds(profile.preferredLocationIds || []);
             setSelectedJobTypeIds(profile.preferredJobTypeIds || []);
 
             setGender(profile.gender || '');
-            setDob(profile.dob || '');
+            const rawDob = profile.dob || '';
+            let displayDob = rawDob;
+            if (rawDob && !/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(rawDob)) {
+                const d = new Date(rawDob);
+                if (!isNaN(d.getTime())) {
+                    const day = String(d.getUTCDate()).padStart(2, '0');
+                    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+                    displayDob = `${day}/${month}/${d.getUTCFullYear()}`;
+                }
+            }
+            setDob(displayDob);
             setCurrentLocation(profile.currentLocation || '');
             setHometown(profile.hometown || '');
             setHometownCountry(profile.hometownCountry || '');
@@ -1458,10 +1580,15 @@ export function StudentProfile() {
                                                             ) : (
                                                                 <div className="flex flex-col gap-1 w-full">
                                                                     <div className="flex items-center gap-2">
-                                                                        <span className="text-sm font-semibold">{lk.languageName || lk.language || '—'}</span>
-                                                                        {(lk.proficiencyName || lk.proficiency) && (
-                                                                            <span className="text-xs px-2 py-0.5 rounded-full bg-muted font-semibold text-muted-foreground">{lk.proficiencyName || lk.proficiency}</span>
-                                                                        )}
+                                                                        <span className="text-sm font-semibold">
+                                                                            {languagesData?.data?.find((l: any) => l._id === lk.language)?.name || lk.languageName || (/^[0-9a-fA-F]{24}$/.test(lk.language) ? '' : lk.language) || '—'}
+                                                                        </span>
+                                                                        {(() => {
+                                                                            const pLabel = languageProficienciesData?.data?.find((p: any) => p._id === lk.proficiency)?.name || lk.proficiencyName || (/^[0-9a-fA-F]{24}$/.test(lk.proficiency) ? '' : lk.proficiency);
+                                                                            return pLabel ? (
+                                                                                <span className="text-xs px-2 py-0.5 rounded-full bg-muted font-semibold text-muted-foreground">{pLabel}</span>
+                                                                            ) : null;
+                                                                        })()}
                                                                     </div>
                                                                     <div className="flex gap-2 text-[11px] text-muted-foreground font-medium">
                                                                         {lk.read && <span className="bg-muted/50 px-1.5 py-0.5 rounded">Read</span>}
@@ -1506,7 +1633,7 @@ export function StudentProfile() {
                                                     customUniversity: '',
                                                     customCourse: '',
                                                     customSpecialization: '',
-                                                    courseType: 'Full-time',
+                                                    courseType: 'Full Time',
                                                     startYear: '',
                                                     endYear: '',
                                                     gradingSystem: 'CGPA',
@@ -1667,7 +1794,7 @@ export function StudentProfile() {
                                                                     <div className="space-y-1">
                                                                         <label className="text-[10px] font-bold text-muted-foreground uppercase">Course Type</label>
                                                                         <select
-                                                                            value={item.courseType || 'Full-time'}
+                                                                            value={item.courseType || 'Full Time'}
                                                                             onChange={(e) => {
                                                                                 const copy = [...educationHistory];
                                                                                 copy[idx] = { ...copy[idx], courseType: e.target.value };
@@ -1675,9 +1802,10 @@ export function StudentProfile() {
                                                                             }}
                                                                             className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
                                                                         >
-                                                                            <option value="Full-time">Full-time</option>
-                                                                            <option value="Part-time">Part-time</option>
-                                                                            <option value="Correspondence/Distance">Correspondence/Distance</option>
+                                                                            <option value="Full Time">Full Time</option>
+                                                                            <option value="Part Time">Part Time</option>
+                                                                            <option value="Distance Learning">Distance Learning</option>
+                                                                            <option value="Correspondence">Correspondence</option>
                                                                         </select>
                                                                     </div>
 
@@ -1765,7 +1893,7 @@ export function StudentProfile() {
                                                                 <span className="text-xs text-foreground font-medium">{courseName} {specName !== '—' && `· ${specName}`}</span>
                                                                 <span className="text-xs text-muted-foreground">{uniName}</span>
                                                                 <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
-                                                                    <span>Course Type: <span className="font-semibold text-foreground">{item.courseType || 'Full-time'}</span></span>
+                                                                    <span>Course Type: <span className="font-semibold text-foreground">{item.courseType || 'Full Time'}</span></span>
                                                                     {item.gradingValue && (
                                                                         <span>Grade: <span className="font-semibold text-foreground">{item.gradingValue} ({item.gradingSystem || 'CGPA'})</span></span>
                                                                     )}

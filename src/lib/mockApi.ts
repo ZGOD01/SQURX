@@ -115,24 +115,90 @@ export const mockApi = {
                             .filter(Boolean);
                     }
                     if (Array.isArray(data.educationHistory)) {
-                        profile.educationHistory = data.educationHistory;
+                        profile.educationHistory = data.educationHistory.map((item: any) => {
+                            const eduId = typeof item.education === 'object' && item.education ? (item.education._id || '') : (item.education || '');
+                            const eduName = typeof item.education === 'object' && item.education ? (item.education.name || '') : '';
+                            const uniId = typeof item.university === 'object' && item.university ? (item.university._id || '') : (item.university || '');
+                            const uniName = typeof item.university === 'object' && item.university ? (item.university.name || '') : '';
+                            const courseId = typeof item.course === 'object' && item.course ? (item.course._id || '') : (item.course || '');
+                            const courseName = typeof item.course === 'object' && item.course ? (item.course.name || '') : '';
+                            const specId = typeof item.specialization === 'object' && item.specialization ? (item.specialization._id || '') : (item.specialization || '');
+                            const specName = typeof item.specialization === 'object' && item.specialization ? (item.specialization.name || '') : '';
+
+                            let ct = item.courseType || 'Full Time';
+                            const ctLower = String(ct).toLowerCase().replace(/[-_]/g, ' ').trim();
+                            if (ctLower.includes('part')) ct = 'Part Time';
+                            else if (ctLower.includes('distance')) ct = 'Distance Learning';
+                            else if (ctLower.includes('correspondence')) ct = 'Correspondence';
+                            else ct = 'Full Time';
+
+                            return {
+                                _id: item._id,
+                                education: eduId,
+                                customEducation: item.customEducation || eduName || '',
+                                university: uniId,
+                                customUniversity: item.customUniversity || uniName || '',
+                                course: courseId,
+                                customCourse: item.customCourse || courseName || '',
+                                specialization: specId,
+                                customSpecialization: item.customSpecialization || specName || '',
+                                courseType: ct,
+                                startYear: item.startYear || '',
+                                endYear: item.endYear || item.passingYear || '',
+                                passingYear: item.passingYear || item.endYear || '',
+                                gradingSystem: item.gradingSystem || 'CGPA',
+                                gradingValue: item.gradingValue || item.marks || '',
+                                marks: item.marks || item.gradingValue || ''
+                            };
+                        });
                     } else {
                         profile.educationHistory = [];
                     }
 
                     // Experience level
+                    // Backend may return a populated object { _id, name } or a raw ObjectID string.
+                    // Only set the display name when we have a populated object; otherwise store the ID
+                    // so the component can resolve it against the experienceLevels API cache.
                     if (data.experienceLevel?.name) {
                         profile.experienceLevel = data.experienceLevel.name;
                         profile.experienceLevelId = data.experienceLevel._id || '';
                     } else if (typeof data.experienceLevel === 'string' && data.experienceLevel) {
-                        profile.experienceLevel = data.experienceLevel;
+                        const isObjectId = /^[0-9a-fA-F]{24}$/.test(data.experienceLevel);
+                        if (isObjectId) {
+                            // Store only the ID — DO NOT set experienceLevel to a raw hex string
+                            profile.experienceLevelId = data.experienceLevel;
+                            // Leave profile.experienceLevel unchanged (may have a previous name or empty)
+                        } else {
+                            // Plain text like "Fresher" — use as-is
+                            profile.experienceLevel = data.experienceLevel;
+                        }
                     }
 
                     // Skills (array of objects or strings)
+                    // Backend may return populated objects [{ _id, name }] or raw ObjectID strings.
+                    // Extract names from objects; for raw ID strings, store separately so the component
+                    // can resolve them against the skills API cache.
                     if (Array.isArray(data.skills) && data.skills.length > 0) {
-                        profile.skills = data.skills.map((s: any) =>
-                            typeof s === 'string' ? s : (s.name || '')
-                        ).filter(Boolean);
+                        const resolvedNames: string[] = [];
+                        const unresolvedIds: string[] = [];
+                        for (const s of data.skills) {
+                            if (typeof s === 'string') {
+                                if (/^[0-9a-fA-F]{24}$/.test(s)) {
+                                    unresolvedIds.push(s);
+                                } else if (s) {
+                                    resolvedNames.push(s);
+                                }
+                            } else if (s && typeof s === 'object') {
+                                if (s.name) resolvedNames.push(s.name);
+                                if (s._id) unresolvedIds.push(s._id);
+                            }
+                        }
+                        // If we have human-readable names, use them; otherwise keep IDs for component resolution
+                        profile.skills = resolvedNames.length > 0 ? resolvedNames : unresolvedIds;
+                        // Always store the raw IDs so the profile page can match against the skills API
+                        if (unresolvedIds.length > 0) {
+                            (profile as any).skillIds = unresolvedIds;
+                        }
                     }
 
                     // Preferred locations — store IDs directly in profile (no sessionStorage)
@@ -278,7 +344,9 @@ export const mockApi = {
 
                     profile.internships = Array.isArray(data.internships) ? data.internships : [];
                     profile.profileSummary = data.profileSummary || '';
-                    profile.otherAchievements = data.otherAchievements || '';
+                    profile.otherAchievements = Array.isArray(data.otherAchievements)
+                        ? data.otherAchievements.map((a: any) => typeof a === 'string' ? a : (a?.title || a?.name || JSON.stringify(a))).join('\n')
+                        : (data.otherAchievements || '');
 
                     // Persist synced data back to local MockDB cache
                     MockDB.updateStudentProfile(userId, profile);
@@ -348,7 +416,13 @@ export const mockApi = {
                     if (isValidObjectId(item.university)) edu.university = item.university;
                     if (isValidObjectId(item.course)) edu.course = item.course;
                     if (isValidObjectId(item.specialization)) edu.specialization = item.specialization;
-                    if (item.courseType) edu.courseType = item.courseType;
+                    if (item.courseType) {
+                        const ctLower = String(item.courseType).toLowerCase().replace(/[-_]/g, ' ').trim();
+                        if (ctLower.includes('part')) edu.courseType = 'Part Time';
+                        else if (ctLower.includes('distance')) edu.courseType = 'Distance Learning';
+                        else if (ctLower.includes('correspondence')) edu.courseType = 'Correspondence';
+                        else edu.courseType = 'Full Time';
+                    }
                     if (item.passingYear != null && item.passingYear !== '') edu.passingYear = Number(item.passingYear);
                     if (item.gradingSystem) edu.gradingSystem = item.gradingSystem;
                     if (item.marks != null && item.marks !== '') edu.marks = Number(item.marks);
@@ -466,7 +540,18 @@ export const mockApi = {
 
             if (data.internships !== undefined) payload.internships = data.internships;
             if (data.profileSummary !== undefined) payload.profileSummary = data.profileSummary;
-            if (data.otherAchievements !== undefined) payload.otherAchievements = data.otherAchievements;
+            if (data.otherAchievements !== undefined) {
+                if (Array.isArray(data.otherAchievements)) {
+                    payload.otherAchievements = data.otherAchievements.map(String).map((s: string) => s.trim()).filter(Boolean);
+                } else if (typeof data.otherAchievements === 'string') {
+                    payload.otherAchievements = data.otherAchievements
+                        .split('\n')
+                        .map((s: string) => s.trim())
+                        .filter(Boolean);
+                } else {
+                    payload.otherAchievements = [];
+                }
+            }
 
             const res = await fetchWithTimeout(`${API_BASE_URL}/user/me`, {
                 method: 'PUT',

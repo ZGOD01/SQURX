@@ -15,7 +15,10 @@ import {
     useGetExperienceLevelsQuery,
     useGetLocationsQuery,
     useGetDomainsQuery,
-    useGetCurrenciesQuery
+    useGetCurrenciesQuery,
+    useGetLanguagesQuery,
+    useGetLanguageProficienciesQuery,
+    useGetUniversitiesQuery
 } from '@/lib/store/authApi';
 // Helper to get location with country in brackets
 export const getLocationLabel = (l: any): string => {
@@ -98,6 +101,7 @@ export function Onboarding() {
     const [isProfileSaving, setIsProfileSaving] = useState(false);
     const [isUploadingCV, setIsUploadingCV] = useState(false);
     const [cvName, setCvName] = useState('');
+    const [cvError, setCvError] = useState<string | null>(null);
     const [selectedCvFile, setSelectedCvFile] = useState<File | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
     const [hasCheckedInitialState, setHasCheckedInitialState] = useState(false);
@@ -118,6 +122,9 @@ export function Onboarding() {
     const { data: locationsData } = useGetLocationsQuery({ search: lastLocationPart });
     const { data: domainsData } = useGetDomainsQuery({ search: lastDomainPart });
     const { data: currenciesData } = useGetCurrenciesQuery();
+    const { data: languagesData } = useGetLanguagesQuery(undefined);
+    const { data: languageProficienciesData } = useGetLanguageProficienciesQuery(undefined);
+    const { data: universitiesData } = useGetUniversitiesQuery(undefined);
 
     const [showSkillSuggestions, setShowSkillSuggestions] = useState(false);
 
@@ -346,16 +353,26 @@ export function Onboarding() {
                     .filter(Boolean) as string[];
             }
 
-            const firstEduItem = {
-                education: eduMatch?._id || education || undefined,
-                university: highestEducation === 'PG' ? pgUniversity : ugUniversity || undefined,
-                customUniversity: highestEducation === 'PG' ? pgUniversity : ugUniversity || undefined,
-                courseType: 'Full-time'
+            const selectedUniName = highestEducation === 'PG' ? pgUniversity : ugUniversity;
+            const uniMatch = universitiesData?.data?.find((u: any) => u.name.toLowerCase() === selectedUniName?.trim().toLowerCase());
+
+            const firstEduItem: Record<string, any> = {
+                courseType: 'Full Time'
             };
+            if (eduMatch?._id) firstEduItem.education = eduMatch._id;
+            else if (education && /^[0-9a-fA-F]{24}$/.test(education)) firstEduItem.education = education;
+
+            if (uniMatch?._id) firstEduItem.university = uniMatch._id;
+            else if (selectedUniName && /^[0-9a-fA-F]{24}$/.test(selectedUniName)) firstEduItem.university = selectedUniName;
+            if (selectedUniName) firstEduItem.customUniversity = selectedUniName;
+
+            const defaultProfId = languageProficienciesData?.data?.[0]?._id || '';
+            const defaultProfName = languageProficienciesData?.data?.[0]?.name || '';
 
             await updateProfile(user.id, {
                 fullName,
                 experienceLevel: expMatch?._id || experienceLevel,
+                experienceLevelId: expMatch?._id || experienceLevel,
                 currentSalary: experienceLevel === 'Fresher' ? null : (currentSalaryAmount ? { amount: Number(currentSalaryAmount), currency: currentSalaryCurrency } : null),
                 expectedSalary: expectedSalaryAmount ? { amount: Number(expectedSalaryAmount), currency: expectedSalaryCurrency } : null,
                 preferredDomains: domainIds,
@@ -375,6 +392,22 @@ export function Onboarding() {
                 currentLocation,
                 hometown,
                 educationHistory: [firstEduItem],
+                // Convert comma-separated languages string → languagesKnown array
+                // Matches against lookup data so valid MongoDB ObjectIds are provided to the backend
+                languagesKnown: languages
+                    ? languages.split(',').map(l => l.trim()).filter(Boolean).map(langName => {
+                        const match = languagesData?.data?.find((ld: any) => ld.name.toLowerCase() === langName.toLowerCase());
+                        return {
+                            language: match?._id || '',
+                            languageName: match?.name || langName,
+                            proficiency: match?._id ? defaultProfId : '',
+                            proficiencyName: match?._id ? defaultProfName : '',
+                            read: true,
+                            write: true,
+                            speak: true
+                        };
+                    })
+                    : [],
                 certifications,
                 awards,
                 projects: projects ? [{ title: projects }] : [],
@@ -395,16 +428,26 @@ export function Onboarding() {
         const file = event.target.files?.[0];
         if (!file) return;
 
-        if (file.size > 5 * 1024 * 1024) {
-            alert('File is too large. Max size is 5MB.');
+        setCvError(null);
+
+        // Limit to 2MB to ensure compatibility with server Nginx client_max_body_size
+        if (file.size > 2 * 1024 * 1024) {
+            setCvError('File size exceeds server limit (Max 2MB). Please upload a compressed PDF or Word document.');
             event.target.value = '';
             return;
         }
-        const fileName = file.name.toLowerCase();
-        const isValidExtension = fileName.endsWith('.pdf');
-        const isValidType = file.type === 'application/pdf';
-        if (!isValidType && !isValidExtension) {
-            alert('Please upload a PDF document (.pdf file only).');
+
+        const fileName = file.name;
+        const lowerName = fileName.toLowerCase();
+        // Backend accepts: .pdf, .doc, .docx per API specification
+        const isValidExtension = lowerName.endsWith('.pdf') || lowerName.endsWith('.doc') || lowerName.endsWith('.docx');
+        const validTypes = [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ];
+        if (!validTypes.includes(file.type) && !isValidExtension) {
+            setCvError('Please upload a valid document (.pdf, .doc, or .docx).');
             event.target.value = '';
             return;
         }
@@ -418,6 +461,7 @@ export function Onboarding() {
         const file = selectedCvFile;
 
         setIsUploadingCV(true);
+        setCvError(null);
         try {
             const cvUrl = await consultationApi.uploadCv(file);
             const finalUrl = cvUrl || file.name;
@@ -431,18 +475,24 @@ export function Onboarding() {
             setSelectedCvFile(null);
         } catch (err: any) {
             console.error('CV upload error:', err);
-            // Fallback: Save PDF filename into user profile so onboarding can be completed even if API endpoint is unreachable
-            try {
-                await updateProfile(user.id, {
-                    cvUrl: file.name,
-                    resume: file.name,
-                    cvName: file.name,
-                    resumeName: file.name
-                });
-                setCvName(file.name);
-                setSelectedCvFile(null);
-            } catch (fallbackErr) {
-                console.error('Profile update fallback error:', fallbackErr);
+            const errMsg = String(err?.message || '');
+            if (errMsg.includes('413') || errMsg.toLowerCase().includes('large') || errMsg.toLowerCase().includes('size')) {
+                setCvError('File is too large for the server (Max 2MB). Please compress your file before uploading.');
+            } else {
+                // Fallback: Save document filename into user profile so onboarding can be completed even if API endpoint is unreachable
+                try {
+                    await updateProfile(user.id, {
+                        cvUrl: file.name,
+                        resume: file.name,
+                        cvName: file.name,
+                        resumeName: file.name
+                    });
+                    setCvName(file.name);
+                    setSelectedCvFile(null);
+                } catch (fallbackErr: any) {
+                    console.error('Profile update fallback error:', fallbackErr);
+                    setCvError(fallbackErr?.message || 'Failed to save document. Please try again.');
+                }
             }
         } finally {
             setIsUploadingCV(false);
@@ -1232,25 +1282,33 @@ export function Onboarding() {
                                 </p>
                             </div>
 
+                            {cvError && (
+                                <div className="w-full p-3.5 bg-red-50 border border-red-200 rounded-2xl text-xs font-semibold text-red-600 flex items-center gap-2.5">
+                                    <span className="text-sm shrink-0">⚠️</span>
+                                    <span>{cvError}</span>
+                                </div>
+                            )}
+
                             <div className="border-2 border-dashed border-gray-200 hover:border-black/40 rounded-2xl p-8 flex flex-col items-center justify-center text-center bg-gray-50/50 hover:bg-gray-50 transition-colors relative cursor-pointer group w-full">
                                 {isUploadingCV ? (
                                     <div className="flex flex-col items-center gap-4 py-8">
                                         <Loader2 className="w-8 h-8 text-black animate-spin" />
-                                        <p className="text-sm font-medium">Uploading your CV...</p>
+                                        <p className="text-sm font-medium">Uploading your document...</p>
                                     </div>
                                 ) : profile?.cvUrl ? (
                                     <div className="flex flex-col items-center gap-4 py-4">
                                         <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
                                             <Check className="w-6 h-6" />
                                         </div>
-                                        <h4 className="font-bold text-gray-900">CV Uploaded Successfully!</h4>
+                                        <h4 className="font-bold text-gray-900">Document Uploaded Successfully!</h4>
                                         <p className="text-xs text-gray-500 truncate max-w-[250px]">{cvName || "Resume_Document.pdf"}</p>
                                         <button
                                             type="button"
                                             onClick={async () => {
-                                                await updateProfile(user.id, { cvUrl: null });
+                                                await updateProfile(user.id, { cvUrl: null, resume: null, cvName: null, resumeName: null });
                                                 setCvName("");
                                                 setSelectedCvFile(null);
+                                                setCvError(null);
                                             }}
                                             className="text-red-500 hover:underline text-xs font-bold mt-2"
                                         >
@@ -1270,7 +1328,7 @@ export function Onboarding() {
                                         <div className="flex gap-3 mt-2">
                                             <button
                                                 type="button"
-                                                onClick={() => setSelectedCvFile(null)}
+                                                onClick={() => { setSelectedCvFile(null); setCvError(null); }}
                                                 className="px-4 py-2 rounded-xl text-xs font-bold border border-gray-200 hover:bg-gray-100 transition-colors"
                                             >
                                                 Cancel
@@ -1280,7 +1338,7 @@ export function Onboarding() {
                                                 onClick={handleCVUpload}
                                                 className="px-5 py-2 rounded-xl text-xs font-bold bg-black text-white hover:bg-black/90 transition-colors flex items-center gap-2"
                                             >
-                                                <UploadCloud className="w-3.5 h-3.5" /> Upload CV
+                                                <UploadCloud className="w-3.5 h-3.5" /> Upload Document
                                             </button>
                                         </div>
                                     </div>
@@ -1289,8 +1347,8 @@ export function Onboarding() {
                                         <div className="w-14 h-14 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                             <UploadCloud size={24} />
                                         </div>
-                                        <h4 className="font-bold text-gray-900 mb-1">Select your CV</h4>
-                                        <p className="text-xs text-gray-500 max-w-[200px]">PDF only · Max 5MB</p>
+                                        <h4 className="font-bold text-gray-900 mb-1">Select your CV / Resume</h4>
+                                        <p className="text-xs text-gray-500 max-w-[220px]">PDF, DOC, DOCX · Max 2MB</p>
                                         <Button size="sm" className="mt-6 font-semibold px-6 bg-black text-white hover:bg-black/90">Browse File</Button>
                                     </>
                                 )}
@@ -1299,7 +1357,7 @@ export function Onboarding() {
                                         type="file"
                                         onChange={handleFileSelected}
                                         disabled={isUploadingCV}
-                                        accept=".pdf,application/pdf"
+                                        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                                         className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-wait"
                                     />
                                 )}
