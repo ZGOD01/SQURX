@@ -771,7 +771,9 @@ export function StudentProfile() {
                     proficiency: lk.proficiency,
                     read: !!lk.read,
                     write: !!lk.write,
-                    speak: !!lk.speak
+                    speak: !!lk.speak,
+                    languageName: lk.languageName || '',
+                    proficiencyName: lk.proficiencyName || ''
                 })),
                 educationHistory: processedEducationHistory,
                 employmentHistory: employmentHistory.map(e => {

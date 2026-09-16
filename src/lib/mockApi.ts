@@ -79,6 +79,22 @@ export const mockApi = {
                 const json = await res.json();
                 const data = json.data || json;
                 if (data) {
+                    console.log('[SQURX DEBUG] GET /user/me response data:', JSON.stringify({
+                        gender: data.gender,
+                        dob: data.dob,
+                        currentLocation: data.currentLocation,
+                        hometown: data.hometown,
+                        hometownCountry: data.hometownCountry,
+                        languagesKnown: data.languagesKnown,
+                        profileSummary: data.profileSummary,
+                        educationHistory: data.educationHistory?.length,
+                        employmentHistory: data.employmentHistory?.length,
+                        certifications: data.certifications?.length,
+                        awards: data.awards,
+                        projects: data.projects?.length,
+                        internships: data.internships?.length,
+                        otherAchievements: data.otherAchievements,
+                    }, null, 2));
                     // Ensure we have a profile object to populate
                     if (!profile) {
                         // First visit: create a baseline profile in MockDB
@@ -247,8 +263,11 @@ export const mockApi = {
                     if (data.expectedSalary !== undefined) profile.expectedSalary = data.expectedSalary;
                     if (data.currentSalary !== undefined) profile.currentSalary = data.currentSalary;
 
-                    // Full name
+                    // Full name, contact & email
                     if (data.fullName) profile.fullName = data.fullName;
+                    if (data.mobile) profile.mobile = data.mobile;
+                    if (data.phone) profile.phone = data.phone;
+                    if (data.email) profile.email = data.email;
 
                     // Profile completion percentage (backend is the single source of truth)
                     if (typeof data.profileCompletionPercentage === 'number') {
@@ -316,7 +335,9 @@ export const mockApi = {
                     }
 
                     profile.certifications = Array.isArray(data.certifications) ? data.certifications : [];
-                    profile.awards = data.awards || '';
+                    profile.awards = Array.isArray(data.awards)
+                        ? data.awards.map((a: any) => typeof a === 'string' ? a : (a?.title || a?.name || JSON.stringify(a))).join('\n')
+                        : (data.awards || '');
 
                     // projects[] — exact backend fields (title, tag, client, status: "Ongoing"|"Completed", details, projectSite, teamSize, role, etc.)
                     if (Array.isArray(data.projects)) {
@@ -423,9 +444,15 @@ export const mockApi = {
                         else if (ctLower.includes('correspondence')) edu.courseType = 'Correspondence';
                         else edu.courseType = 'Full Time';
                     }
-                    if (item.passingYear != null && item.passingYear !== '') edu.passingYear = Number(item.passingYear);
+                    // startYear — form uses startYear directly
+                    if (item.startYear != null && item.startYear !== '') edu.startYear = Number(item.startYear);
+                    // passingYear — form edits endYear, so use endYear as fallback for passingYear
+                    const passingYear = item.endYear || item.passingYear;
+                    if (passingYear != null && passingYear !== '') edu.passingYear = Number(passingYear);
                     if (item.gradingSystem) edu.gradingSystem = item.gradingSystem;
-                    if (item.marks != null && item.marks !== '') edu.marks = Number(item.marks);
+                    // marks — form edits gradingValue, so use gradingValue as fallback for marks
+                    const marks = item.gradingValue || item.marks;
+                    if (marks != null && marks !== '') edu.marks = Number(marks);
                     return edu;
                 }) : [];
             }
@@ -473,19 +500,26 @@ export const mockApi = {
             if (dobFormatted) payload.dob = dobFormatted;
             if (data.currentLocation && data.currentLocation.trim()) payload.currentLocation = data.currentLocation.trim();
             if (data.hometown && data.hometown.trim()) payload.hometown = data.hometown.trim();
-            if (isValidObjectId(data.hometownCountry)) payload.hometownCountry = data.hometownCountry;
+            if (data.hometownCountry && data.hometownCountry.trim()) payload.hometownCountry = data.hometownCountry.trim();
 
             // languagesKnown[] — array of { language, proficiency, read, write, speak }
+            // Only filter out entries that have no valid language selected at all.
+            // Proficiency is optional — if provided, it must be a valid ObjectID.
             if (data.languagesKnown !== undefined) {
                 payload.languagesKnown = Array.isArray(data.languagesKnown) ? data.languagesKnown
-                    .filter((l: any) => isValidObjectId(l.language) && isValidObjectId(l.proficiency))
-                    .map((l: any) => ({
-                        language: l.language,
-                        proficiency: l.proficiency,
-                        read: !!l.read,
-                        write: !!l.write,
-                        speak: !!l.speak
-                    })) : [];
+                    .filter((l: any) => isValidObjectId(l.language))
+                    .map((l: any) => {
+                        const entry: Record<string, any> = {
+                            language: l.language,
+                            read: !!l.read,
+                            write: !!l.write,
+                            speak: !!l.speak
+                        };
+                        if (isValidObjectId(l.proficiency)) {
+                            entry.proficiency = l.proficiency;
+                        }
+                        return entry;
+                    }) : [];
             }
 
             // employmentHistory[] — exact backend structure
@@ -510,48 +544,100 @@ export const mockApi = {
                 }) : [];
             }
 
-            if (data.certifications !== undefined) payload.certifications = data.certifications;
-            if (data.awards !== undefined) payload.awards = data.awards;
+            if (data.certifications !== undefined) {
+                payload.certifications = Array.isArray(data.certifications)
+                    ? data.certifications
+                        .filter((c: any) => c && typeof c.name === 'string' && c.name.trim().length > 0)
+                        .map((c: any) => ({
+                            name: c.name.trim(),
+                            status: c.status === 'completed' ? 'completed' : 'undergoing'
+                        }))
+                    : [];
+            }
+
+            if (data.awards !== undefined) {
+                payload.awards = typeof data.awards === 'string' 
+                    ? data.awards 
+                    : (Array.isArray(data.awards) ? data.awards.map((a: any) => typeof a === 'string' ? a : (a?.title || a?.name || '')).join('\n') : '');
+            }
 
             // projects[] — exact backend structure: title, tag, client, status ('Ongoing'|'Completed'), details, location, projectSite, teamSize, role, etc.
             if (data.projects !== undefined) {
-                payload.projects = Array.isArray(data.projects) ? data.projects.map((p: any) => {
-                    const proj: Record<string, any> = {
-                        title: p.title || '',
-                        status: p.status === 'Completed' ? 'Completed' : 'Ongoing',
-                        details: p.details || ''
-                    };
-                    if (p.tag) proj.tag = p.tag;
-                    if (p.client) proj.client = p.client;
-                    if (p.workedFromYear != null && p.workedFromYear !== '') proj.workedFromYear = Number(p.workedFromYear);
-                    if (p.workedFromMonth != null && p.workedFromMonth !== '') proj.workedFromMonth = Number(p.workedFromMonth);
-                    if (p.workedTillYear != null && p.workedTillYear !== '') proj.workedTillYear = Number(p.workedTillYear);
-                    if (p.workedTillMonth != null && p.workedTillMonth !== '') proj.workedTillMonth = Number(p.workedTillMonth);
-                    if (p.location) proj.location = p.location;
-                    if (p.projectSite) proj.projectSite = p.projectSite;
-                    if (isValidObjectId(p.natureOfEmployment)) proj.natureOfEmployment = p.natureOfEmployment;
-                    if (p.teamSize) proj.teamSize = p.teamSize;
-                    if (isValidObjectId(p.role)) proj.role = p.role;
-                    if (p.roleDescription) proj.roleDescription = p.roleDescription;
-                    if (p.skillsUsed) proj.skillsUsed = p.skillsUsed;
-                    return proj;
-                }) : [];
+                if (typeof data.projects === 'string') {
+                    const trimmed = data.projects.trim();
+                    payload.projects = trimmed ? [{ title: trimmed, status: 'Completed', details: '' }] : [];
+                } else if (Array.isArray(data.projects)) {
+                    payload.projects = data.projects
+                        .filter((p: any) => p && (p.title || (typeof p === 'string' && p.trim())))
+                        .map((p: any) => {
+                            if (typeof p === 'string') return { title: p.trim(), status: 'Completed', details: '' };
+                            const proj: Record<string, any> = {
+                                title: p.title || '',
+                                status: p.status === 'Completed' ? 'Completed' : 'Ongoing',
+                                details: p.details || ''
+                            };
+                            if (p.tag) proj.tag = p.tag;
+                            if (p.client) proj.client = p.client;
+                            if (p.workedFromYear != null && p.workedFromYear !== '') proj.workedFromYear = Number(p.workedFromYear);
+                            if (p.workedFromMonth != null && p.workedFromMonth !== '') proj.workedFromMonth = Number(p.workedFromMonth);
+                            if (p.workedTillYear != null && p.workedTillYear !== '') proj.workedTillYear = Number(p.workedTillYear);
+                            if (p.workedTillMonth != null && p.workedTillMonth !== '') proj.workedTillMonth = Number(p.workedTillMonth);
+                            if (p.location) proj.location = p.location;
+                            if (p.projectSite) proj.projectSite = p.projectSite;
+                            if (isValidObjectId(p.natureOfEmployment)) proj.natureOfEmployment = p.natureOfEmployment;
+                            if (p.teamSize) proj.teamSize = p.teamSize;
+                            if (isValidObjectId(p.role)) proj.role = p.role;
+                            if (p.roleDescription) proj.roleDescription = p.roleDescription;
+                            if (p.skillsUsed) proj.skillsUsed = p.skillsUsed;
+                            return proj;
+                        });
+                } else {
+                    payload.projects = [];
+                }
             }
 
-            if (data.internships !== undefined) payload.internships = data.internships;
-            if (data.profileSummary !== undefined) payload.profileSummary = data.profileSummary;
+            if (data.internships !== undefined) {
+                payload.internships = Array.isArray(data.internships)
+                    ? data.internships
+                        .filter((i: any) => i && (i.companyName?.trim() || i.role?.trim() || i.duration?.trim()))
+                        .map((i: any) => ({
+                            companyName: i.companyName?.trim() || '',
+                            duration: i.duration?.trim() || '',
+                            role: i.role?.trim() || ''
+                        }))
+                    : [];
+            }
+
+            if (data.profileSummary !== undefined) {
+                payload.profileSummary = typeof data.profileSummary === 'string' ? data.profileSummary : '';
+            }
+
             if (data.otherAchievements !== undefined) {
                 if (Array.isArray(data.otherAchievements)) {
-                    payload.otherAchievements = data.otherAchievements.map(String).map((s: string) => s.trim()).filter(Boolean);
+                    payload.otherAchievements = data.otherAchievements
+                        .map((item: any) => {
+                            if (typeof item === 'object' && item !== null) {
+                                const val = (item.title || item.name || '').trim();
+                                return val ? { name: val, title: val } : null;
+                            }
+                            if (typeof item === 'string' && item.trim()) {
+                                return { name: item.trim(), title: item.trim() };
+                            }
+                            return null;
+                        })
+                        .filter(Boolean);
                 } else if (typeof data.otherAchievements === 'string') {
                     payload.otherAchievements = data.otherAchievements
                         .split('\n')
                         .map((s: string) => s.trim())
-                        .filter(Boolean);
+                        .filter(Boolean)
+                        .map((val: string) => ({ name: val, title: val }));
                 } else {
                     payload.otherAchievements = [];
                 }
             }
+
+            console.log('[SQURX DEBUG] PUT /user/me payload:', JSON.stringify(payload, null, 2));
 
             const res = await fetchWithTimeout(`${API_BASE_URL}/user/me`, {
                 method: 'PUT',

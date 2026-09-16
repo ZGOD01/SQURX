@@ -272,10 +272,24 @@ export function Onboarding() {
                 setUgUniversity(firstEdu.university || firstEdu.customUniversity || '');
                 setSchoolCollegeName(firstEdu.university || firstEdu.customUniversity || '');
             }
-            setLanguages(Array.isArray(profile?.languagesKnown) ? profile!.languagesKnown.map(l => l.languageName || l.language).join(', ') : '');
+            setLanguages(
+                Array.isArray(profile?.languagesKnown)
+                    ? profile!.languagesKnown
+                        .map(l => {
+                            const found = languagesData?.data?.find((ld: any) => ld._id === l.language);
+                            return found?.name || l.languageName || (/^[0-9a-fA-F]{24}$/.test(l.language) ? '' : l.language);
+                        })
+                        .filter(Boolean)
+                        .join(', ')
+                    : ''
+            );
             setCertifications(profile?.certifications || []);
             setAwards(profile?.awards || '');
-            setProjects(Array.isArray(profile?.projects) ? profile!.projects.map(p => p.title).join(', ') : '');
+            if (Array.isArray(profile?.projects)) {
+                setProjects(profile!.projects.map((p: any) => typeof p === 'string' ? p : (p.title || '')).filter(Boolean).join(', '));
+            } else if (typeof profile?.projects === 'string') {
+                setProjects(profile.projects);
+            }
             setInternships(profile?.internships || []);
             setProfileSummary(profile?.profileSummary || '');
             setOtherAchievements(profile?.otherAchievements || '');
@@ -301,6 +315,21 @@ export function Onboarding() {
             }
         }
     }, [profile, jobTypesData, jobType]);
+
+    useEffect(() => {
+        if (languagesData?.data && Array.isArray(profile?.languagesKnown) && profile.languagesKnown.length > 0 && !languages) {
+            const resolved = profile.languagesKnown
+                .map(l => {
+                    const found = languagesData.data.find((ld: any) => ld._id === l.language);
+                    return found?.name || l.languageName || (/^[0-9a-fA-F]{24}$/.test(l.language) ? '' : l.language);
+                })
+                .filter(Boolean)
+                .join(', ');
+            if (resolved) {
+                setLanguages(resolved);
+            }
+        }
+    }, [languagesData, profile?.languagesKnown, languages]);
 
 
 
@@ -396,7 +425,11 @@ export function Onboarding() {
                 // Matches against lookup data so valid MongoDB ObjectIds are provided to the backend
                 languagesKnown: languages
                     ? languages.split(',').map(l => l.trim()).filter(Boolean).map(langName => {
-                        const match = languagesData?.data?.find((ld: any) => ld.name.toLowerCase() === langName.toLowerCase());
+                        const input = langName.toLowerCase();
+                        const match = languagesData?.data?.find((ld: any) => {
+                            const dbName = ld.name.toLowerCase();
+                            return dbName === input || dbName.startsWith(input) || input.startsWith(dbName.split(' ')[0]);
+                        });
                         return {
                             language: match?._id || '',
                             languageName: match?.name || langName,
@@ -413,7 +446,7 @@ export function Onboarding() {
                 projects: projects ? [{ title: projects }] : [],
                 internships,
                 profileSummary,
-                otherAchievements
+                otherAchievements,
             });
             setOnboardingStep(1);
         } catch (err) {

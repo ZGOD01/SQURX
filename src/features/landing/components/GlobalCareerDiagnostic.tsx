@@ -12,7 +12,8 @@ import {
     TrendingUp, Home, Microscope, Handshake, 
     HelpCircle, Calculator, Star, Map, CheckCircle2,
     CalendarDays, LogIn, ArrowRight, ArrowLeft, Clock, Loader2,
-    Eye, EyeOff, ChevronLeft, ChevronRight, Calendar
+    Eye, EyeOff, ChevronLeft, ChevronRight, Calendar,
+    Smartphone, KeyRound, RotateCcw
 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -117,6 +118,46 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
     const [bookingError, setBookingError] = useState<string | null>(null);
     const [passwordRequired, setPasswordRequired] = useState(false);
     const [customPassword, setCustomPassword] = useState('');
+
+    // OTP Verification Modal States
+    const [showOtpModal, setShowOtpModal] = useState(false);
+    const [otpUserId, setOtpUserId] = useState<string>('');
+    const [otpValue, setOtpValue] = useState<string>('');
+    const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+    const [otpError, setOtpError] = useState<string | null>(null);
+    const [otpResendTimer, setOtpResendTimer] = useState(60);
+    const [isResendingOtp, setIsResendingOtp] = useState(false);
+    const [otpResendSuccess, setOtpResendSuccess] = useState<string | null>(null);
+    const [otpLength, setOtpLength] = useState<number>(4);
+    const otpTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // Timer effect for OTP resend countdown
+    useEffect(() => {
+        if (showOtpModal) {
+            setOtpResendTimer(60);
+            if (otpTimerRef.current) clearInterval(otpTimerRef.current);
+            otpTimerRef.current = setInterval(() => {
+                setOtpResendTimer((prev) => {
+                    if (prev <= 1) {
+                        if (otpTimerRef.current) clearInterval(otpTimerRef.current);
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        } else {
+            if (otpTimerRef.current) {
+                clearInterval(otpTimerRef.current);
+                otpTimerRef.current = null;
+            }
+        }
+        return () => {
+            if (otpTimerRef.current) {
+                clearInterval(otpTimerRef.current);
+                otpTimerRef.current = null;
+            }
+        };
+    }, [showOtpModal]);
 
     // Calendar Month Grid state (GET /time-slots/calendar?month=YYYY-MM)
     const [currentMonthDate, setCurrentMonthDate] = useState<Date>(new Date());
@@ -279,10 +320,10 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
     const [marketingOptIn, setMarketingOptIn] = useState<'yes' | 'no' | null>(null);
     const allConsentsGiven = consentAge18 && consentReadUnderstood && consentDataProcessing && consentResumeSharing;
 
-    // Lock body scroll and hide navbar when GDPR or Privacy Policy modal is open
+    // Lock body scroll and hide navbar when GDPR, Privacy Policy, or OTP modal is open
     useEffect(() => {
         const navbar = document.getElementById('main-navbar');
-        if (showGdprModal || showPrivacyPolicyModal) {
+        if (showGdprModal || showPrivacyPolicyModal || showOtpModal) {
             document.body.style.overflow = 'hidden';
             if (navbar) {
                 navbar.style.visibility = 'hidden';
@@ -300,7 +341,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
             const n = document.getElementById('main-navbar');
             if (n) { n.style.visibility = ''; n.style.pointerEvents = ''; }
         };
-    }, [showGdprModal, showPrivacyPolicyModal]);
+    }, [showGdprModal, showPrivacyPolicyModal, showOtpModal]);
 
     useEffect(() => {
         // Fetch real active quiz questions from the API and merge their database IDs
@@ -409,269 +450,374 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
         setShowGdprModal(true);
     };
 
-    // Called after user agrees to all GDPR consents
-    const handleGdprAgreeAndBook = async () => {
-        setShowGdprModal(false);
+    // Execute consultation booking once authentication (existing or post-OTP) is confirmed
+    const executeConsultationBooking = async (tokenToUse: string, currentUser?: any) => {
         setIsConfirmingBooking(true);
         setBookingStatus('submitting');
         setBookingError(null);
+
+        // Sync gdprConsent to true on the backend if we have a token
+        if (tokenToUse) {
+            try {
+                await fetch(`${API_BASE_URL}/user/me`, {
+                    method: 'PUT',
+                    headers: { 
+                        'Authorization': `Bearer ${tokenToUse}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ gdprConsent: true }),
+                });
+            } catch (e) {
+                console.warn("Failed to sync gdprConsent to user profile:", e);
+            }
+        }
+
+        // Build quiz answers from component state
+        const quizAnswersList = Object.keys(answers).map(key => {
+            const stepIndex = parseInt(key, 10);
+            const rawChoice = answers[stepIndex];
+            const isValidHex = /^[0-9a-fA-F]{24}$/.test(rawChoice);
+            return {
+                quizId: questions[stepIndex]?.id || '65f000000000000000000000',
+                questionId: questions[stepIndex]?.id || '65f000000000000000000000',
+                choiceId: isValidHex ? rawChoice : '65f000000000000000000000',
+                optionId: isValidHex ? rawChoice : '65f000000000000000000000'
+            };
+        });
+
+        if (quizAnswersList.length === 0) {
+            quizAnswersList.push({
+                quizId: '65f000000000000000000000',
+                questionId: '65f000000000000000000000',
+                choiceId: '65f000000000000000000000',
+                optionId: '65f000000000000000000000'
+            });
+        }
+
+        let sanitizedMobile = leadData.mobile ? leadData.mobile.replace(/\D/g, '') : '';
+        if (sanitizedMobile.length !== 10) {
+            sanitizedMobile = '9' + Math.floor(100000000 + Math.random() * 900000000).toString();
+        }
+
+        const payload = {
+            fullName: leadData.name || currentUser?.name || currentUser?.fullName || 'Student',
+            email: leadData.email || currentUser?.email || 'guest@example.com',
+            mobile: sanitizedMobile,
+            quizAnswers: quizAnswersList,
+            appointment: { dateId: selectedDate, timeId: selectedTime },
+            gdprConsent: true,
+            gdpr: true,
+            consent: true
+        };
+
+        const result = await consultationApi.bookConsultation(payload);
         
+        if (!result || (result.success !== undefined && result.success === false)) {
+            throw new Error("Booking was not confirmed by the server.");
+        }
+
+        const confirmedBookingData = result?.data?.consultation || result?.data?.booking || result?.data || result;
+        setConfirmedBooking(confirmedBookingData);
+
+        const finalToken = result?.data?.token || tokenToUse;
+        let pendingUser: any = currentUser || null;
+
+        if (finalToken) {
+            try {
+                const meRes = await fetch(`${API_BASE_URL}/user/me`, {
+                    headers: { 'Authorization': `Bearer ${finalToken}` }
+                });
+                if (meRes.ok) {
+                    const meJson = await meRes.json();
+                    if (meJson.success && meJson.data) {
+                        pendingUser = meJson.data;
+                    }
+                }
+            } catch (meErr) {
+                console.warn('[GCD] /user/me fetch error:', meErr);
+            }
+        }
+
+        if (pendingUser && finalToken) {
+            pendingAuthRef.current = { user: pendingUser, token: finalToken };
+        }
+
+        // Send notification email
+        const selectedDateObj = calendarDays.find(d => (d.dateId || d._id) === selectedDate || d.date === selectedDate) || slotsData.find(d => (d._id || d.date) === selectedDate);
+        const selectedSlotObj = selectedDateObj?.slots?.find((s: any) => s._id === selectedTime);
+        consultationApi.sendBookingNotification({
+            studentName: leadData.name || pendingUser?.name || pendingUser?.fullName || 'Student',
+            studentEmail: leadData.email || pendingUser?.email || '',
+            studentPhone: (leadData.countryCode || '') + ' ' + (leadData.mobile || ''),
+            bookingDate: selectedDateObj?.date
+                ? new Date(selectedDateObj.date).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+                : selectedDate,
+            bookingTime: selectedSlotObj?.time || selectedTime,
+            bookingSource: directBooking ? 'Dashboard Consultation' : 'Book Counselling',
+        }).catch(() => {});
+
+        // Transition to success state and display confirmation overlay & in-line confirmation card
+        setBookingStatus('success');
+        setIsConfirmingBooking(false);
+        setIsBookingConfirmed(true);
+        setShowSuccessPopup(true);
+
+        // Clear any old timer - do NOT auto-redirect, the user will click "Go to Dashboard" to proceed
+        if (redirectTimerRef.current) {
+            clearTimeout(redirectTimerRef.current);
+            redirectTimerRef.current = null;
+        }
+    };
+
+    // Called after user agrees to all GDPR consents
+    const handleGdprAgreeAndBook = async () => {
+        setShowGdprModal(false);
+        setBookingError(null);
+
+        // 1. Check if user is already authenticated
+        const activeToken = getInMemToken() || '';
+        if (activeToken) {
+            try {
+                await executeConsultationBooking(activeToken, user);
+            } catch (error: any) {
+                console.error('Booking failed:', error);
+                setBookingError(error.message || 'Failed to book consultation');
+                setBookingStatus('error');
+                setIsConfirmingBooking(false);
+            }
+            return;
+        }
+
+        // 2. Check if returning user custom password is required
+        if (passwordRequired) {
+            if (!customPassword) {
+                setBookingError("Password is required to book under this account.");
+                return;
+            }
+            setIsConfirmingBooking(true);
+            setBookingStatus('submitting');
+            try {
+                const loginRes = await fetch(`${API_BASE_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: leadData.email,
+                        password: customPassword
+                    })
+                });
+                const loginData = await loginRes.json().catch(() => ({}));
+                if (loginRes.status === 200 && loginData.success && loginData.data?.token) {
+                    const tok = loginData.data.token;
+                    const usr = loginData.data.user;
+                    setInMemToken(tok);
+                    pendingAuthRef.current = { user: usr, token: tok };
+                    setPasswordRequired(false);
+                    await executeConsultationBooking(tok, usr);
+                } else if (loginRes.status === 401) {
+                    throw new Error("Incorrect password. Please verify your password and try again.");
+                } else if (loginRes.status === 403) {
+                    const uId = loginData?.data?.userId;
+                    if (uId) {
+                        setOtpUserId(uId);
+                        setOtpValue('');
+                        setOtpError(null);
+                        setOtpResendSuccess(null);
+                        setShowOtpModal(true);
+                        setIsConfirmingBooking(false);
+                        setBookingStatus('idle');
+                        return;
+                    }
+                    throw new Error("This account is registered but unverified. Please Sign In normally to verify and book.");
+                } else {
+                    throw new Error(loginData.message || "Failed to authenticate with entered password.");
+                }
+            } catch (e: any) {
+                setBookingError(e.message || "Failed to authenticate. Please try again.");
+                setBookingStatus('error');
+                setIsConfirmingBooking(false);
+            }
+            return;
+        }
+
+        // 3. Guest user: Initiate Signup -> Backend sends OTP -> Show OTP modal!
+        setIsConfirmingBooking(true);
+        setBookingStatus('submitting');
+
+        let sanitizedMobile = leadData.mobile ? leadData.mobile.replace(/\D/g, '') : '';
+        if (sanitizedMobile.length !== 10) {
+            sanitizedMobile = '9' + Math.floor(100000000 + Math.random() * 900000000).toString();
+        }
+
+        const guestPassword = 'SqurxGuestPass123!';
         try {
-            // Build quiz answers from component state (no sessionStorage)
-            const quizAnswersList = Object.keys(answers).map(key => {
-                const stepIndex = parseInt(key, 10);
-                const rawChoice = answers[stepIndex];
-                const isValidHex = /^[0-9a-fA-F]{24}$/.test(rawChoice);
-                return {
-                    quizId: questions[stepIndex]?.id || '65f000000000000000000000',
-                    questionId: questions[stepIndex]?.id || '65f000000000000000000000',
-                    choiceId: isValidHex ? rawChoice : '65f000000000000000000000',
-                    optionId: isValidHex ? rawChoice : '65f000000000000000000000'
-                };
+            const signupRes = await fetch(`${API_BASE_URL}/auth/signup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fullName: leadData.name || 'Guest User',
+                    email: leadData.email || 'guest@example.com',
+                    mobile: sanitizedMobile,
+                    countryCode: leadData.countryCode,
+                    country: leadData.country,
+                    password: guestPassword,
+                    role: 'student',
+                    gdprConsent: true,
+                    gdpr: true,
+                    consent: true
+                })
             });
 
-            if (quizAnswersList.length === 0) {
-                quizAnswersList.push({
-                    quizId: '65f000000000000000000000',
-                    questionId: '65f000000000000000000000',
-                    choiceId: '65f000000000000000000000',
-                    optionId: '65f000000000000000000000'
-                });
-            }
+            const signupData = await signupRes.json().catch(() => ({}));
 
-            // Sanitize mobile to ensure it's exactly 10 digits
-            let sanitizedMobile = leadData.mobile ? leadData.mobile.replace(/\D/g, '') : '';
-            if (sanitizedMobile.length !== 10) {
-                // Generate a random unique 10-digit number starting with 9 to avoid database uniqueness conflicts
-                sanitizedMobile = '9' + Math.floor(100000000 + Math.random() * 900000000).toString();
-            }
-
-            // Silent signup & login flow to ensure user document exists and has gdprConsent verified,
-            // and obtaining a valid token to authorize the subsequent book request.
-            let activeToken = getInMemToken() || '';
-            let authError: string | null = null;
-            let loggedInUser: any = null;
-            
-            if (activeToken) {
-                // User is already logged in, bypass silent signup/login
-                loggedInUser = user;
-            } else if (passwordRequired) {
-                if (!customPassword) {
-                    throw new Error("Password is required to book under this account.");
+            if (signupRes.status === 201) {
+                const userId = signupData?.data?.userId || signupData?.userId || signupData?.data?.user?._id || signupData?.data?._id;
+                if (userId) {
+                    setOtpUserId(userId);
+                    setOtpValue('');
+                    setOtpError(null);
+                    setOtpResendSuccess(null);
+                    setIsGuestAccount(true);
+                    setIsConfirmingBooking(false);
+                    setBookingStatus('idle');
+                    setShowOtpModal(true);
+                    return;
                 }
-                try {
-                    const loginRes = await fetch(`${API_BASE_URL}/auth/login`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            email: leadData.email,
-                            password: customPassword
-                        })
-                    });
-                    const loginData = await loginRes.json().catch(() => ({}));
-                    if (loginRes.status === 200 && loginData.success && loginData.data?.token) {
-                        activeToken = loginData.data.token;
-                        loggedInUser = loginData.data.user;
-                        setInMemToken(activeToken);
-                        setPasswordRequired(false);
-                    } else if (loginRes.status === 401) {
-                        authError = "Incorrect password. Please verify your password and try again.";
-                    } else if (loginRes.status === 403) {
-                        authError = "This account is registered but unverified. Please Sign In normally to verify and book.";
-                    } else {
-                        authError = loginData.message || "Failed to authenticate with entered password.";
+                throw new Error("Could not retrieve user ID for verification. Please try again.");
+            } else if (signupRes.status === 409) {
+                // User already exists: Try silent login with guest pass or prompt for password
+                const loginRes = await fetch(`${API_BASE_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: leadData.email || 'guest@example.com',
+                        password: guestPassword
+                    })
+                });
+                const loginData = await loginRes.json().catch(() => ({}));
+                if (loginRes.status === 200 && loginData.success && loginData.data?.token) {
+                    const tok = loginData.data.token;
+                    const usr = loginData.data.user;
+                    setInMemToken(tok);
+                    pendingAuthRef.current = { user: usr, token: tok };
+                    await executeConsultationBooking(tok, usr);
+                    return;
+                } else if (loginRes.status === 401) {
+                    setPasswordRequired(true);
+                    throw new Error("This email or mobile number is already associated with an account. Please enter your password below to confirm your booking, or use different details.");
+                } else if (loginRes.status === 403) {
+                    const uId = loginData?.data?.userId;
+                    if (uId) {
+                        setOtpUserId(uId);
+                        setOtpValue('');
+                        setOtpError(null);
+                        setOtpResendSuccess(null);
+                        setShowOtpModal(true);
+                        setIsConfirmingBooking(false);
+                        setBookingStatus('idle');
+                        return;
                     }
-                } catch (e) {
-                    authError = "Failed to reach verification server. Please try again.";
+                    throw new Error("This account is registered but unverified. Please Sign In to verify and book, or use a new email/mobile.");
+                } else {
+                    throw new Error(loginData.message || "Authentication failed. Please Sign In or use another email/mobile.");
                 }
             } else {
-                const guestPassword = 'SqurxGuestPass123!';
-                try {
-                    // 1. Silent Signup
-                    const signupRes = await fetch(`${API_BASE_URL}/auth/signup`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            fullName: leadData.name || 'Guest User',
-                            email: leadData.email || 'guest@example.com',
-                            mobile: sanitizedMobile,
-                            countryCode: leadData.countryCode,
-                            country: leadData.country,
-                            password: guestPassword,
-                            role: 'student',
-                            gdprConsent: true,
-                            gdpr: true,
-                            consent: true
-                        })
-                    });
-                    
-                    if (signupRes.status === 201) {
-                        const signupData = await signupRes.json().catch(() => ({}));
-                        const userId = signupData?.data?.userId;
-                        if (userId) {
-                            // Deriving OTP: last 4 digits of mobile number
-                            const otp = sanitizedMobile.slice(-4);
-                            const verifyRes = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    userId,
-                                    otp
-                                })
-                            });
-                            const verifyData = await verifyRes.json().catch(() => ({}));
-                            if (verifyRes.status === 200 && verifyData.success && verifyData.data?.token) {
-                                activeToken = verifyData.data.token;
-                                loggedInUser = verifyData.data.user;
-                                setInMemToken(activeToken);
-                                setIsGuestAccount(true); // brand-new account — show temp password notice
-                            } else {
-                                console.warn("Silent OTP verification failed:", verifyData);
-                            }
-                        }
-                    } else if (signupRes.status === 409) {
-                        // 2. Silent Login (if already exists)
-                        const loginRes = await fetch(`${API_BASE_URL}/auth/login`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                email: leadData.email || 'guest@example.com',
-                                password: guestPassword
-                            })
-                        });
-                        const loginData = await loginRes.json().catch(() => ({}));
-                        if (loginRes.status === 200 && loginData.success && loginData.data?.token) {
-                            activeToken = loginData.data.token;
-                            loggedInUser = loginData.data.user;
-                            setInMemToken(activeToken);
-                        } else if (loginRes.status === 401) {
-                            setPasswordRequired(true);
-                            authError = "This email or mobile number is already associated with an account. Please enter your password below to confirm your booking, or use different details.";
-                        } else if (loginRes.status === 403) {
-                            authError = "This account is registered but unverified. Please Sign In to verify and book, or use a new email/mobile.";
-                        } else {
-                            authError = loginData.message || "Authentication failed. Please Sign In or use another email/mobile.";
-                        }
-                    } else {
-                        const signupData = await signupRes.json().catch(() => ({}));
-                        authError = signupData.message || "Registration failed. Please try again.";
-                    }
-                } catch (e) {
-                    console.warn("Silent signup/login workaround check failed, falling back to direct book:", e);
-                }
+                throw new Error(signupData.message || "Registration failed. Please try again.");
             }
-
-            if (authError) {
-                throw new Error(authError);
-            }
-
-            // Sync gdprConsent to true on the backend if we have a token to prevent validation errors
-            if (activeToken) {
-                try {
-                    await fetch(`${API_BASE_URL}/user/me`, {
-                        method: 'PUT',
-                        headers: { 
-                            'Authorization': `Bearer ${activeToken}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ gdprConsent: true }),
-                    });
-                } catch (e) {
-                    console.warn("Failed to sync gdprConsent to user profile:", e);
-                }
-            }
-
-            const payload = {
-                fullName: leadData.name || 'Guest User',
-                email: leadData.email || 'guest@example.com',
-                mobile: sanitizedMobile,
-                quizAnswers: quizAnswersList,
-                appointment: { dateId: selectedDate, timeId: selectedTime },
-                gdprConsent: true,
-                gdpr: true,
-                consent: true
-            };
-
-            const result = await consultationApi.bookConsultation(payload);
-            
-            // Confirm booking response is valid
-            if (!result || (result.success !== undefined && result.success === false)) {
-                throw new Error("Booking was not confirmed by the server.");
-            }
-
-            const confirmedBookingData = result?.data?.consultation || result?.data?.booking || result?.data || result;
-            setConfirmedBooking(confirmedBookingData);
-
-            // Determine the best available token: booking response takes priority, then the
-            // token obtained during silent signup/login, then any pre-existing session token.
-            const tokenToUse = result?.data?.token || activeToken;
-            let pendingUser: any = null;
-
-            if (tokenToUse) {
-                let resolvedUser: any = loggedInUser || null;
-
-                try {
-                    const meRes = await fetch(`${API_BASE_URL}/user/me`, {
-                        headers: { 'Authorization': `Bearer ${tokenToUse}` }
-                    });
-                    if (meRes.ok) {
-                        const meJson = await meRes.json();
-                        if (meJson.success && meJson.data) {
-                            resolvedUser = meJson.data;
-                        } else {
-                            console.warn('[GCD] /user/me returned unexpected shape, falling back to login data:', meJson);
-                        }
-                    } else {
-                        console.warn('[GCD] /user/me responded with status', meRes.status, '— falling back to login data');
-                    }
-                } catch (meErr) {
-                    console.warn('[GCD] /user/me fetch error — falling back to login data:', meErr);
-                }
-
-                if (resolvedUser) {
-                    pendingUser = resolvedUser;
-                }
-            }
-
-            if (pendingUser && tokenToUse) {
-                pendingAuthRef.current = { user: pendingUser, token: tokenToUse };
-            }
-
-            // Send notification email to Counselling@squarex.com (fire-and-forget)
-            const selectedDateObj = calendarDays.find(d => (d.dateId || d._id) === selectedDate || d.date === selectedDate) || slotsData.find(d => (d._id || d.date) === selectedDate);
-            const selectedSlotObj = selectedDateObj?.slots?.find((s: any) => s._id === selectedTime);
-            consultationApi.sendBookingNotification({
-                studentName: leadData.name || loggedInUser?.name || loggedInUser?.fullName || 'Student',
-                studentEmail: leadData.email || loggedInUser?.email || '',
-                studentPhone: (leadData.countryCode || '') + ' ' + (leadData.mobile || ''),
-                bookingDate: selectedDateObj?.date
-                    ? new Date(selectedDateObj.date).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-                    : selectedDate,
-                bookingTime: selectedSlotObj?.time || selectedTime,
-                bookingSource: directBooking ? 'Dashboard Consultation' : 'Book Counselling',
-            }).catch(() => {}); // silent – never block the UI
-
-            // Transition to success state and display confirmation overlay
-            setBookingStatus('success');
-            setIsConfirmingBooking(false);
-            setIsBookingConfirmed(true);
-            setShowSuccessPopup(true);
-
-            // Clear any active timer
-            if (redirectTimerRef.current) {
-                clearTimeout(redirectTimerRef.current);
-            }
-
-            // Automatic fallback redirect after 3 seconds if user doesn't click OK button manually
-            redirectTimerRef.current = setTimeout(handleConfirmSuccessRedirect, 3000);
-
         } catch (error: any) {
-            console.error('Booking failed:', error);
+            console.error('Booking authentication step failed:', error);
             const errorMessage = error.message || 'Failed to book consultation';
             setBookingError(errorMessage);
             setBookingStatus('error');
             setIsConfirmingBooking(false);
-            // User remains on the booking step, form inputs preserved
+        }
+    };
+
+    // Called when user submits OTP in the OTP Modal
+    const handleOtpSubmit = async (e?: React.FormEvent) => {
+        e?.preventDefault();
+        if (!otpUserId) {
+            setOtpError("Session expired. Please try booking again.");
+            return;
+        }
+        const cleanOtp = otpValue.replace(/\s/g, '');
+        if (cleanOtp.length < 4) {
+            setOtpError(`Please enter a valid ${otpLength}-digit verification code.`);
+            return;
+        }
+
+        setIsVerifyingOtp(true);
+        setOtpError(null);
+        setOtpResendSuccess(null);
+
+        try {
+            const verifyRes = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: otpUserId,
+                    otp: cleanOtp
+                })
+            });
+
+            const verifyData = await verifyRes.json().catch(() => ({}));
+
+            if (verifyRes.status === 200 && verifyData.success && verifyData.data?.token) {
+                const activeToken = verifyData.data.token;
+                const loggedInUser = verifyData.data.user;
+
+                // Save token so API calls like bookConsultation are authorized
+                setInMemToken(activeToken);
+
+                // Hold credentials in pendingAuthRef so Landing.tsx does NOT unmount this component
+                // before the confirmation screen has been displayed for 3 seconds!
+                pendingAuthRef.current = { user: loggedInUser, token: activeToken };
+
+                const uId = loggedInUser?._id || loggedInUser?.id || otpUserId;
+                if (uId) {
+                    setGdprConsent(uId, true);
+                }
+
+                // Close OTP modal so confirmation screen is revealed
+                setShowOtpModal(false);
+
+                // Seamlessly execute consultation booking with newly verified account!
+                // This activates isBookingConfirmed(true) and opens the Success confirmation screen
+                await executeConsultationBooking(activeToken, loggedInUser);
+            } else {
+                setOtpError(verifyData.message || "Invalid or expired OTP code. Please check and try again.");
+            }
+        } catch (err: any) {
+            console.error("OTP verification error:", err);
+            setOtpError(err.message || "Failed to complete booking. Please try again.");
+        } finally {
+            setIsVerifyingOtp(false);
+        }
+    };
+
+    // Called when user clicks "Resend OTP"
+    const handleResendOtp = async () => {
+        if (otpResendTimer > 0 || !otpUserId || isResendingOtp) return;
+        setIsResendingOtp(true);
+        setOtpError(null);
+        setOtpResendSuccess(null);
+
+        try {
+            const res = await fetch(`${API_BASE_URL}/auth/resend-otp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: otpUserId })
+            });
+            const resData = await res.json().catch(() => ({}));
+            if (res.ok && resData.success !== false) {
+                setOtpResendSuccess(resData.message || "A fresh OTP code has been sent to your mobile & email.");
+                setOtpResendTimer(60);
+            } else {
+                setOtpError(resData.message || "Failed to resend OTP. Please wait a moment and try again.");
+            }
+        } catch (err: any) {
+            setOtpError("Network error while resending OTP. Please try again.");
+        } finally {
+            setIsResendingOtp(false);
         }
     };
 
@@ -1657,9 +1803,34 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                             Time: <span className="font-normal text-gray-700">{confirmedBooking?.time || selectedTime || 'Scheduled Slot'}</span>
                                         </p>
                                     </div>
-                                    <p className="text-xs text-gray-600 font-medium leading-relaxed max-w-sm mx-auto mb-6">
+                                    <p className="text-xs text-gray-600 font-medium leading-relaxed max-w-sm mx-auto mb-5">
                                         We will contact you using the provided email address and phone number with further information.
                                     </p>
+
+                                    {/* Guest account notice inside card */}
+                                    {isGuestAccount && (
+                                        <div className="w-full max-w-sm mx-auto mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left">
+                                            <p className="text-[11px] font-black uppercase tracking-widest text-amber-700 mb-1.5">Your Account Credentials</p>
+                                            <p className="text-xs text-amber-800 leading-relaxed mb-2.5">
+                                                A SQUREX account was created for you. Use your email and temporary password to sign in later:
+                                            </p>
+                                            <div className="flex items-center gap-2 bg-white rounded-xl border border-amber-200 px-3 py-2">
+                                                <span className="flex-1 text-xs font-mono font-bold text-gray-800 select-all tracking-wider">SqurxGuestPass123!</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText('SqurxGuestPass123!').then(() => {
+                                                            setCopiedPassword(true);
+                                                            setTimeout(() => setCopiedPassword(false), 2000);
+                                                        });
+                                                    }}
+                                                    className="text-[10px] font-bold uppercase tracking-widest text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 rounded-lg px-2 py-1 transition-colors flex-shrink-0 cursor-pointer"
+                                                >
+                                                    {copiedPassword ? '✓ Copied' : 'Copy'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                     
                                     <div className="flex flex-col gap-3 w-full max-w-sm mx-auto">
                                         <a 
@@ -1675,7 +1846,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                             variant="outline"
                                             className="w-full rounded-xl h-12 text-sm font-bold border-2 border-gray-200 text-gray-700 hover:bg-gray-50"
                                         >
-                                            {directBooking ? 'Back to Consultations' : 'OK — Go to Dashboard'}
+                                            {directBooking ? 'Back to Consultations' : 'Go to dashboard'}
                                         </Button>
                                     </div>
                                 </motion.div>
@@ -1868,6 +2039,240 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                 )}
             </AnimatePresence>
 
+            {/* ── OTP Verification Modal (Before Booking Success Confirmation) ──────── */}
+            {typeof document !== 'undefined' && createPortal(
+                <AnimatePresence>
+                    {showOtpModal && (
+                        <motion.div
+                            key="otp-modal-overlay"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.25 }}
+                            className="fixed inset-0 z-[99998] flex items-center justify-center p-4 sm:p-6"
+                            style={{ backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', backgroundColor: 'rgba(0,0,0,0.55)' }}
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="otp-modal-title"
+                        >
+                            <motion.div
+                                key="otp-modal-panel"
+                                initial={{ y: 30, opacity: 0, scale: 0.95 }}
+                                animate={{ y: 0, opacity: 1, scale: 1 }}
+                                exit={{ y: 30, opacity: 0, scale: 0.95 }}
+                                transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+                                className="relative w-full max-w-md max-h-[88vh] bg-white rounded-[2.5rem] shadow-[0_32px_90px_rgba(0,0,0,0.3)] flex flex-col overflow-y-auto p-6 sm:p-8 text-center border border-gray-100/80"
+                            >
+                                {/* Close / Cancel Button */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowOtpModal(false);
+                                        setOtpError(null);
+                                        setOtpResendSuccess(null);
+                                        setBookingStatus('idle');
+                                    }}
+                                    className="absolute top-5 right-5 w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-800 flex items-center justify-center transition-colors text-sm font-bold cursor-pointer"
+                                    aria-label="Close"
+                                >
+                                    ✕
+                                </button>
+
+                                {/* Top Icon */}
+                                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shadow-inner relative">
+                                    <div className="absolute inset-0 bg-blue-400/20 blur-xl animate-pulse rounded-2xl" />
+                                    <Smartphone className="w-8 h-8 relative z-10" strokeWidth={2.2} />
+                                </div>
+
+                                <h2 id="otp-modal-title" className="text-2xl font-black text-gray-900 tracking-tight mb-1">
+                                    Enter Verification Code
+                                </h2>
+                                <p className="text-xs text-gray-500 font-medium mb-4">
+                                    We sent a {otpLength}-digit one-time password to verify your consultation booking.
+                                </p>
+
+                                {/* Target Recipient Pills */}
+                                <div className="bg-gray-50/90 border border-gray-100 rounded-2xl p-3 mb-6 flex flex-col gap-1 items-center justify-center text-xs">
+                                    <div className="flex items-center gap-2 text-gray-800 font-bold">
+                                        <span>📱</span>
+                                        <span>{leadData.countryCode} {leadData.mobile || 'Registered Mobile'}</span>
+                                    </div>
+                                    {leadData.email && (
+                                        <div className="flex items-center gap-2 text-gray-500 font-medium text-[11px] truncate max-w-[280px]">
+                                            <span>✉️</span>
+                                            <span className="truncate">{leadData.email}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* OTP Form */}
+                                <form onSubmit={handleOtpSubmit} className="space-y-5">
+                                    {/* Digits Grid */}
+                                    <div className="flex justify-center gap-2.5 sm:gap-3.5">
+                                        {Array.from({ length: otpLength }).map((_, index) => {
+                                            const isActive = otpValue[index] && otpValue[index] !== ' ';
+                                            return (
+                                                <div key={index} className="relative">
+                                                    <input
+                                                        id={`gcd-otp-input-${index}`}
+                                                        type="text"
+                                                        inputMode="numeric"
+                                                        pattern="[0-9]*"
+                                                        maxLength={1}
+                                                        autoFocus={index === 0}
+                                                        value={otpValue[index] || ''}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value.replace(/[^0-9]/g, '');
+                                                            const chars = otpValue.padEnd(otpLength, ' ').split('');
+                                                            chars[index] = val || ' ';
+                                                            const newStr = chars.join('').trimEnd();
+                                                            setOtpValue(newStr);
+                                                            if (val && index < otpLength - 1) {
+                                                                document.getElementById(`gcd-otp-input-${index + 1}`)?.focus();
+                                                            }
+                                                        }}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Backspace') {
+                                                                if ((!otpValue[index] || otpValue[index] === ' ') && index > 0) {
+                                                                    const chars = otpValue.padEnd(otpLength, ' ').split('');
+                                                                    chars[index - 1] = ' ';
+                                                                    setOtpValue(chars.join('').trimEnd());
+                                                                    document.getElementById(`gcd-otp-input-${index - 1}`)?.focus();
+                                                                }
+                                                            }
+                                                        }}
+                                                        onPaste={(e) => {
+                                                            e.preventDefault();
+                                                            const pasted = e.clipboardData.getData('text').replace(/[^0-9]/g, '');
+                                                            if (pasted) {
+                                                                if (pasted.length >= 6 && otpLength === 4) {
+                                                                    setOtpLength(6);
+                                                                    const cleanPasted = pasted.slice(0, 6);
+                                                                    setOtpValue(cleanPasted);
+                                                                    setTimeout(() => {
+                                                                        document.getElementById(`gcd-otp-input-5`)?.focus();
+                                                                    }, 50);
+                                                                } else {
+                                                                    const cleanPasted = pasted.slice(0, otpLength);
+                                                                    setOtpValue(cleanPasted);
+                                                                    const targetFocus = Math.min(otpLength - 1, cleanPasted.length);
+                                                                    document.getElementById(`gcd-otp-input-${targetFocus}`)?.focus();
+                                                                }
+                                                            }
+                                                        }}
+                                                        className={`w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl sm:text-3xl font-black rounded-2xl outline-none transition-all duration-200 bg-white ${
+                                                            isActive
+                                                                ? 'border-2 border-blue-600 text-blue-600 shadow-[0_8px_20px_rgba(37,99,235,0.15)] ring-4 ring-blue-500/10'
+                                                                : 'border-2 border-gray-200 text-gray-900 focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10'
+                                                        }`}
+                                                    />
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Length Switch Helper */}
+                                    <div className="flex justify-center items-center">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const nextLen = otpLength === 4 ? 6 : 4;
+                                                setOtpLength(nextLen);
+                                                setOtpValue(otpValue.slice(0, nextLen));
+                                            }}
+                                            className="text-[11px] font-semibold text-gray-400 hover:text-blue-600 underline underline-offset-2 transition-colors cursor-pointer"
+                                        >
+                                            {otpLength === 4 ? "Received a 6-digit code? Switch to 6 boxes" : "Received a 4-digit code? Switch to 4 boxes"}
+                                        </button>
+                                    </div>
+
+                                    {/* Error Message Alert */}
+                                    {otpError && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: -6 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-semibold text-red-700 text-center"
+                                        >
+                                            {otpError}
+                                        </motion.div>
+                                    )}
+
+                                    {/* Resend Success Alert */}
+                                    {otpResendSuccess && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: -6 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-700 text-center"
+                                        >
+                                            {otpResendSuccess}
+                                        </motion.div>
+                                    )}
+
+                                    {/* Resend Button */}
+                                    <div className="pt-1 flex justify-center">
+                                        <button
+                                            type="button"
+                                            disabled={otpResendTimer > 0 || isResendingOtp || isVerifyingOtp}
+                                            onClick={handleResendOtp}
+                                            className="inline-flex items-center gap-1.5 text-xs font-bold text-gray-600 hover:text-blue-600 disabled:text-gray-300 disabled:hover:text-gray-300 transition-colors cursor-pointer"
+                                        >
+                                            {isResendingOtp ? (
+                                                <>
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                    <span>Sending new code...</span>
+                                                </>
+                                            ) : otpResendTimer > 0 ? (
+                                                <span>Resend code in {otpResendTimer}s</span>
+                                            ) : (
+                                                <>
+                                                    <RotateCcw className="w-3.5 h-3.5" />
+                                                    <span>Didn't receive code? Resend OTP</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex gap-3 pt-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowOtpModal(false);
+                                                setOtpError(null);
+                                                setOtpResendSuccess(null);
+                                                setBookingStatus('idle');
+                                            }}
+                                            disabled={isVerifyingOtp}
+                                            className="flex-1 h-12 rounded-2xl border-2 border-gray-200 text-gray-600 text-xs font-bold hover:bg-gray-50 transition-colors cursor-pointer"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            disabled={isVerifyingOtp || otpValue.replace(/\s/g, '').length < otpLength}
+                                            className="flex-[2] h-12 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-lg shadow-blue-600/25 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer"
+                                        >
+                                            {isVerifyingOtp ? (
+                                                <>
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                    <span>Verifying Code...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span>Verify &amp; Confirm Booking</span>
+                                                    <ArrowRight className="w-4 h-4" />
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                </form>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
+
             {/* ── Success Booking Popup Modal ───────────────────────── */}
             {typeof document !== 'undefined' && createPortal(
                 <AnimatePresence>
@@ -1890,46 +2295,56 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                 animate={{ y: 0, opacity: 1, scale: 1 }}
                                 exit={{ y: 40, opacity: 0, scale: 0.96 }}
                                 transition={{ type: 'spring', stiffness: 280, damping: 28 }}
-                                className="relative w-full sm:max-w-md bg-white rounded-[2rem] shadow-[0_32px_80px_rgba(0,0,0,0.25)] flex flex-col overflow-hidden p-8 text-center pointer-events-auto"
+                                className="relative w-full sm:max-w-md max-h-[85vh] bg-white rounded-[2rem] shadow-[0_32px_80px_rgba(0,0,0,0.25)] flex flex-col overflow-y-auto p-6 sm:p-7 text-center pointer-events-auto"
                             >
+                                {/* Dismiss / Close Button */}
+                                <button
+                                    type="button"
+                                    onClick={() => setShowSuccessPopup(false)}
+                                    className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-400 hover:text-gray-700 flex items-center justify-center transition-colors text-xs font-bold cursor-pointer z-20"
+                                    aria-label="Close"
+                                >
+                                    ✕
+                                </button>
+
                                 {/* Icon */}
-                                <div className="w-20 h-20 mx-auto mb-5 rounded-full bg-emerald-50 flex items-center justify-center shadow-inner relative overflow-hidden">
+                                <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-emerald-50 flex items-center justify-center shadow-inner relative overflow-hidden flex-shrink-0">
                                     <div className="absolute inset-0 bg-emerald-400/20 blur-xl animate-pulse" />
-                                    <CheckCircle2 className="w-10 h-10 text-emerald-500 relative z-10" strokeWidth={2.5} />
+                                    <CheckCircle2 className="w-8 h-8 text-emerald-500 relative z-10" strokeWidth={2.5} />
                                 </div>
 
-                                <h2 id="success-popup-title" className="text-2xl font-black text-gray-900 mb-2 tracking-tight">Booking Successful!</h2>
+                                <h2 id="success-popup-title" className="text-xl sm:text-2xl font-black text-gray-900 mb-1 tracking-tight">Booking Successful!</h2>
                                 
-                                <p className="text-sm font-semibold text-gray-800 mb-4">
+                                <p className="text-xs sm:text-sm font-semibold text-gray-800 mb-3">
                                     Your counselling slot has been confirmed.
                                 </p>
 
-                                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4 w-full mb-4 text-left space-y-2">
-                                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Appointment Details</p>
-                                    <p className="text-sm font-semibold text-gray-900">
+                                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3.5 w-full mb-3 text-left space-y-1.5 flex-shrink-0">
+                                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Appointment Details</p>
+                                    <p className="text-xs sm:text-sm font-semibold text-gray-900">
                                         Date: <span className="font-normal text-gray-700">
                                             {confirmedBooking?.date ? new Date(confirmedBooking.date).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : (selectedDate ? new Date(selectedDate.split('_')[0]).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Confirmed')}
                                         </span>
                                     </p>
-                                    <p className="text-sm font-semibold text-gray-900">
+                                    <p className="text-xs sm:text-sm font-semibold text-gray-900">
                                         Time: <span className="font-normal text-gray-700">
                                             {confirmedBooking?.time || selectedTime || 'Scheduled Slot'}
                                         </span>
                                     </p>
                                 </div>
 
-                                <p className="text-xs text-gray-600 font-medium leading-relaxed mb-6">
+                                <p className="text-xs text-gray-600 font-medium leading-relaxed mb-3">
                                     We will contact you using the provided email address and phone number with further information.
                                 </p>
 
                                 {/* Guest account notice inside popup */}
                                 {isGuestAccount && (
-                                    <div className="w-full mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left">
-                                        <p className="text-[11px] font-black uppercase tracking-widest text-amber-700 mb-2">Your Account Was Created</p>
-                                        <p className="text-xs text-amber-800 leading-relaxed mb-3">
+                                    <div className="w-full mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3.5 text-left flex-shrink-0">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-700 mb-1">Your Account Was Created</p>
+                                        <p className="text-xs text-amber-800 leading-relaxed mb-2">
                                             We automatically created a SQUREX account for you using your email. Use the password below to sign in after you log out.
                                         </p>
-                                        <div className="flex items-center gap-2 bg-white rounded-xl border border-amber-200 px-3 py-2 mb-3">
+                                        <div className="flex items-center gap-2 bg-white rounded-xl border border-amber-200 px-3 py-1.5 mb-1">
                                             <span className="flex-1 text-xs font-mono font-bold text-gray-800 select-all tracking-wider">SqurxGuestPass123!</span>
                                             <button
                                                 type="button"
@@ -1939,7 +2354,7 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                                         setTimeout(() => setCopiedPassword(false), 2000);
                                                     });
                                                 }}
-                                                className="text-[10px] font-bold uppercase tracking-widest text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 rounded-lg px-2 py-1 transition-colors flex-shrink-0"
+                                                className="text-[10px] font-bold uppercase tracking-widest text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 rounded-lg px-2 py-1 transition-colors flex-shrink-0 cursor-pointer"
                                             >
                                                 {copiedPassword ? '✓ Copied' : 'Copy'}
                                             </button>
@@ -1947,13 +2362,13 @@ export function GlobalCareerDiagnostic({ directBooking = false, onSuccess, onBac
                                     </div>
                                 )}
 
-                                {/* OK Action Button to confirm and navigate */}
+                                {/* Go to dashboard Action Button to confirm and navigate */}
                                 <button
                                     type="button"
                                     onClick={handleConfirmSuccessRedirect}
-                                    className="w-full h-12 rounded-2xl text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/25 hover:-translate-y-0.5 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+                                    className="w-full h-12 rounded-2xl text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/25 hover:-translate-y-0.5 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer mt-1 flex-shrink-0"
                                 >
-                                    <span>OK — Go to Dashboard</span>
+                                    <span>Go to dashboard</span>
                                     <ArrowRight className="w-4 h-4" />
                                 </button>
                             </motion.div>
