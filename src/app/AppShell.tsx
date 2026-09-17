@@ -220,7 +220,9 @@ export function AppShell() {
                         </div>
                         <div className="overflow-hidden">
                             <p className="text-sm font-medium truncate">{user?.name || user?.fullName || 'User'}</p>
-                            <p className="text-xs text-muted-foreground truncate">{user?.role}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                                {String(user?.role || '').toUpperCase() === 'STUDENT' ? 'APPLICANT' : (user?.role || '')}
+                            </p>
                         </div>
                     </div>
                     <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={handleLogout}>

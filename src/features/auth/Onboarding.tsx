@@ -243,9 +243,11 @@ export function Onboarding() {
 
             if (profile?.expectedSalary) {
                 if (typeof profile.expectedSalary === 'object') {
-                    setExpectedSalaryAmount(profile.expectedSalary.amount != null ? String(profile.expectedSalary.amount) : '');
+                    const amt = profile.expectedSalary.amount;
+                    setExpectedSalaryAmount(amt != null && amt !== 0 ? String(amt) : (amt === 0 ? '0' : ''));
                     const curr = profile.expectedSalary.currency;
-                    setExpectedSalaryCurrency(typeof curr === 'object' && curr ? curr._id : String(curr || ''));
+                    const cId = typeof curr === 'object' && curr ? (curr._id || '') : String(curr || '');
+                    if (cId && cId !== '[object Object]') setExpectedSalaryCurrency(cId);
                 } else {
                     setExpectedSalaryAmount(String(profile.expectedSalary));
                 }
@@ -253,9 +255,11 @@ export function Onboarding() {
 
             if (profile?.currentSalary) {
                 if (typeof profile.currentSalary === 'object') {
-                    setCurrentSalaryAmount(profile.currentSalary.amount != null ? String(profile.currentSalary.amount) : '');
+                    const amt = profile.currentSalary.amount;
+                    setCurrentSalaryAmount(amt != null && amt !== 0 ? String(amt) : (amt === 0 ? '0' : ''));
                     const curr = profile.currentSalary.currency;
-                    setCurrentSalaryCurrency(typeof curr === 'object' && curr ? curr._id : String(curr || ''));
+                    const cId = typeof curr === 'object' && curr ? (curr._id || '') : String(curr || '');
+                    if (cId && cId !== '[object Object]') setCurrentSalaryCurrency(cId);
                 } else {
                     setCurrentSalaryAmount(String(profile.currentSalary));
                 }
@@ -331,7 +335,14 @@ export function Onboarding() {
         }
     }, [languagesData, profile?.languagesKnown, languages]);
 
-
+    // Auto-select first currency if available and none selected yet
+    useEffect(() => {
+        if (currenciesData?.data && currenciesData.data.length > 0) {
+            const defaultId = currenciesData.data[0]._id;
+            if (!expectedSalaryCurrency) setExpectedSalaryCurrency(defaultId);
+            if (!currentSalaryCurrency) setCurrentSalaryCurrency(defaultId);
+        }
+    }, [currenciesData, expectedSalaryCurrency, currentSalaryCurrency]);
 
     const handleProfileSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -350,6 +361,16 @@ export function Onboarding() {
 
         setIsProfileSaving(true);
         try {
+            const defaultCurrId = currenciesData?.data?.[0]?._id || '';
+            const curSalPayload = (currentSalaryAmount !== '' && !isNaN(Number(currentSalaryAmount))) ? {
+                amount: Number(currentSalaryAmount),
+                currency: currentSalaryCurrency || defaultCurrId
+            } : null;
+            const expSalPayload = (expectedSalaryAmount !== '' && !isNaN(Number(expectedSalaryAmount))) ? {
+                amount: Number(expectedSalaryAmount),
+                currency: expectedSalaryCurrency || defaultCurrId
+            } : null;
+
             // Resolve lookup IDs for the backend update request
             const parsedDomains = careerGoal.split(',').map(d => d.trim()).filter(Boolean);
             const domainIds = parsedDomains
@@ -402,8 +423,8 @@ export function Onboarding() {
                 fullName,
                 experienceLevel: expMatch?._id || experienceLevel,
                 experienceLevelId: expMatch?._id || experienceLevel,
-                currentSalary: experienceLevel === 'Fresher' ? null : (currentSalaryAmount ? { amount: Number(currentSalaryAmount), currency: currentSalaryCurrency } : null),
-                expectedSalary: expectedSalaryAmount ? { amount: Number(expectedSalaryAmount), currency: expectedSalaryCurrency } : null,
+                currentSalary: curSalPayload,
+                expectedSalary: expSalPayload,
                 preferredDomains: domainIds,
                 skills: skillIds,
                 preferredLocations: locationIds,
@@ -463,9 +484,9 @@ export function Onboarding() {
 
         setCvError(null);
 
-        // Limit to 2MB to ensure compatibility with server Nginx client_max_body_size
-        if (file.size > 2 * 1024 * 1024) {
-            setCvError('File size exceeds server limit (Max 2MB). Please upload a compressed PDF or Word document.');
+        // Limit to 1MB to match real server limit
+        if (file.size > 1 * 1024 * 1024) {
+            setCvError('File is too large. Please make it below 1MB.');
             event.target.value = '';
             return;
         }
@@ -510,7 +531,9 @@ export function Onboarding() {
             console.error('CV upload error:', err);
             const errMsg = String(err?.message || '');
             if (errMsg.includes('413') || errMsg.toLowerCase().includes('large') || errMsg.toLowerCase().includes('size')) {
-                setCvError('File is too large for the server (Max 2MB). Please compress your file before uploading.');
+                setCvError('File is too large. Please make it below 1MB.');
+            } else if (errMsg.includes('401') || errMsg.toLowerCase().includes('unauthorized') || errMsg.toLowerCase().includes('authentication')) {
+                setCvError('Your session has expired (HTTP 401). Please refresh the page or log in again to upload your resume.');
             } else {
                 // Fallback: Save document filename into user profile so onboarding can be completed even if API endpoint is unreachable
                 try {
@@ -754,30 +777,33 @@ export function Onboarding() {
                                     </div>
 
                                     {/* Current Salary */}
-                                    {experienceLevel !== 'Fresher' && (
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Current Salary (Annual)</label>
-                                            <div className="flex gap-2">
-                                                <select
-                                                    value={currentSalaryCurrency}
-                                                    onChange={(e) => setCurrentSalaryCurrency(e.target.value)}
-                                                    className="h-12 w-28 bg-white border border-gray-200 focus:border-black rounded-xl px-2 text-xs font-semibold outline-none transition-all shrink-0"
-                                                >
-                                                    <option value="">Currency</option>
-                                                    {currenciesData?.data?.map((c: any) => (
-                                                        <option key={c._id} value={c._id}>{c.code} ({c.symbol})</option>
-                                                    ))}
-                                                </select>
-                                                <Input
-                                                    type="number"
-                                                    placeholder="e.g. 1200000"
-                                                    value={currentSalaryAmount}
-                                                    onChange={(e) => setCurrentSalaryAmount(e.target.value)}
-                                                    className="h-12 rounded-xl flex-1"
-                                                />
-                                            </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1 flex items-center justify-between">
+                                            <span>Current Salary (Annual)</span>
+                                            <span className="text-[10px] text-gray-400 font-normal lowercase">{experienceLevel === 'Fresher' ? '(optional for freshers)' : '(required)'}</span>
+                                        </label>
+                                        <div className="flex gap-2">
+                                            <select
+                                                value={currentSalaryCurrency}
+                                                onChange={(e) => setCurrentSalaryCurrency(e.target.value)}
+                                                className="h-12 w-28 bg-white border border-gray-200 focus:border-black rounded-xl px-2 text-xs font-semibold outline-none transition-all shrink-0"
+                                            >
+                                                <option value="">Currency</option>
+                                                {currenciesData?.data?.map((c: any) => (
+                                                    <option key={c._id} value={c._id}>{c.code} ({c.symbol})</option>
+                                                ))}
+                                            </select>
+                                            <Input
+                                                type="number"
+                                                placeholder={experienceLevel === 'Fresher' ? "e.g. 0 or stipend / salary" : "e.g. 1200000"}
+                                                value={currentSalaryAmount}
+                                                onChange={(e) => setCurrentSalaryAmount(e.target.value)}
+                                                className="h-12 rounded-xl flex-1"
+                                            />
                                         </div>
-                                    )}                                    {/* Preferred Job Role */}
+                                    </div>
+
+                                    {/* Preferred Job Role */}
                                     <div className="space-y-1.5 relative">
                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Preferred Job Role (Domain) (comma-separated)</label>
                                         <Input
@@ -1381,7 +1407,7 @@ export function Onboarding() {
                                             <UploadCloud size={24} />
                                         </div>
                                         <h4 className="font-bold text-gray-900 mb-1">Select your CV / Resume</h4>
-                                        <p className="text-xs text-gray-500 max-w-[220px]">PDF, DOC, DOCX · Max 2MB</p>
+                                        <p className="text-xs text-gray-500 max-w-[220px]">PDF, DOC, DOCX · Max 1MB</p>
                                         <Button size="sm" className="mt-6 font-semibold px-6 bg-black text-white hover:bg-black/90">Browse File</Button>
                                     </>
                                 )}

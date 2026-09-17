@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useStudentStore } from './store';
 import { Card, CardHeader, CardTitle, CardContent, Button, Input, Toast, Modal, Badge } from '@/components/ui';
 import { PageTransition } from '@/components/motion';
 import { useAuthStore } from '../auth/store';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, UploadCloud, FileText, Trash2, ShieldCheck, Plus, X, Check, Eye, Lock } from 'lucide-react';
+import { Loader2, UploadCloud, FileText, Trash2, ShieldCheck, Plus, X, Check, Eye, Lock, Pencil } from 'lucide-react';
 import { consultationApi } from '@/lib/consultationApi';
 import { useNotificationStore } from '@/lib/store/notifications';
 import type { EducationHistoryItem, EmploymentHistoryItem, ProjectItem, LanguageKnownItem } from '@/lib/mockDb/schema';
@@ -49,7 +49,7 @@ function SkillTagEditor({ skills, onChange, disabled }: { skills: string[]; onCh
     return (
         <div className="space-y-2">
             <div className="flex flex-wrap gap-2 min-h-[36px] p-2 border border-border rounded-xl bg-background">
-                {skills.map(skill => (
+                {skills.filter(s => !/^[0-9a-fA-F]{24}$/.test(s)).map(skill => (
                     <span
                         key={skill}
                         className="inline-flex items-center gap-1 px-2.5 py-1 bg-black text-white text-xs font-semibold rounded-lg"
@@ -100,6 +100,7 @@ function SkillTagEditor({ skills, onChange, disabled }: { skills: string[]; onCh
 export const getLocationLabel = (l: any): string => {
     if (!l) return '';
     const city = typeof l === 'string' ? l : (l.name || '');
+    if (!city || /^[0-9a-fA-F]{24}$/.test(city)) return '';
     if (typeof l === 'object' && l) {
         let country = '';
         if (l.country) {
@@ -107,7 +108,7 @@ export const getLocationLabel = (l: any): string => {
         } else if (l.countryName) {
             country = String(l.countryName);
         }
-        if (country) {
+        if (country && !/^[0-9a-fA-F]{24}$/.test(country)) {
             if (!city.includes('(')) {
                 return `${city} (${country})`;
             }
@@ -133,6 +134,22 @@ export function getCleanFileName(urlOrName?: string | null, originalName?: strin
     } catch {
         return 'Resume_Document.pdf';
     }
+};
+
+// Safe currency ID extractor
+const getSafeCurrencyId = (curr: any): string => {
+    if (!curr) return '';
+    if (typeof curr === 'object' && curr._id) return String(curr._id);
+    if (typeof curr === 'string' && curr !== '[object Object]') return curr;
+    return '';
+};
+
+// Safe salary display amount
+const getSalaryDisplayAmount = (amount: any): string => {
+    if (amount === null || amount === undefined || amount === '') return '';
+    const num = Number(amount);
+    if (isNaN(num)) return '';
+    return String(amount);
 };
 
 // ─────────────────────────────────────────────
@@ -239,6 +256,7 @@ export function StudentProfile() {
     const { data: jobTypesData } = useGetJobTypesQuery(undefined);
     const { data: domainsData } = useGetDomainsQuery({ search: careerGoal.split(',').pop()?.trim() || '' });
     const { data: locationsData } = useGetLocationsQuery({ search: locationQuery });
+    const { data: allLocationsData } = useGetLocationsQuery(undefined);
     const { data: skillsData } = useGetSkillsQuery({ search: '' });
     const { data: languagesData } = useGetLanguagesQuery(undefined);
     const { data: languageProficienciesData } = useGetLanguageProficienciesQuery(undefined);
@@ -246,6 +264,18 @@ export function StudentProfile() {
     const { data: coursesData } = useGetCoursesQuery(undefined);
     const { data: specializationsData } = useGetSpecializationsQuery(undefined);
     const { data: rolesData } = useGetRolesQuery(undefined);
+
+    // Dynamic map of all locations from the database for instant, reliable ID resolution
+    const locationMap = useMemo(() => {
+        const map = new Map<string, any>();
+        if (allLocationsData?.data && Array.isArray(allLocationsData.data)) {
+            allLocationsData.data.forEach((l: any) => { if (l?._id) map.set(l._id, l); });
+        }
+        if (locationsData?.data && Array.isArray(locationsData.data)) {
+            locationsData.data.forEach((l: any) => { if (l?._id) map.set(l._id, l); });
+        }
+        return map;
+    }, [allLocationsData, locationsData]);
 
     const [submitEducation] = useSubmitEducationMutation();
     const [submitUniversity] = useSubmitUniversityMutation();
@@ -263,11 +293,19 @@ export function StudentProfile() {
     // ── Populate form from profile store ─────────
     useEffect(() => {
         if (profile && !profileInitialized) {
-            setLocation(profile.location || '');
-            setLocationQuery(profile.location || '');
-            setJobType(profile.jobType || '');
-            setJobTypeQuery(profile.jobType || '');
-            setCareerGoal(profile.careerGoal || '');
+            const initLoc = profile.location || '';
+            const isInitLocRaw = /^[0-9a-fA-F]{24}$/.test(initLoc);
+            setLocation(isInitLocRaw ? '' : initLoc);
+            setLocationQuery(isInitLocRaw ? '' : initLoc);
+
+            const initJt = profile.jobType || '';
+            const isInitJtRaw = /^[0-9a-fA-F]{24}$/.test(initJt);
+            setJobType(isInitJtRaw ? '' : initJt);
+            setJobTypeQuery(isInitJtRaw ? '' : initJt);
+
+            const initGoal = profile.careerGoal || '';
+            const isInitGoalRaw = /^[0-9a-fA-F]{24}$/.test(initGoal);
+            setCareerGoal(isInitGoalRaw ? '' : initGoal);
             // Resolve experience level — avoid setting raw ObjectIDs as display text
             const initExpLevel = profile.experienceLevel || '';
             const initExpId = profile.experienceLevelId || '';
@@ -292,21 +330,21 @@ export function StudentProfile() {
             // Structured expected salary parsing
             if (profile.expectedSalary) {
                 if (typeof profile.expectedSalary === 'object') {
-                    setExpectedSalaryAmount(profile.expectedSalary.amount != null ? String(profile.expectedSalary.amount) : '');
-                    const curr = profile.expectedSalary.currency;
-                    setExpectedSalaryCurrency(typeof curr === 'object' && curr ? curr._id : String(curr || ''));
+                    setExpectedSalaryAmount(getSalaryDisplayAmount(profile.expectedSalary.amount));
+                    const cId = getSafeCurrencyId(profile.expectedSalary.currency);
+                    if (cId) setExpectedSalaryCurrency(cId);
                 } else {
-                    setExpectedSalaryAmount(String(profile.expectedSalary));
+                    setExpectedSalaryAmount(getSalaryDisplayAmount(profile.expectedSalary));
                 }
             }
             // Structured current salary parsing
             if (profile.currentSalary) {
                 if (typeof profile.currentSalary === 'object') {
-                    setCurrentSalaryAmount(profile.currentSalary.amount != null ? String(profile.currentSalary.amount) : '');
-                    const curr = profile.currentSalary.currency;
-                    setCurrentSalaryCurrency(typeof curr === 'object' && curr ? curr._id : String(curr || ''));
+                    setCurrentSalaryAmount(getSalaryDisplayAmount(profile.currentSalary.amount));
+                    const cId = getSafeCurrencyId(profile.currentSalary.currency);
+                    if (cId) setCurrentSalaryCurrency(cId);
                 } else {
-                    setCurrentSalaryAmount(String(profile.currentSalary));
+                    setCurrentSalaryAmount(getSalaryDisplayAmount(profile.currentSalary));
                 }
             }
 
@@ -407,13 +445,102 @@ export function StudentProfile() {
         }
     }, [skillsData, profile, skills]);
 
+    // ── Resolve Location raw ObjectIDs → human-readable names dynamically from DB ──
+    useEffect(() => {
+        if (locationMap.size === 0) return;
+        const isLocRawId = !location || /^[0-9a-fA-F]{24}$/.test(location);
+        const isLocQueryRawId = !locationQuery || /^[0-9a-fA-F]{24}$/.test(locationQuery);
+
+        if ((isLocRawId || isLocQueryRawId) && selectedLocationIds.length > 0) {
+            const resolved = selectedLocationIds
+                .map(id => {
+                    const found = locationMap.get(id);
+                    return found ? getLocationLabel(found) : '';
+                })
+                .filter(Boolean);
+            if (resolved.length > 0) {
+                const joined = resolved.join(', ');
+                if (isLocRawId) setLocation(joined);
+                if (isLocQueryRawId && !isEditing) setLocationQuery(joined);
+            }
+        } else if (isLocRawId && location) {
+            const found = locationMap.get(location);
+            if (found) {
+                const label = getLocationLabel(found);
+                setLocation(label);
+                if (!isEditing) setLocationQuery(label);
+            }
+        } else if (selectedLocationIds.length === 0 && location && !/^[0-9a-fA-F]{24}$/.test(location)) {
+            // Reverse lookup: populate selectedLocationIds from DB matching names
+            const parts = location.split(',').map(s => s.trim().split('(')[0].trim().toLowerCase()).filter(Boolean);
+            const matchedIds = Array.from(locationMap.values())
+                .filter((l: any) => l.name && parts.includes(l.name.toLowerCase()))
+                .map((l: any) => l._id);
+            if (matchedIds.length > 0) {
+                setSelectedLocationIds(matchedIds);
+            }
+        }
+    }, [locationMap, selectedLocationIds, location, locationQuery, isEditing]);
+
+    // ── Resolve Job Type raw ObjectIDs → human-readable names dynamically from DB ──
+    useEffect(() => {
+        if (!jobTypesData?.data || jobTypesData.data.length === 0) return;
+        const isJtRawId = !jobType || /^[0-9a-fA-F]{24}$/.test(jobType);
+        const isJtQueryRawId = !jobTypeQuery || /^[0-9a-fA-F]{24}$/.test(jobTypeQuery);
+
+        if ((isJtRawId || isJtQueryRawId) && selectedJobTypeIds.length > 0) {
+            const resolved = selectedJobTypeIds
+                .map(id => jobTypesData.data.find((jt: any) => jt._id === id)?.name)
+                .filter(Boolean);
+            if (resolved.length > 0) {
+                const joined = resolved.join(', ');
+                if (isJtRawId) setJobType(joined);
+                if (isJtQueryRawId && !isEditing) setJobTypeQuery(joined);
+            }
+        } else if (isJtRawId && jobType) {
+            const found = jobTypesData.data.find((jt: any) => jt._id === jobType);
+            if (found) {
+                setJobType(found.name);
+                if (!isEditing) setJobTypeQuery(found.name);
+            }
+        }
+    }, [jobTypesData, selectedJobTypeIds, jobType, jobTypeQuery, isEditing]);
+
+    // ── Resolve Career Goal / Domain raw ObjectIDs → human-readable names dynamically from DB ──
+    useEffect(() => {
+        if (!domainsData?.data || domainsData.data.length === 0) return;
+        const isGoalRawId = !careerGoal || /^[0-9a-fA-F]{24}$/.test(careerGoal);
+
+        if (isGoalRawId && selectedDomainIds.length > 0) {
+            const resolved = selectedDomainIds
+                .map(id => domainsData.data.find((d: any) => d._id === id)?.name)
+                .filter(Boolean);
+            if (resolved.length > 0) {
+                setCareerGoal(resolved.join(', '));
+            }
+        } else if (isGoalRawId && careerGoal) {
+            const found = domainsData.data.find((d: any) => d._id === careerGoal);
+            if (found) {
+                setCareerGoal(found.name);
+            }
+        }
+    }, [domainsData, selectedDomainIds, careerGoal]);
+
     useEffect(() => {
         if (profile && profileInitialized && !isEditing) {
-            setLocation(profile.location || '');
-            setLocationQuery(profile.location || '');
-            setJobType(profile.jobType || '');
-            setJobTypeQuery(profile.jobType || '');
-            setCareerGoal(profile.careerGoal || '');
+            const rawLoc = profile.location || '';
+            const isRawLocId = /^[0-9a-fA-F]{24}$/.test(rawLoc);
+            setLocation(isRawLocId ? '' : rawLoc);
+            setLocationQuery(isRawLocId ? '' : rawLoc);
+
+            const rawJt = profile.jobType || '';
+            const isRawJtId = /^[0-9a-fA-F]{24}$/.test(rawJt);
+            setJobType(isRawJtId ? '' : rawJt);
+            setJobTypeQuery(isRawJtId ? '' : rawJt);
+
+            const rawGoal = profile.careerGoal || '';
+            const isRawGoalId = /^[0-9a-fA-F]{24}$/.test(rawGoal);
+            setCareerGoal(isRawGoalId ? '' : rawGoal);
             // Resolve experience level — avoid setting raw ObjectIDs as display text
             const rawExpLevel = profile.experienceLevel || '';
             const rawExpId = profile.experienceLevelId || '';
@@ -440,11 +567,11 @@ export function StudentProfile() {
             // Structured expected salary re-sync
             if (profile.expectedSalary) {
                 if (typeof profile.expectedSalary === 'object') {
-                    setExpectedSalaryAmount(profile.expectedSalary.amount != null ? String(profile.expectedSalary.amount) : '');
-                    const curr = profile.expectedSalary.currency;
-                    setExpectedSalaryCurrency(typeof curr === 'object' && curr ? curr._id : String(curr || ''));
+                    setExpectedSalaryAmount(getSalaryDisplayAmount(profile.expectedSalary.amount));
+                    const cId = getSafeCurrencyId(profile.expectedSalary.currency);
+                    if (cId) setExpectedSalaryCurrency(cId);
                 } else {
-                    setExpectedSalaryAmount(String(profile.expectedSalary));
+                    setExpectedSalaryAmount(getSalaryDisplayAmount(profile.expectedSalary));
                 }
             } else {
                 setExpectedSalaryAmount('');
@@ -453,11 +580,11 @@ export function StudentProfile() {
             // Structured current salary re-sync
             if (profile.currentSalary) {
                 if (typeof profile.currentSalary === 'object') {
-                    setCurrentSalaryAmount(profile.currentSalary.amount != null ? String(profile.currentSalary.amount) : '');
-                    const curr = profile.currentSalary.currency;
-                    setCurrentSalaryCurrency(typeof curr === 'object' && curr ? curr._id : String(curr || ''));
+                    setCurrentSalaryAmount(getSalaryDisplayAmount(profile.currentSalary.amount));
+                    const cId = getSafeCurrencyId(profile.currentSalary.currency);
+                    if (cId) setCurrentSalaryCurrency(cId);
                 } else {
-                    setCurrentSalaryAmount(String(profile.currentSalary));
+                    setCurrentSalaryAmount(getSalaryDisplayAmount(profile.currentSalary));
                 }
             } else {
                 setCurrentSalaryAmount('');
@@ -708,7 +835,10 @@ export function StudentProfile() {
             if (locationIds.length === 0 && location) {
                 const parsedLocations = location.split(',').map(l => l.trim().split('(')[0].trim()).filter(Boolean);
                 locationIds = parsedLocations
-                    .map(l => locationsData?.data?.find((ld: any) => ld.name.toLowerCase() === l.toLowerCase())?._id)
+                    .map(l => {
+                        const found = Array.from(locationMap.values()).find((ld: any) => ld.name.toLowerCase() === l.toLowerCase()) || locationsData?.data?.find((ld: any) => ld.name.toLowerCase() === l.toLowerCase());
+                        return found?._id;
+                    })
                     .filter(Boolean);
             }
             if (locationIds.length === 0 && selectedLocationId) {
@@ -741,8 +871,7 @@ export function StudentProfile() {
             const expMatch = experienceLevelsData?.data?.find((e: any) => e.name.toLowerCase() === experienceLevel.toLowerCase());
             const expId = experienceLevelId || expMatch?._id || experienceLevel;
 
-            const isFresherUser = experienceLevel === 'Fresher' || experienceLevelId === 'Fresher' || (expMatch?.name === 'Fresher');
-            const currentSalaryPayload = (!isFresherUser && currentSalaryAmount) ? {
+            const currentSalaryPayload = (currentSalaryAmount !== '' && !isNaN(Number(currentSalaryAmount))) ? {
                 amount: Number(currentSalaryAmount),
                 currency: currentSalaryCurrency || defaultCurrId
             } : null;
@@ -849,8 +978,8 @@ export function StudentProfile() {
     const handleCVUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
-        if (file.size > 2 * 1024 * 1024) {
-            showToast('File size exceeds server limit (Max 2MB). Please upload a compressed PDF/Word file.', 'error');
+        if (file.size > 1 * 1024 * 1024) {
+            showToast('File is too large. Please make it below 1MB.', 'error');
             return;
         }
         const fileName = file.name;
@@ -883,7 +1012,14 @@ export function StudentProfile() {
             });
             showToast('CV uploaded successfully.', 'success');
         } catch (err: any) {
-            showToast(err.message || 'CV upload failed. Please try again.', 'error');
+            const errMsg = String(err?.message || '');
+            if (errMsg.includes('413') || errMsg.toLowerCase().includes('large') || errMsg.toLowerCase().includes('size')) {
+                showToast('File is too large. Please make it below 1MB.', 'error');
+            } else if (errMsg.includes('401') || errMsg.toLowerCase().includes('unauthorized')) {
+                showToast('Your session has expired (HTTP 401). Please log in again.', 'error');
+            } else {
+                showToast(err.message || 'CV upload failed. Please try again.', 'error');
+            }
         } finally {
             setIsUploadingCV(false);
             if (cvInputRef.current) cvInputRef.current.value = '';
@@ -937,14 +1073,49 @@ export function StudentProfile() {
 
     // Use backend value as source of truth; getCompletionPercentage() already handles this fallback
     const completion = getCompletionPercentage();
-    const isFresher = experienceLevel === 'Fresher' || experienceLevel === '' || !experienceLevel;
+    const isFresher = (experienceLevel || '').toLowerCase().includes('fresher') ||
+        (typeof profile?.experienceLevel === 'object' && profile?.experienceLevel ? (profile.experienceLevel as any).name : String(profile?.experienceLevel || '')).toLowerCase().includes('fresher');
 
     return (
         <PageTransition className="max-w-5xl mx-auto space-y-6 pb-12">
             {/* Header */}
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight">Your Profile</h1>
-                <p className="text-muted-foreground mt-1">All information filled during signup is shown here. Edit and save to keep your profile up to date.</p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Your Profile</h1>
+                    <p className="text-muted-foreground mt-1">All information filled during signup is shown here. Edit and save to keep your profile up to date.</p>
+                </div>
+                {!isEditing ? (
+                    <Button
+                        type="button"
+                        onClick={enterEditMode}
+                        className="bg-black text-white hover:bg-black/90 font-semibold rounded-xl flex items-center gap-2 shadow-sm shrink-0 self-start sm:self-auto"
+                    >
+                        <Pencil className="w-4 h-4" /> Edit Profile
+                    </Button>
+                ) : (
+                    <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleCancel}
+                            disabled={isSaving}
+                            className="font-semibold rounded-xl border-border/80"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={() => {
+                                const form = document.querySelector('form');
+                                if (form) form.requestSubmit();
+                            }}
+                            disabled={isSaving}
+                            className="bg-black text-white hover:bg-black/90 font-semibold rounded-xl flex items-center gap-2 shadow-sm"
+                        >
+                            {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : 'Save Changes'}
+                        </Button>
+                    </div>
+                )}
             </div>
 
             {/* Profile strength */}
@@ -966,7 +1137,7 @@ export function StudentProfile() {
                     <p className="text-muted-foreground mt-1 max-w-lg">
                         {completion === 100
                             ? 'Your profile is fully complete! You are 4x more likely to be noticed.'
-                            : `A complete profile is 4x more likely to be noticed. ${!profile.cvUrl ? 'Upload your CV.' : 'Fill remaining details to reach 100%.'}`
+                            : 'A complete profile is 4x more likely to be noticed. Add your key projects, internships, certifications, or achievements below to reach 100%.'
                         }
                     </p>
                     {saveSuccess && (
@@ -982,8 +1153,13 @@ export function StudentProfile() {
                 <div className="space-y-6">
                     {/* Account info (read-only) */}
                     <Card className="border-border/60 shadow-sm bg-card">
-                        <CardHeader>
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-base">Account Information</CardTitle>
+                            {(profile as any)?.isVerified && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <ShieldCheck className="w-3.5 h-3.5" /> Verified
+                                </span>
+                            )}
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid sm:grid-cols-2 gap-4">
@@ -1003,7 +1179,7 @@ export function StudentProfile() {
                                     <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
                                         Mobile <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-normal">Synced</span>
                                     </label>
-                                    <Input value={user?.mobile || ''} disabled className="bg-muted/50 cursor-not-allowed border-border/40 text-muted-foreground font-medium h-11" />
+                                    <Input value={((profile as any).countryCode ? `${(profile as any).countryCode} ` : '') + (profile.mobile || user?.mobile || '')} disabled className="bg-muted/50 cursor-not-allowed border-border/40 text-muted-foreground font-medium h-11" />
                                 </div>
                             </div>
                         </CardContent>
@@ -1011,8 +1187,47 @@ export function StudentProfile() {
 
                     {/* Editable profile form */}
                     <Card className="border-border/60 shadow-sm bg-card">
-                        <CardHeader>
-                            <CardTitle className="text-base">Professional Details</CardTitle>
+                        <CardHeader className="flex flex-row items-center justify-between pb-3">
+                            <div>
+                                <CardTitle className="text-base">Professional Details</CardTitle>
+                                <p className="text-xs text-muted-foreground mt-0.5">Experience, career domain, and compensation</p>
+                            </div>
+                            {!isEditing ? (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={enterEditMode}
+                                    className="flex items-center gap-1.5 text-xs font-semibold rounded-lg hover:bg-muted border-border/80"
+                                >
+                                    <Pencil className="w-3.5 h-3.5" /> Edit Details
+                                </Button>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={handleCancel}
+                                        disabled={isSaving}
+                                        className="text-xs text-muted-foreground hover:text-foreground"
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        onClick={(e) => {
+                                            const form = (e.currentTarget.closest('.bg-card')?.querySelector('form') as HTMLFormElement);
+                                            if (form) form.requestSubmit();
+                                        }}
+                                        disabled={isSaving}
+                                        className="bg-black text-white hover:bg-black/90 text-xs font-semibold rounded-lg px-3 shadow-sm"
+                                    >
+                                        {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
+                                    </Button>
+                                </div>
+                            )}
                         </CardHeader>
                         <CardContent>
                             <form onSubmit={handleSubmit} className="space-y-5">
@@ -1051,12 +1266,47 @@ export function StudentProfile() {
                                                 })}
                                             </div>
                                         )}
-                                        {experienceLevel && !showExpSuggestions && (
+                                        {experienceLevel && !/^[0-9a-fA-F]{24}$/.test(experienceLevel) && !showExpSuggestions && (
                                             <p className="text-xs text-muted-foreground">Selected: <span className="font-semibold text-foreground">{experienceLevel === 'Fresher' ? 'Fresher' : `${experienceLevel} Years`}</span></p>
                                         )}
                                     </div>
 
-                                    {/* Expected Salary */}
+                                    {/* Current Salary (Annual) */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+                                            <span>Current Salary (Annual)</span>
+                                            {experienceLevel === 'Fresher' && (
+                                                <span className="text-[10px] text-muted-foreground font-normal lowercase">(fillable for freshers)</span>
+                                            )}
+                                        </label>
+                                        <div className="flex gap-2">
+                                            <select
+                                                value={currentSalaryCurrency}
+                                                onChange={e => setCurrentSalaryCurrency(e.target.value)}
+                                                disabled={!isEditing}
+                                                className="w-28 h-11 bg-background border border-input rounded-md px-2 text-xs font-semibold outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {currenciesData?.data?.map((c: any) => (
+                                                    <option key={c._id} value={c._id}>{c.code} ({c.symbol})</option>
+                                                ))}
+                                            </select>
+                                            <Input
+                                                type="number"
+                                                placeholder={isEditing ? (experienceLevel === 'Fresher' ? "e.g. 0 or stipend / salary" : "e.g. 1200000") : (experienceLevel === 'Fresher' ? "Fresher / None" : "Not specified")}
+                                                value={currentSalaryAmount}
+                                                onChange={e => setCurrentSalaryAmount(e.target.value)}
+                                                disabled={!isEditing}
+                                                className="h-11 flex-1"
+                                            />
+                                        </div>
+                                        {!isEditing && !currentSalaryAmount && experienceLevel !== 'Fresher' && (
+                                            <p className="text-[11px] text-amber-600 font-medium flex items-center gap-1 mt-1">
+                                                <span>⚠️ Current salary not specified — click Edit to add it.</span>
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    {/* Expected Salary (Annual) */}
                                     <div className="space-y-1.5">
                                         <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Expected Salary (Annual)</label>
                                         <div className="flex gap-2">
@@ -1081,33 +1331,6 @@ export function StudentProfile() {
                                         </div>
                                     </div>
 
-                                    {/* Current Salary (hidden/disabled when Fresher) */}
-                                    {!isFresher && (
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Current Salary (Annual)</label>
-                                            <div className="flex gap-2">
-                                                <select
-                                                    value={currentSalaryCurrency}
-                                                    onChange={e => setCurrentSalaryCurrency(e.target.value)}
-                                                    disabled={!isEditing}
-                                                    className="w-28 h-11 bg-background border border-input rounded-md px-2 text-xs font-semibold outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    {currenciesData?.data?.map((c: any) => (
-                                                        <option key={c._id} value={c._id}>{c.code} ({c.symbol})</option>
-                                                    ))}
-                                                </select>
-                                                <Input
-                                                    type="number"
-                                                    placeholder="e.g. 1200000"
-                                                    value={currentSalaryAmount}
-                                                    onChange={e => setCurrentSalaryAmount(e.target.value)}
-                                                    disabled={!isEditing}
-                                                    className="h-11 flex-1"
-                                                />
-                                            </div>
-                                        </div>
-                                    )}
-
                                     {/* Location */}
                                     <div className="space-y-1.5 relative">
                                         <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Preferred Location <span className="text-destructive">*</span></label>
@@ -1121,11 +1344,12 @@ export function StudentProfile() {
                                             disabled={!isEditing}
                                             className={`h-11 ${formErrors.location ? 'border-destructive' : ''}`}
                                         />
-                                        {isEditing && showLocationSuggestions && locationsData?.data && locationsData.data.length > 0 && (
+                                        {isEditing && showLocationSuggestions && locationMap.size > 0 && (
                                             <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-56 overflow-y-auto p-1.5 flex flex-col gap-0.5 bg-white">
-                                                {locationsData.data
+                                                {Array.from(locationMap.values())
                                                     .filter((l: any) => {
                                                         const label = getLocationLabel(l);
+                                                        if (!label) return false;
                                                         const lastQueryPart = locationQuery.split(',').pop()?.trim() || '';
                                                         return label.toLowerCase().includes(lastQueryPart.toLowerCase());
                                                     })
@@ -1148,9 +1372,12 @@ export function StudentProfile() {
                                                                     setSelectedLocationIds(nextIds);
 
                                                                     // Update comma-separated list
-                                                                    const selectedNames = locationsData.data
-                                                                        .filter((x: any) => nextIds.includes(x._id))
-                                                                        .map((x: any) => getLocationLabel(x));
+                                                                    const selectedNames = nextIds
+                                                                        .map(xId => {
+                                                                            const obj = locationMap.get(xId);
+                                                                            return obj ? getLocationLabel(obj) : '';
+                                                                        })
+                                                                        .filter(Boolean);
                                                                     const commaSeparated = selectedNames.join(', ');
                                                                     setLocation(commaSeparated);
                                                                     setLocationQuery(''); // Keep query clear for selecting more places
@@ -1174,8 +1401,19 @@ export function StudentProfile() {
                                         {selectedLocationIds.length > 0 && (
                                             <div className="flex flex-wrap gap-1.5 mt-1.5">
                                                 {selectedLocationIds.map((id) => {
-                                                    const locObj = locationsData?.data?.find((l: any) => l._id === id);
-                                                    const name = locObj ? getLocationLabel(locObj) : id;
+                                                    const locObj = locationMap.get(id) || allLocationsData?.data?.find((l: any) => l._id === id) || locationsData?.data?.find((l: any) => l._id === id);
+                                                    let name = locObj ? getLocationLabel(locObj) : '';
+                                                    if (!name && profile?.locations) {
+                                                        const idx = selectedLocationIds.indexOf(id);
+                                                        const cand = profile.locations[idx] || (selectedLocationIds.length === 1 ? profile.location : '');
+                                                        if (cand && !/^[0-9a-fA-F]{24}$/.test(cand)) {
+                                                            name = cand;
+                                                        }
+                                                    }
+                                                    // NEVER display raw 24-character hexadecimal ObjectId
+                                                    if (!name || /^[0-9a-fA-F]{24}$/.test(name)) {
+                                                        return null;
+                                                    }
                                                     return (
                                                         <Badge key={id} variant="secondary" className="flex items-center gap-1 bg-muted/50 text-foreground font-semibold py-1">
                                                             {name}
@@ -1185,9 +1423,12 @@ export function StudentProfile() {
                                                                     onClick={() => {
                                                                         const nextIds = selectedLocationIds.filter(x => x !== id);
                                                                         setSelectedLocationIds(nextIds);
-                                                                        const selectedNames = locationsData?.data
-                                                                            ?.filter((x: any) => nextIds.includes(x._id))
-                                                                            ?.map((x: any) => getLocationLabel(x)) || [];
+                                                                        const selectedNames = nextIds
+                                                                            .map(xId => {
+                                                                                const obj = locationMap.get(xId);
+                                                                                return obj ? getLocationLabel(obj) : '';
+                                                                            })
+                                                                            .filter(Boolean);
                                                                         const commaSeparated = selectedNames.join(', ');
                                                                         setLocation(commaSeparated);
                                                                         setLocationQuery('');
@@ -1269,7 +1510,17 @@ export function StudentProfile() {
                                         {selectedJobTypeIds.length > 0 && (
                                             <div className="flex flex-wrap gap-1.5 mt-1.5">
                                                 {selectedJobTypeIds.map((id) => {
-                                                    const name = jobTypesData?.data?.find((jt: any) => jt._id === id)?.name || id;
+                                                    const match = jobTypesData?.data?.find((jt: any) => jt._id === id);
+                                                    let name = match?.name || '';
+                                                    if (!name && profile?.jobTypes) {
+                                                        const idx = selectedJobTypeIds.indexOf(id);
+                                                        const cand = profile.jobTypes[idx] || (selectedJobTypeIds.length === 1 ? profile.jobType : '');
+                                                        if (cand && !/^[0-9a-fA-F]{24}$/.test(cand)) {
+                                                            name = cand;
+                                                        }
+                                                    }
+                                                    // NEVER display raw 24-character hexadecimal ObjectId
+                                                    if (!name || /^[0-9a-fA-F]{24}$/.test(name)) return null;
                                                     return (
                                                         <Badge key={id} variant="secondary" className="flex items-center gap-1 bg-muted/50 text-foreground font-semibold py-1">
                                                             {name}
@@ -1279,9 +1530,9 @@ export function StudentProfile() {
                                                                     onClick={() => {
                                                                         const nextIds = selectedJobTypeIds.filter(x => x !== id);
                                                                         setSelectedJobTypeIds(nextIds);
-                                                                        const selectedNames = jobTypesData?.data
-                                                                            ?.filter((x: any) => nextIds.includes(x._id))
-                                                                            ?.map((x: any) => x.name) || [];
+                                                                        const selectedNames = nextIds
+                                                                            .map(xId => jobTypesData?.data?.find((x: any) => x._id === xId)?.name)
+                                                                            .filter(Boolean);
                                                                         const commaSeparated = selectedNames.join(', ');
                                                                         setJobType(commaSeparated);
                                                                         setJobTypeQuery('');
@@ -1367,9 +1618,9 @@ export function StudentProfile() {
                                             </div>
                                         )}
                                         {/* Selected Domain Chips */}
-                                        {careerGoal.split(',').map(d => d.trim()).filter(Boolean).length > 0 && (
+                                        {careerGoal.split(',').map(d => d.trim()).filter(d => Boolean(d) && !/^[0-9a-fA-F]{24}$/.test(d)).length > 0 && (
                                             <div className="flex flex-wrap gap-1.5 mt-1.5">
-                                                {careerGoal.split(',').map(d => d.trim()).filter(Boolean).map((domainName, idx) => (
+                                                {careerGoal.split(',').map(d => d.trim()).filter(d => Boolean(d) && !/^[0-9a-fA-F]{24}$/.test(d)).map((domainName, idx) => (
                                                     <Badge key={idx} variant="secondary" className="flex items-center gap-1 bg-muted/50 text-foreground font-semibold py-1">
                                                         {domainName}
                                                         {isEditing && (
@@ -1935,7 +2186,11 @@ export function StudentProfile() {
                                         )}
                                     </div>
                                     {employmentHistory.length === 0 ? (
-                                        <p className="text-xs text-muted-foreground italic">{isEditing ? 'No employment history added. Click + Add Employment to get started.' : 'No employment history listed.'}</p>
+                                        <p className="text-xs text-muted-foreground italic">
+                                            {isFresher
+                                                ? (isEditing ? 'Fresher candidate (employment history optional). Click + Add Employment if you have prior work experience.' : 'Not applicable for Freshers.')
+                                                : (isEditing ? 'No employment history added. Click + Add Employment to get started.' : 'No employment history listed.')}
+                                        </p>
                                     ) : (
                                         <div className="space-y-3">
                                             {employmentHistory.map((emp, idx) => {
@@ -2566,7 +2821,7 @@ export function StudentProfile() {
                                                 <UploadCloud size={28} />
                                             </div>
                                             <h4 className="font-bold mb-1">Upload your CV</h4>
-                                            <p className="text-sm text-muted-foreground max-w-[200px]">PDF, DOC, DOCX up to 2MB</p>
+                                            <p className="text-sm text-muted-foreground max-w-[200px]">PDF, DOC, DOCX up to 1MB</p>
                                             <Button size="sm" className="mt-6 font-medium px-6">Select File</Button>
                                             <input
                                                 type="file"

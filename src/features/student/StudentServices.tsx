@@ -223,7 +223,7 @@ Order Summary:
 - Discount Applied: $${discountAmount.toFixed(2)} (${appliedCoupon || 'None'})
 - Amount Charged: $${totalCost.toFixed(2)}
 
-Our specialized student care team has been notified. A career mentor will contact you within the next 24 hours to schedule and customize your product delivery. Welcome to premium matching!`
+Our specialized applicant care team has been notified. A career mentor will contact you within the next 24 hours to schedule and customize your product delivery. Welcome to premium matching!`
                 );
             }
             triggerToast(`${selectedService.name} purchased successfully!`, 'success');

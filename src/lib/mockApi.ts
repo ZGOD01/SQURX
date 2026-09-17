@@ -117,20 +117,27 @@ export const mockApi = {
                     if (data.schoolLeavingCertificate !== undefined) profile.documentUrl = data.schoolLeavingCertificate;
 
                     // Domain / career goal + domain ID
-                    if (data.domain?.name) {
-                        profile.careerGoal = data.domain.name;
+                    const domainObj = data.preferredDomain || data.domain;
+                    if (domainObj?.name) {
+                        profile.careerGoal = domainObj.name;
+                    } else if (typeof domainObj === 'string' && domainObj) {
+                        if (/^[0-9a-fA-F]{24}$/.test(domainObj)) {
+                            profile.preferredDomainIds = [domainObj];
+                        } else {
+                            profile.careerGoal = domainObj;
+                        }
                     } else if (data.customDomain) {
                         profile.careerGoal = data.customDomain;
                     }
                     // Store domain IDs directly on profile (no sessionStorage)
-                    if (data.domain?._id) {
-                        profile.preferredDomainIds = [data.domain._id];
+                    if (domainObj?._id) {
+                        profile.preferredDomainIds = [domainObj._id];
                     } else if (Array.isArray(data.preferredDomains) && data.preferredDomains.length > 0) {
                         profile.preferredDomainIds = data.preferredDomains
                             .map((d: any) => (typeof d === 'string' ? d : (d._id || null)))
                             .filter(Boolean);
                     }
-                    if (Array.isArray(data.educationHistory)) {
+                    if (Array.isArray(data.educationHistory) && data.educationHistory.length > 0) {
                         profile.educationHistory = data.educationHistory.map((item: any) => {
                             const eduId = typeof item.education === 'object' && item.education ? (item.education._id || '') : (item.education || '');
                             const eduName = typeof item.education === 'object' && item.education ? (item.education.name || '') : '';
@@ -167,6 +174,35 @@ export const mockApi = {
                                 marks: item.marks || item.gradingValue || ''
                             };
                         });
+                    } else if (data.education && typeof data.education === 'object' && Object.keys(data.education).length > 0) {
+                        const item = data.education;
+                        const eduId = typeof item.education === 'object' && item.education ? (item.education._id || '') : (item.education || item._id || '');
+                        const eduName = typeof item.education === 'object' && item.education ? (item.education.name || '') : (item.name || '');
+                        const uniId = typeof item.university === 'object' && item.university ? (item.university._id || '') : (item.university || '');
+                        const uniName = typeof item.university === 'object' && item.university ? (item.university.name || '') : '';
+                        const courseId = typeof item.course === 'object' && item.course ? (item.course._id || '') : (item.course || '');
+                        const courseName = typeof item.course === 'object' && item.course ? (item.course.name || '') : '';
+                        const specId = typeof item.specialization === 'object' && item.specialization ? (item.specialization._id || '') : (item.specialization || '');
+                        const specName = typeof item.specialization === 'object' && item.specialization ? (item.specialization.name || '') : '';
+
+                        profile.educationHistory = [{
+                            _id: item._id || 'edu-0',
+                            education: eduId,
+                            customEducation: item.customEducation || eduName || '',
+                            university: uniId,
+                            customUniversity: item.customUniversity || uniName || '',
+                            course: courseId,
+                            customCourse: item.customCourse || courseName || '',
+                            specialization: specId,
+                            customSpecialization: item.customSpecialization || specName || '',
+                            courseType: item.courseType || 'Full Time',
+                            startYear: item.startYear || '',
+                            endYear: item.endYear || item.passingYear || '',
+                            passingYear: item.passingYear || item.endYear || '',
+                            gradingSystem: item.gradingSystem || 'CGPA',
+                            gradingValue: item.gradingValue || item.marks || '',
+                            marks: item.marks || item.gradingValue || ''
+                        }];
                     } else {
                         profile.educationHistory = [];
                     }
@@ -220,7 +256,10 @@ export const mockApi = {
                     // Preferred locations — store IDs directly in profile (no sessionStorage)
                     if (Array.isArray(data.preferredLocations) && data.preferredLocations.length > 0) {
                         const locNames = data.preferredLocations.map((l: any) => {
-                            if (typeof l === 'string') return l;
+                            if (typeof l === 'string') {
+                                if (/^[0-9a-fA-F]{24}$/.test(l)) return null;
+                                return l;
+                            }
                             const city = l.name || '';
                             let country = '';
                             if (l.country) {
@@ -235,7 +274,12 @@ export const mockApi = {
                             profile.location = locNames.join(', ');
                         }
                         const locIds = data.preferredLocations
-                            .map((l: any) => (typeof l === 'string' ? null : (l._id || null)))
+                            .map((l: any) => {
+                                if (typeof l === 'string') {
+                                    return /^[0-9a-fA-F]{24}$/.test(l) ? l : null;
+                                }
+                                return l._id || null;
+                            })
                             .filter(Boolean);
                         if (locIds.length > 0) {
                             profile.preferredLocationIds = locIds;
@@ -244,15 +288,24 @@ export const mockApi = {
 
                     // Preferred job types — store IDs directly in profile (no sessionStorage)
                     if (Array.isArray(data.preferredJobTypes) && data.preferredJobTypes.length > 0) {
-                        const jtNames = data.preferredJobTypes.map((j: any) =>
-                            typeof j === 'string' ? j : (j.name || '')
-                        ).filter(Boolean);
+                        const jtNames = data.preferredJobTypes.map((j: any) => {
+                            if (typeof j === 'string') {
+                                if (/^[0-9a-fA-F]{24}$/.test(j)) return null;
+                                return j;
+                            }
+                            return j.name || '';
+                        }).filter(Boolean);
                         if (jtNames.length > 0) {
                             profile.jobTypes = jtNames;
                             profile.jobType = jtNames.join(', ');
                         }
                         const jtIds = data.preferredJobTypes
-                            .map((j: any) => (typeof j === 'string' ? null : (j._id || null)))
+                            .map((j: any) => {
+                                if (typeof j === 'string') {
+                                    return /^[0-9a-fA-F]{24}$/.test(j) ? j : null;
+                                }
+                                return j._id || null;
+                            })
                             .filter(Boolean);
                         if (jtIds.length > 0) {
                             profile.preferredJobTypeIds = jtIds;
@@ -268,6 +321,9 @@ export const mockApi = {
                     if (data.mobile) profile.mobile = data.mobile;
                     if (data.phone) profile.phone = data.phone;
                     if (data.email) profile.email = data.email;
+                    if (data.countryCode) (profile as any).countryCode = data.countryCode;
+                    if (data.country) (profile as any).country = data.country;
+                    if (data.isVerified !== undefined) (profile as any).isVerified = data.isVerified;
 
                     // Profile completion percentage (backend is the single source of truth)
                     if (typeof data.profileCompletionPercentage === 'number') {
@@ -418,12 +474,6 @@ export const mockApi = {
             }
             if (data.currentSalary !== undefined) {
                 payload.currentSalary = formatSalaryPayload(data.currentSalary);
-            }
-
-            // Business rule: If Fresher is selected, force-clear currentSalary to null
-            const isFresher = data.experienceLevel === 'Fresher' || data.experienceLevelId === 'Fresher';
-            if (isFresher) {
-                payload.currentSalary = null;
             }
 
             if (data.preferredDomains !== undefined) {

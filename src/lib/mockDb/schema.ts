@@ -23,8 +23,10 @@ export interface EducationHistoryItem {
   courseType?: string; // e.g. Full-time, Part-time
   startYear?: string | number;
   endYear?: string | number;
+  passingYear?: string | number;
   gradingSystem?: string;
   gradingValue?: string | number;
+  marks?: string | number;
 }
 
 /**

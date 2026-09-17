@@ -200,23 +200,107 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
     const p = get().profile;
     if (!p) return 0;
 
-    // ── Use backend value as source of truth when available ──
-    if (typeof p.profileCompletionPercentage === 'number') {
-      return p.profileCompletionPercentage;
+    const expLevelStr = typeof p.experienceLevel === 'object' && p.experienceLevel ? (p.experienceLevel as any).name : String(p.experienceLevel || '');
+    const isFresher = expLevelStr.toLowerCase().includes('fresher');
+
+    let score = 0;
+
+    // 1. Account & Contact (10%)
+    if ((p.fullName && p.fullName.trim()) && (p.email && p.email.trim())) {
+      score += 10;
     }
 
-    // ── Fallback: local calculation when backend hasn't synced yet ──
-    let score = 10; // Base score for registration
-    if (p.educationHistory && p.educationHistory.length > 0) score += 10;
-    if (p.experienceLevel && p.experienceLevel.trim().length > 0) score += 10;
-    if (p.expectedSalary && (typeof p.expectedSalary === 'string' ? p.expectedSalary.trim().length > 0 : (p.expectedSalary as any).amount != null)) score += 10;
-    if (p.location && p.location.trim().length > 0) score += 10;
-    if (p.jobType && p.jobType.trim().length > 0) score += 10;
-    if (p.careerGoal && p.careerGoal.trim().length > 0) score += 10;
-    if (p.skills && p.skills.length > 0) score += 10;
-    if (p.cvUrl) score += 20;
+    // 2. Education History (15%)
+    if (Array.isArray(p.educationHistory) && p.educationHistory.length > 0) {
+      const hasValidEdu = p.educationHistory.some(e => e.education || e.customEducation || e.university || e.customUniversity);
+      if (hasValidEdu) score += 15;
+    }
 
-    return score;
+    // 3. Career Preferences (15%)
+    // - Preferred Role / Domain (5%)
+    if (p.careerGoal && p.careerGoal.trim().length > 0) {
+      score += 5;
+    }
+    // - Preferred Location (5%)
+    if ((p.location && p.location.trim().length > 0) || (Array.isArray(p.locations) && p.locations.length > 0)) {
+      score += 5;
+    }
+    // - Preferred Job Type & Expected Salary (5%)
+    const hasExpectedSalary = Boolean(
+      p.expectedSalary &&
+      (typeof p.expectedSalary === 'string'
+        ? p.expectedSalary.trim().length > 0
+        : (p.expectedSalary as any).amount != null && (p.expectedSalary as any).amount !== '' && Number((p.expectedSalary as any).amount) > 0)
+    );
+    if ((p.jobType && p.jobType.trim().length > 0) || hasExpectedSalary) {
+      score += 5;
+    }
+
+    // 4. Skills & CV (15%)
+    // - Skills (5%)
+    if (Array.isArray(p.skills) && p.skills.length > 0) {
+      score += 5;
+    }
+    // - CV Upload (10%)
+    if ((p.cvUrl && p.cvUrl.trim().length > 0) || (p.resume && p.resume.trim().length > 0) || (p.cvName && p.cvName.trim().length > 0)) {
+      score += 10;
+    }
+
+    // 5. Experience Level & Compensation (10%)
+    if (p.experienceLevel && p.experienceLevel.trim().length > 0) {
+      score += 5;
+    }
+    const hasCurrentSalary = Boolean(
+      p.currentSalary &&
+      (typeof p.currentSalary === 'string'
+        ? p.currentSalary.trim().length > 0
+        : (p.currentSalary as any).amount != null && (p.currentSalary as any).amount !== '' && Number((p.currentSalary as any).amount) >= 0)
+    );
+    if (isFresher || (hasCurrentSalary && Number((p.currentSalary as any)?.amount) > 0)) {
+      score += 5;
+    }
+
+    // 6. Personal Details & Languages (10%)
+    const hasPersonalDetails = Boolean(
+      (p.gender && p.gender.trim()) ||
+      (p.dob && p.dob.trim()) ||
+      (p.currentLocation && p.currentLocation.trim()) ||
+      (p.hometown && p.hometown.trim())
+    );
+    if (hasPersonalDetails) {
+      score += 5;
+    }
+    const hasLanguages = Array.isArray(p.languagesKnown) && p.languagesKnown.length > 0 && p.languagesKnown.some(l => l.language || l.languageName);
+    if (hasLanguages) {
+      score += 5;
+    }
+
+    // 7. Work / Practical Experience (Employment OR Internships, or Fresher candidate) (15%)
+    const hasEmployment = Array.isArray(p.employmentHistory) && p.employmentHistory.length > 0 && p.employmentHistory.some(e => e.companyName?.trim() || e.jobTitle?.trim());
+    const hasInternships = Array.isArray(p.internships) && p.internships.length > 0 && p.internships.some(i => i.companyName?.trim() || i.role?.trim());
+    if (isFresher || hasEmployment || hasInternships) {
+      score += 15;
+    }
+
+    // 8. Key Projects & Certifications (10%)
+    const hasProjects = Array.isArray(p.projects) && p.projects.length > 0 && p.projects.some((proj: any) => (typeof proj === 'string' && proj.trim()) || (proj?.title && String(proj.title).trim()));
+    if (hasProjects) {
+      score += 5;
+    }
+    const hasCertifications = Array.isArray(p.certifications) && p.certifications.length > 0 && p.certifications.some(c => c.name && c.name.trim());
+    if (hasCertifications) {
+      score += 5;
+    }
+
+    // 9. Awards, Recognitions & Other Achievements (5%)
+    const hasAwards = Boolean(p.awards && p.awards.trim().length > 0);
+    const hasOtherAchievements = Boolean(p.otherAchievements && p.otherAchievements.trim().length > 0);
+    const hasProfileSummary = Boolean(p.profileSummary && p.profileSummary.trim().length > 0);
+    if (hasAwards || hasOtherAchievements || hasProfileSummary) {
+      score += 5;
+    }
+
+    return Math.min(100, Math.max(0, score));
   },
 
   getPendingReminders: () => {

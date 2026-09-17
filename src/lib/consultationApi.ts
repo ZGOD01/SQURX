@@ -137,7 +137,7 @@ export const consultationApi = {
     });
 
     if (res.status === 413) {
-      throw new Error('File size is too large for the server (HTTP 413 Content Too Large). Please upload a smaller file (under 2MB) or ask your backend developer to increase Nginx/Express body size limit (client_max_body_size).');
+      throw new Error('File is too large. Please make it below 1MB.');
     }
 
     if (!res.ok) {
