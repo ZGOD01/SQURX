@@ -101,6 +101,9 @@ export interface SalaryValue {
 export interface StudentProfile {
   userId: string;
   fullName?: string;
+  mobile?: string;
+  phone?: string;
+  email?: string;
   location: string;
   jobType: string;
   careerGoal: string;

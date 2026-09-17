@@ -556,18 +556,20 @@ export const mockApi = {
             }
 
             if (data.awards !== undefined) {
-                payload.awards = typeof data.awards === 'string' 
-                    ? data.awards 
-                    : (Array.isArray(data.awards) ? data.awards.map((a: any) => typeof a === 'string' ? a : (a?.title || a?.name || '')).join('\n') : '');
+                const awardsVal = data.awards as any;
+                payload.awards = typeof awardsVal === 'string' 
+                    ? awardsVal 
+                    : (Array.isArray(awardsVal) ? awardsVal.map((a: any) => typeof a === 'string' ? a : (a?.title || a?.name || '')).join('\n') : '');
             }
 
             // projects[] — exact backend structure: title, tag, client, status ('Ongoing'|'Completed'), details, location, projectSite, teamSize, role, etc.
             if (data.projects !== undefined) {
-                if (typeof data.projects === 'string') {
-                    const trimmed = data.projects.trim();
+                const projectsVal = data.projects as any;
+                if (typeof projectsVal === 'string') {
+                    const trimmed = projectsVal.trim();
                     payload.projects = trimmed ? [{ title: trimmed, status: 'Completed', details: '' }] : [];
-                } else if (Array.isArray(data.projects)) {
-                    payload.projects = data.projects
+                } else if (Array.isArray(projectsVal)) {
+                    payload.projects = projectsVal
                         .filter((p: any) => p && (p.title || (typeof p === 'string' && p.trim())))
                         .map((p: any) => {
                             if (typeof p === 'string') return { title: p.trim(), status: 'Completed', details: '' };

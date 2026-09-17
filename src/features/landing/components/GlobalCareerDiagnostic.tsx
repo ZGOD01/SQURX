@@ -13,7 +13,7 @@ import {
     HelpCircle, Calculator, Star, Map, CheckCircle2,
     CalendarDays, LogIn, ArrowRight, ArrowLeft, Clock, Loader2,
     Eye, EyeOff, ChevronLeft, ChevronRight, Calendar,
-    Smartphone, KeyRound, RotateCcw
+    Smartphone, RotateCcw
 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
