@@ -484,9 +484,10 @@ export function Onboarding() {
 
         setCvError(null);
 
-        // Limit to 1MB to match real server limit
+        // Limit to 1MB to match server limit
         if (file.size > 1 * 1024 * 1024) {
-            setCvError('File is too large. Please make it below 1MB.');
+            const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+            setCvError(`File is too large (${sizeMb}MB). The server allows up to 1MB. Please compress or choose a file under 1MB.`);
             event.target.value = '';
             return;
         }
@@ -525,13 +526,16 @@ export function Onboarding() {
                 cvName: file.name,
                 resumeName: file.name
             });
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem(`squrx_deleted_cv_${user.id}`);
+            }
             setCvName(file.name);
             setSelectedCvFile(null);
         } catch (err: any) {
             console.error('CV upload error:', err);
             const errMsg = String(err?.message || '');
             if (errMsg.includes('413') || errMsg.toLowerCase().includes('large') || errMsg.toLowerCase().includes('size')) {
-                setCvError('File is too large. Please make it below 1MB.');
+                setCvError('The server rejected the file because it exceeds 1MB. Please upload a file under 1MB.');
             } else if (errMsg.includes('401') || errMsg.toLowerCase().includes('unauthorized') || errMsg.toLowerCase().includes('authentication')) {
                 setCvError('Your session has expired (HTTP 401). Please refresh the page or log in again to upload your resume.');
             } else {
@@ -1364,6 +1368,9 @@ export function Onboarding() {
                                         <button
                                             type="button"
                                             onClick={async () => {
+                                                if (typeof window !== 'undefined') {
+                                                    localStorage.setItem(`squrx_deleted_cv_${user.id}`, 'true');
+                                                }
                                                 await updateProfile(user.id, { cvUrl: null, resume: null, cvName: null, resumeName: null });
                                                 setCvName("");
                                                 setSelectedCvFile(null);

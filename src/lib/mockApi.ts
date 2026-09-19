@@ -105,15 +105,28 @@ export const mockApi = {
                     // ── Backend is the source of truth for all fields below ──
 
                     // CV / document URLs
-                    if (data.resume !== undefined) {
-                        profile.cvUrl = data.resume;
-                        profile.resume = data.resume;
-                    } else if (data.cvUrl !== undefined) {
-                        profile.cvUrl = data.cvUrl;
-                        profile.resume = data.cvUrl;
+                    const isCvDeleted = typeof window !== 'undefined' && localStorage.getItem(`squrx_deleted_cv_${userId}`) === 'true';
+                    if (isCvDeleted) {
+                        console.log('[mockApi] getStudentProfile: CV was explicitly deleted by user, keeping null');
+                        profile.cvUrl = null;
+                        profile.resume = null;
+                        profile.cvName = null;
+                        profile.resumeName = null;
+                    } else {
+                        const backendResume = data.resume !== undefined ? data.resume : data.cvUrl;
+                        if (backendResume && typeof backendResume === 'string' && backendResume.trim().length > 0) {
+                            profile.cvUrl = backendResume.trim();
+                            profile.resume = backendResume.trim();
+                            if (data.cvName) profile.cvName = data.cvName;
+                            if (data.resumeName) profile.resumeName = data.resumeName;
+                        } else {
+                            // Explicitly clear CV if backend has empty/null/missing resume
+                            profile.cvUrl = null;
+                            profile.resume = null;
+                            profile.cvName = null;
+                            profile.resumeName = null;
+                        }
                     }
-                    if (data.cvName !== undefined) profile.cvName = data.cvName;
-                    if (data.resumeName !== undefined) profile.resumeName = data.resumeName;
                     if (data.schoolLeavingCertificate !== undefined) profile.documentUrl = data.schoolLeavingCertificate;
 
                     // Domain / career goal + domain ID
@@ -522,10 +535,23 @@ export const mockApi = {
             if (data.preferredLocations !== undefined) {
                 payload.preferredLocations = Array.isArray(data.preferredLocations) ? data.preferredLocations.filter(isValidObjectId) : [];
             }
-            if (data.cvUrl !== undefined) payload.resume = data.cvUrl;
-            if (data.resume !== undefined) payload.resume = data.resume;
-            if (data.cvName !== undefined) payload.cvName = data.cvName;
-            if (data.resumeName !== undefined) payload.resumeName = data.resumeName;
+            if (data.cvUrl !== undefined || data.resume !== undefined) {
+                const rawResume = data.resume !== undefined ? data.resume : data.cvUrl;
+                // Backend requires string for resume: if deleted (null, undefined, or empty), send ""
+                const resumeString = (rawResume && typeof rawResume === 'string') ? rawResume.trim() : '';
+                payload.resume = resumeString;
+                console.log('[mockApi] updateStudentProfile setting payload.resume:', resumeString || '"" (cleared resume)');
+                if (!resumeString) {
+                    if (typeof window !== 'undefined') {
+                        localStorage.setItem(`squrx_deleted_cv_${userId}`, 'true');
+                    }
+                    MockDB.updateStudentProfile(userId, { cvUrl: null, resume: null, cvName: null, resumeName: null });
+                } else {
+                    if (typeof window !== 'undefined') {
+                        localStorage.removeItem(`squrx_deleted_cv_${userId}`);
+                    }
+                }
+            }
 
             // Format Date of Birth (dob) as valid ISO YYYY-MM-DD date string
             const formatDobPayload = (dobVal: any) => {

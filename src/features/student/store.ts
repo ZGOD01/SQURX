@@ -111,15 +111,19 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
     }
     const hasCvOverride = Object.keys(cvOverrides).length > 0;
     try {
+      console.log('[StudentStore] updateProfile called with:', data);
       await mockApi.updateStudentProfile(userId, data);
       const profile = await mockApi.getStudentProfile(userId);
       // Re-apply explicit CV overrides on top of what the backend returned
       // so a stale /user/me response cannot resurrect a deleted/replaced CV.
       const mergedProfile = hasCvOverride ? { ...profile, ...cvOverrides } as any : profile;
       set({ profile: mergedProfile, isLoading: false, saveError: null });
+      console.log('[StudentStore] updateProfile succeeded, mergedProfile:', mergedProfile);
     } catch (err: any) {
+      console.error('[StudentStore] updateProfile error:', err);
       // Rollback optimistic update on error
       set({ profile: currentProfile || null, error: err.message, saveError: err.message, isLoading: false });
+      throw err;
     }
   },
 

@@ -31,7 +31,11 @@ export const Toast = forwardRef<HTMLDivElement, ToastProps>(
                 </div>
                 <div className="flex-1">
                     <h4 className="text-sm font-semibold text-card-foreground">{title}</h4>
-                    {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+                    {(description || props.children) && (
+                        <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+                            {description || props.children}
+                        </p>
+                    )}
                 </div>
                 {onClose && (
                     <button onClick={onClose} className="rounded-full p-1 hover:bg-muted text-muted-foreground transition-colors shrink-0 cursor-pointer">

@@ -105,18 +105,27 @@ export const consultationApi = {
   // Backend derives the user from the JWT token; no userId in URL needed.
   uploadCv: async (file: File): Promise<string> => {
     const token = getAuthToken();
-    if (!token) throw new Error('Authentication required to upload CV.');
+    if (!token) {
+      console.error('[consultationApi] Cannot upload CV: No auth token found.');
+      throw new Error('Authentication required to upload CV.');
+    }
+
+    console.log('[consultationApi] Uploading CV:', file.name, 'Size:', file.size, 'bytes, Reported MIME:', file.type);
+
+    if (file.size > 1 * 1024 * 1024) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      console.error(`[consultationApi] Resume upload blocked: File size (${sizeMb}MB) exceeds 1MB server limit.`);
+      throw new Error(`CV should be less than 1MB limit (selected: ${sizeMb}MB). Please upload a smaller file.`);
+    }
 
     const lowerName = file.name.toLowerCase();
     let mimeType = file.type;
-    if (!mimeType || mimeType === 'application/octet-stream') {
-      if (lowerName.endsWith('.pdf')) {
-        mimeType = 'application/pdf';
-      } else if (lowerName.endsWith('.doc')) {
-        mimeType = 'application/msword';
-      } else if (lowerName.endsWith('.docx')) {
-        mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      }
+    if (lowerName.endsWith('.pdf')) {
+      mimeType = 'application/pdf';
+    } else if (lowerName.endsWith('.doc')) {
+      mimeType = 'application/msword';
+    } else if (lowerName.endsWith('.docx')) {
+      mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
     }
 
     // Re-wrap with normalized MIME type so multipart header is correct
@@ -126,32 +135,55 @@ export const consultationApi = {
     // Backend accepts multipart field name = "resume"
     formData.append('resume', normalizedFile);
 
-    // Do NOT set Content-Type manually — browser sets it with the correct multipart boundary
-    const res = await fetchWithTimeout(`${BASE_URL}/user/me/resume`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-      body: formData,
-      timeout: 30000,
-    });
+    try {
+      // Do NOT set Content-Type manually — browser sets it with the correct multipart boundary
+      const res = await fetchWithTimeout(`${BASE_URL}/user/me/resume`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+        timeout: 30000,
+      });
 
-    if (res.status === 413) {
-      throw new Error('File is too large. Please make it below 1MB.');
-    }
+      if (res.status === 413) {
+        console.error('[consultationApi] Resume upload failed: HTTP 413 Payload Too Large');
+        throw new Error('CV should be less than 1MB limit. Please compress your document or upload a smaller file.');
+      }
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || `Resume upload failed with status ${res.status}`);
-    }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error(`[consultationApi] Resume upload HTTP error ${res.status}:`, err);
+        throw new Error(err.message || `Resume upload failed with status ${res.status}`);
+      }
 
-    const result = await res.json();
-    const data = result?.data || result;
-    const resumeUrl = typeof data === 'string' ? data : (data?.resume || data?.cvUrl || data?.resumeUrl || data?.url || data?.path || '');
-    if (!resumeUrl) {
-      throw new Error(result?.message || 'Backend response did not include a valid resume URL.');
+      const result = await res.json();
+      console.log('[consultationApi] Resume upload response json:', result);
+      const data = result?.data || result;
+      const resumeUrl = typeof data === 'string' ? data : (
+        data?.resume || 
+        data?.cvUrl || 
+        data?.resumeUrl || 
+        data?.url || 
+        data?.path || 
+        data?.user?.resume ||
+        result?.resume ||
+        result?.url ||
+        result?.user?.resume ||
+        ''
+      );
+
+      if (!resumeUrl) {
+        console.error('[consultationApi] Could not find resume URL in response:', result);
+        throw new Error(result?.message || 'Backend response did not include a valid resume URL.');
+      }
+
+      console.log('[consultationApi] Successfully extracted resume URL:', resumeUrl);
+      return resumeUrl;
+    } catch (err: any) {
+      console.error('[consultationApi] uploadCv exception:', err);
+      throw err;
     }
-    return resumeUrl;
   },
 
   /**

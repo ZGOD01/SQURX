@@ -212,6 +212,7 @@ export function StudentProfile() {
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const [toastVariant, setToastVariant] = useState<'success' | 'error'>('success');
+    const [toastTitle, setToastTitle] = useState<string | null>(null);
     const [isConsentEnabled, setIsConsentEnabled] = useState(false);
     const [profileInitialized, setProfileInitialized] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
@@ -660,9 +661,10 @@ export function StudentProfile() {
     };
 
     // ── Toast helper ─────────────────────────────
-    const showToast = (msg: string, variant: 'success' | 'error' = 'success') => {
+    const showToast = (msg: string, variant: 'success' | 'error' = 'success', title?: string) => {
         setToastMessage(msg);
         setToastVariant(variant);
+        setToastTitle(title || (variant === 'success' ? 'Success' : 'Error'));
     };
 
     // ── Enter edit mode ───────────────────────────
@@ -961,6 +963,10 @@ export function StudentProfile() {
                 internships,
                 profileSummary,
                 otherAchievements,
+                cvUrl: profile?.cvUrl ?? null,
+                resume: profile?.resume ?? null,
+                cvName: profile?.cvName ?? null,
+                resumeName: profile?.resumeName ?? null,
             });
 
             setSaveSuccess(true);
@@ -978,8 +984,11 @@ export function StudentProfile() {
     const handleCVUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
+        console.log('[StudentProfile] handleCVUpload triggered for file:', file.name, 'Size:', file.size, 'MIME:', file.type);
         if (file.size > 1 * 1024 * 1024) {
-            showToast('File is too large. Please make it below 1MB.', 'error');
+            const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+            console.error(`[StudentProfile] CV file rejected: Size (${sizeMb}MB) exceeds 1MB server limit.`);
+            showToast(`CV should be less than 1MB limit (selected: ${sizeMb}MB). Please upload a smaller file.`, 'error', 'Error');
             return;
         }
         const fileName = file.name;
@@ -992,17 +1001,26 @@ export function StudentProfile() {
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         ];
         if (!validTypes.includes(file.type) && !isValidExtension) {
+            console.error('[StudentProfile] CV file rejected: Invalid MIME or extension.', file.type, fileName);
             showToast('Please upload a PDF or Word (DOC/DOCX) file', 'error');
             return;
         }
-        if (!user) return;
+        if (!user) {
+            console.error('[StudentProfile] CV upload aborted: No authenticated user');
+            return;
+        }
 
         setIsUploadingCV(true);
         try {
+            console.log('[StudentProfile] Uploading resume file to consultationApi.uploadCv...');
             // Upload file to server POST /user/me/resume
             const resumeUrl = await consultationApi.uploadCv(file);
+            console.log('[StudentProfile] Successfully uploaded to server, resumeUrl:', resumeUrl);
             if (!resumeUrl) {
                 throw new Error("Server returned empty resume URL.");
+            }
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem(`squrx_deleted_cv_${user.id}`);
             }
             await updateProfile(user.id, {
                 cvUrl: resumeUrl,
@@ -1010,15 +1028,17 @@ export function StudentProfile() {
                 cvName: fileName,
                 resumeName: fileName
             });
+            console.log('[StudentProfile] Profile updated successfully with uploaded CV.');
             showToast('CV uploaded successfully.', 'success');
         } catch (err: any) {
+            console.error('[StudentProfile] CV upload failed:', err);
             const errMsg = String(err?.message || '');
             if (errMsg.includes('413') || errMsg.toLowerCase().includes('large') || errMsg.toLowerCase().includes('size')) {
-                showToast('File is too large. Please make it below 1MB.', 'error');
+                showToast('CV should be less than 1MB limit. Please upload a smaller file.', 'error', 'Error');
             } else if (errMsg.includes('401') || errMsg.toLowerCase().includes('unauthorized')) {
-                showToast('Your session has expired (HTTP 401). Please log in again.', 'error');
+                showToast('Your session has expired (HTTP 401). Please log in again.', 'error', 'Error');
             } else {
-                showToast(err.message || 'CV upload failed. Please try again.', 'error');
+                showToast(err.message || 'CV upload failed. Please try again.', 'error', 'Error');
             }
         } finally {
             setIsUploadingCV(false);
@@ -1029,6 +1049,10 @@ export function StudentProfile() {
 
     const removeCV = async () => {
         if (!user) return;
+        console.log('[StudentProfile] removeCV initiated for user:', user.id);
+        if (typeof window !== 'undefined') {
+            localStorage.setItem(`squrx_deleted_cv_${user.id}`, 'true');
+        }
         try {
             await updateProfile(user.id, {
                 cvUrl: null,
@@ -1036,11 +1060,13 @@ export function StudentProfile() {
                 cvName: null,
                 resumeName: null
             });
+            console.log('[StudentProfile] removeCV succeeded, CV removed from profile.');
             if (cvInputRef.current) cvInputRef.current.value = '';
             if (cvReplaceInputRef.current) cvReplaceInputRef.current.value = '';
-            showToast('CV removed.', 'success');
+            showToast('CV removed successfully.', 'success');
             sendEmail('CV Removed', 'Your CV has been removed from your profile.');
         } catch (err: any) {
+            console.error('[StudentProfile] removeCV failed:', err);
             showToast(err.message || 'Failed to remove CV.', 'error');
         }
     };
@@ -2759,54 +2785,57 @@ export function StudentProfile() {
                                             <p className="text-xs text-muted-foreground mt-0.5">Uploaded · Active</p>
                                         </div>
                                         {/* ── Resume view/preview button ── */}
-                                        {profile.cvUrl && (
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="sm"
-                                                title="Preview Resume"
-                                                className="text-primary hover:text-primary hover:bg-primary/10 px-2"
-                                                onClick={() => window.open(profile.cvUrl!, '_blank', 'noopener,noreferrer')}
-                                            >
-                                                <Eye size={16} />
-                                            </Button>
-                                        )}
-                                        {isEditing && (
-                                            <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2" onClick={removeCV}>
-                                                <Trash2 size={16} />
-                                            </Button>
-                                        )}
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            title="Preview Resume"
+                                            className="text-primary hover:text-primary hover:bg-primary/10 px-2"
+                                            onClick={() => window.open(profile.cvUrl!, '_blank', 'noopener,noreferrer')}
+                                        >
+                                            <Eye size={16} />
+                                        </Button>
+                                        {/* ── Delete resume button ── */}
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            title="Remove CV"
+                                            className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2"
+                                            onClick={removeCV}
+                                        >
+                                            <Trash2 size={16} />
+                                        </Button>
                                     </div>
-                                    {isEditing && (
-                                        <>
-                                            <div className="relative">
-                                                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
-                                                <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">Replace</span></div>
-                                            </div>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                disabled={isUploadingCV}
-                                                className="w-full cursor-pointer overflow-hidden relative group disabled:cursor-wait"
-                                            >
-                                                <span className="flex items-center gap-2 group-hover:text-primary transition-colors">
-                                                    {isUploadingCV
-                                                        ? <><Loader2 size={18} className="animate-spin" /> Uploading...</>
-                                                        : <><UploadCloud size={18} /> Upload New CV</>
-                                                    }
-                                                </span>
-                                                <input
-                                                    ref={cvReplaceInputRef}
-                                                    type="file"
-                                                    onClick={e => (e.currentTarget.value = '')}
-                                                    onChange={handleCVUpload}
-                                                    disabled={isUploadingCV}
-                                                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                                    className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-wait"
-                                                />
-                                            </Button>
-                                        </>
-                                    )}
+
+                                    {/* ── Replace resume ── */}
+                                    <div className="relative">
+                                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
+                                        <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground font-semibold">Replace</span></div>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        disabled={isUploadingCV}
+                                        className="w-full cursor-pointer overflow-hidden relative group disabled:cursor-wait"
+                                    >
+                                        <span className="flex items-center gap-2 group-hover:text-primary transition-colors font-semibold">
+                                            {isUploadingCV
+                                                ? <><Loader2 size={18} className="animate-spin" /> Uploading...</>
+                                                : <><UploadCloud size={18} /> Upload New CV</>
+                                            }
+                                        </span>
+                                        <input
+                                            ref={cvReplaceInputRef}
+                                            type="file"
+                                            onClick={e => (e.currentTarget.value = '')}
+                                            onChange={handleCVUpload}
+                                            disabled={isUploadingCV}
+                                            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                            className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-wait"
+                                        />
+                                    </Button>
+                                    <p className="text-[11px] text-center text-muted-foreground">Supported: PDF, DOC, DOCX up to 1MB</p>
                                 </div>
                             ) : (
                                 <div className="border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center justify-center text-center bg-muted/10 transition-colors relative">
@@ -2815,14 +2844,14 @@ export function StudentProfile() {
                                             <Loader2 className="w-8 h-8 text-primary animate-spin" />
                                             <p className="text-sm font-medium">Processing document...</p>
                                         </div>
-                                    ) : isEditing ? (
+                                    ) : (
                                         <div className="w-full h-full flex flex-col items-center justify-center cursor-pointer group">
                                             <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                                 <UploadCloud size={28} />
                                             </div>
                                             <h4 className="font-bold mb-1">Upload your CV</h4>
                                             <p className="text-sm text-muted-foreground max-w-[200px]">PDF, DOC, DOCX up to 1MB</p>
-                                            <Button size="sm" className="mt-6 font-medium px-6">Select File</Button>
+                                            <Button size="sm" className="mt-6 font-medium px-6 pointer-events-none">Select File</Button>
                                             <input
                                                 type="file"
                                                 ref={cvInputRef}
@@ -2832,14 +2861,6 @@ export function StudentProfile() {
                                                 accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                                                 className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-wait"
                                             />
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col items-center justify-center text-center py-4">
-                                            <div className="w-16 h-16 rounded-full bg-muted text-muted-foreground flex items-center justify-center mb-4">
-                                                <FileText size={28} />
-                                            </div>
-                                            <h4 className="font-bold mb-1 text-muted-foreground">No CV Uploaded</h4>
-                                            <p className="text-xs text-muted-foreground max-w-[200px]">Click 'Edit Profile' to upload a CV.</p>
                                         </div>
                                     )}
                                 </div>
@@ -2941,7 +2962,12 @@ export function StudentProfile() {
             {/* Toast */}
             {toastMessage && (
                 <div className="fixed bottom-4 right-4 z-[100]">
-                    <Toast variant={toastVariant} title={toastVariant === 'success' ? 'Success' : 'Error'} onClose={() => setToastMessage(null)}>
+                    <Toast 
+                        variant={toastVariant} 
+                        title={toastTitle || (toastVariant === 'success' ? 'Success' : 'Error')} 
+                        description={toastMessage}
+                        onClose={() => setToastMessage(null)}
+                    >
                         {toastMessage}
                     </Toast>
                 </div>

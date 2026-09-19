@@ -112,9 +112,9 @@ export interface FetchJobsParams {
   keywords?: string;
   /** Alias for `keywords`. */
   q?: string;
-  taxonomy?: string;
+  taxonomy?: string | string[];
   /** Alias for `taxonomy`. */
-  domain?: string;
+  domain?: string | string[];
   /** Case-insensitive substring match against job location. */
   location?: string;
   /** Range-overlap min bound (inclusive). */
@@ -122,8 +122,8 @@ export interface FetchJobsParams {
   /** Range-overlap max bound (inclusive). */
   maxSalary?: number | string;
   currency?: string;
-  industry?: string;
-  experienceLevel?: string;
+  industry?: string | string[];
+  experienceLevel?: string | string[];
   source?: string;
   page?: number;
   limit?: number;
@@ -184,17 +184,17 @@ function normalizeJobType(raw: string): string {
  */
 function normalizeExperienceLevel(raw: string): string {
   const v = raw.toLowerCase().trim();
-  if (v === 'fresher' || v === 'entry' || v === 'entry level' || v === 'entry-level' || v.includes('0-1') || v === '0') {
+  if (v === 'fresher' || v === 'entry' || v === 'entry level' || v === 'entry-level' || v === '0-1' || v === '0') {
     return 'Fresher';
   }
-  if (v === 'junior' || v.includes('1-3') || v.includes('1 to 3') || v.includes('0-2') || v.includes('0-3')) {
-    return '1-3 Years';
+  if (v === '1-3' || v.includes('1-3') || v.includes('1 to 3') || v.includes('0-2') || v.includes('0-3') || v === 'junior') {
+    return '1-3';
   }
-  if (v === 'mid' || v === 'middle' || v.includes('3-5') || v.includes('2-5') || v.includes('mid level') || v.includes('mid-level')) {
-    return '3-5 Years';
+  if (v === '3-5' || v.includes('3-5') || v.includes('3 to 5') || v.includes('2-5') || v === 'mid' || v === 'middle') {
+    return '3-5';
   }
-  if (v === 'senior' || v === 'lead' || v === 'staff' || v === 'principal' || v === 'expert' || v.includes('5+') || v.includes('5 ') || v.includes('+5') || v.includes('senior')) {
-    return '5+ Years';
+  if (v === '5+' || v.includes('5+') || v.includes('+5') || v.includes('5-10') || v.includes('10+') || v === 'senior' || v === 'lead') {
+    return '5+';
   }
   return raw;
 }
@@ -252,19 +252,21 @@ export function mapApiJobToItem(job: ApiJob): ApiJobItem {
   let salary = extractString(
     job.salary || job.salaryRange || job.compensation
   );
-  if (!salary && (job.salaryMin !== undefined || job.salaryMax !== undefined)) {
+  const hasValidMin = typeof job.salaryMin === 'number' && !isNaN(job.salaryMin) && job.salaryMin > 0;
+  const hasValidMax = typeof job.salaryMax === 'number' && !isNaN(job.salaryMax) && job.salaryMax > 0;
+  if (!salary && (hasValidMin || hasValidMax)) {
     const currency = job.salaryCurrency || 'USD';
     const formatter = new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency,
       maximumFractionDigits: 0
     });
-    if (job.salaryMin !== undefined && job.salaryMax !== undefined) {
-      salary = `${formatter.format(job.salaryMin)} - ${formatter.format(job.salaryMax)}`;
-    } else if (job.salaryMin !== undefined) {
-      salary = `${formatter.format(job.salaryMin)}+`;
-    } else if (job.salaryMax !== undefined) {
-      salary = `Up to ${formatter.format(job.salaryMax)}`;
+    if (hasValidMin && hasValidMax) {
+      salary = `${formatter.format(job.salaryMin!)} - ${formatter.format(job.salaryMax!)}`;
+    } else if (hasValidMin) {
+      salary = `${formatter.format(job.salaryMin!)}+`;
+    } else if (hasValidMax) {
+      salary = `Up to ${formatter.format(job.salaryMax!)}`;
     }
   }
 
@@ -329,19 +331,28 @@ export async function fetchJobs(
     query.set('keywords', params.q);
   }
 
-  if (params.taxonomy) {
-    query.set('taxonomy', params.taxonomy);
-  } else if (params.domain) {
-    query.set('taxonomy', params.domain);
+  const taxVal = params.taxonomy || params.domain;
+  if (taxVal) {
+    const val = Array.isArray(taxVal) ? taxVal[0] : taxVal;
+    if (val) query.set('taxonomy', val);
   }
 
   if (params.location) query.set('location', params.location);
-  if (params.experienceLevel) query.set('experienceLevel', params.experienceLevel);
+
+  if (params.experienceLevel) {
+    const expVal = Array.isArray(params.experienceLevel) ? params.experienceLevel[0] : params.experienceLevel;
+    if (expVal) query.set('experienceLevel', expVal);
+  }
+
+  if (params.industry) {
+    const indVal = Array.isArray(params.industry) ? params.industry[0] : params.industry;
+    if (indVal) query.set('industry', String(indVal));
+  }
+
   if (params.source) query.set('source', params.source);
   if (params.minSalary !== undefined && params.minSalary !== '') query.set('minSalary', String(params.minSalary));
   if (params.maxSalary !== undefined && params.maxSalary !== '') query.set('maxSalary', String(params.maxSalary));
   if (params.currency) query.set('currency', params.currency);
-  if (params.industry) query.set('industry', params.industry);
   if (params.page !== undefined) query.set('page', String(params.page));
   if (params.limit !== undefined) query.set('limit', String(params.limit));
 

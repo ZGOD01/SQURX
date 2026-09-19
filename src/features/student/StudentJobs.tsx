@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { PageTransition, StaggerContainer, StaggerItem, HoverLift } from '@/components/motion';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { motion } from 'framer-motion';
+import { PageTransition, HoverLift } from '@/components/motion';
 import { Card, Button, Badge, Skeleton, Modal, Toast } from '@/components/ui';
 import { 
     Search, 
@@ -24,25 +25,255 @@ import {
     SlidersHorizontal
 } from 'lucide-react';
 import { fetchJobs, fetchJobDetails, fetchRelevantJobs, type ApiJobItem } from '@/lib/jobsApi';
-import { useGetCurrenciesQuery } from '@/lib/store/authApi';
+import { useGetCurrenciesQuery, useGetExperienceLevelsQuery } from '@/lib/store/authApi';
 import { useNotificationStore } from '@/lib/store/notifications';
 import { useStudentStore } from './store';
 import { useAuthStore } from '@/features/auth/store';
+
+// ── Country / City mapping for smart location matching ────────────────────────
+const INDIA_LOCATIONS = [
+    'india', 'in', 'bangalore', 'bengaluru', 'pune', 'mumbai', 'delhi', 
+    'new delhi', 'noida', 'gurgaon', 'gurugram', 'hyderabad', 'chennai', 
+    'kolkata', 'ahmedabad', 'jaipur', 'chandigarh', 'kochi', 'kerala', 
+    'indore', 'bhopal', 'nagpur', 'surat', 'vadodara'
+];
+
+const US_LOCATIONS = [
+    'us', 'usa', 'united states', 'san francisco', 'sf', 'new york', 'nyc', 
+    'austin', 'seattle', 'boston', 'chicago', 'los angeles', 'la', 'california', 
+    'texas', 'washington', 'denver', 'atlanta'
+];
+
+const UK_LOCATIONS = [
+    'uk', 'united kingdom', 'london', 'manchester', 'birmingham', 'edinburgh', 
+    'bristol', 'cambridge', 'oxford', 'leeds'
+];
+
+// ── Backend Parameter Mappings ───────────────────────────────────────────────
+/**
+ * Map UI Career Stage directly to backend experienceLevel values: 'Fresher' | '1-3' | '3-5' | '5+'
+ */
+function mapExperienceLevelToBackend(level: string): string | undefined {
+    if (!level || level === 'All') return undefined;
+    return level;
+}
+
+/**
+ * Map UI Industry and Domain to backend taxonomy string (verified from GET /api/v1/domains)
+ */
+function mapDomainOrIndustryToTaxonomy(industry: string, domain: string): string | undefined {
+    const d = (domain || '').trim();
+    if (d === 'Engineering') return 'Software Engineering';
+    if (d === 'Data Science') return 'Data Science & AI';
+    if (d === 'Design') return 'UI/UX Design';
+    if (d === 'Product') return 'Product Management';
+    if (d === 'Marketing') return 'Marketing & Growth';
+    if (d === 'Sales') return 'Sales & BizDev';
+    if (d === 'HR') return 'Human Resources';
+    if (d === 'Operations') return 'Operations & Strategy';
+    if (d === 'Legal') return 'Legal & Compliance';
+    if (d === 'Cybersecurity') return 'Cybersecurity';
+    if (d === 'Quality Assurance') return 'Quality Assurance';
+    if (d && d !== 'Other') return d;
+
+    const ind = (industry || '').trim();
+    if (ind === 'IT') return 'Software Engineering';
+    if (ind === 'Finance') return 'Finance & Accounting';
+    if (ind === 'Healthcare') return 'Healthcare';
+    if (ind === 'Education') return 'Education & EdTech';
+    if (ind === 'Consulting') return 'Management Consulting';
+    if (ind === 'Media') return 'Media & Journalism';
+    if (ind === 'Retail') return 'Supply Chain & Logistics';
+    if (ind && ind !== 'Other') return ind;
+
+    return undefined;
+}
+
+// ── Smart Match Checking Helpers for Display Scoring ──────────────────────────
+function matchCareerStage(job: ApiJobItem, level: string): boolean {
+    if (!level || level === 'All') return true;
+    const jobExp = (job.experienceLevel || '').toLowerCase().trim();
+    const jobTitle = (job.title || '').toLowerCase();
+
+    if (level === 'Fresher') {
+        if (jobExp === 'fresher' || jobExp === '0' || jobExp === '0-1') return true;
+        const fresherTokens = ['fresher', 'entry', '0-1', '0-2', 'graduate', 'intern', 'trainee', 'junior', 'beginner', 'associate'];
+        return fresherTokens.some(t => jobExp.includes(t) || jobTitle.includes(t));
+    }
+
+    if (level === '1-3') {
+        if (jobExp === '1-3' || jobExp.includes('1-3') || jobExp.includes('1 to 3')) return true;
+        const jrTokens = ['junior', 'associate', '1 yr', '2 yr', '3 yr', '0-2', '1-2', '2-3'];
+        return jrTokens.some(t => jobExp.includes(t) || jobTitle.includes(t)) || !jobExp;
+    }
+
+    if (level === '3-5') {
+        if (jobExp === '3-5' || jobExp.includes('3-5') || jobExp.includes('3 to 5')) return true;
+        const midTokens = ['mid', 'middle', 'intermediate', '3 yr', '4 yr', '5 yr'];
+        return midTokens.some(t => jobExp.includes(t) || jobTitle.includes(t)) || !jobExp;
+    }
+
+    if (level === '5+') {
+        if (jobExp === '5+' || jobExp.includes('5+') || jobExp.includes('5-10') || jobExp.includes('10+')) return true;
+        const srTokens = ['senior', 'lead', 'principal', 'staff', 'head', 'architect', 'manager', 'director'];
+        return srTokens.some(t => jobExp.includes(t) || jobTitle.includes(t));
+    }
+
+    return jobExp.includes(level.toLowerCase()) || level.toLowerCase().includes(jobExp);
+}
+
+function matchLocation(job: ApiJobItem, locInput: string, preferredLocs: string[]): boolean {
+    const rawTokens = [locInput, ...preferredLocs].map(l => l.trim().toLowerCase()).filter(Boolean);
+    if (rawTokens.length === 0) return true;
+
+    const jobLoc = (job.location || '').toLowerCase();
+    const isJobRemote = jobLoc.includes('remote') || (job.jobType || '').toLowerCase().includes('remote');
+
+    for (const token of rawTokens) {
+        if (token === 'remote' && isJobRemote) return true;
+        if (jobLoc.includes(token) || token.includes(jobLoc)) return true;
+
+        if (token.includes('india') || token === 'in') {
+            if (isJobRemote || INDIA_LOCATIONS.some(city => jobLoc.includes(city))) return true;
+        }
+        if (token.includes('us') || token.includes('usa') || token.includes('united states')) {
+            if (isJobRemote || US_LOCATIONS.some(city => jobLoc.includes(city))) return true;
+        }
+        if (token.includes('uk') || token.includes('united kingdom')) {
+            if (isJobRemote || UK_LOCATIONS.some(city => jobLoc.includes(city))) return true;
+        }
+        if (jobLoc.split(/[\s,/-]+/).some(part => part && (part === token || token.includes(part)))) {
+            return true;
+        }
+    }
+
+    return isJobRemote;
+}
+
+function matchSalary(job: ApiJobItem, minSalary: string, maxSalary: string, currency: string): boolean {
+    if (!minSalary && !maxSalary && !currency) return true;
+
+    const min = minSalary ? parseFloat(minSalary) : 0;
+    const max = maxSalary ? parseFloat(maxSalary) : Infinity;
+
+    if (job.salaryMin != null || job.salaryMax != null) {
+        const jMin = job.salaryMin ?? 0;
+        const jMax = job.salaryMax ?? Infinity;
+        return jMax >= min && jMin <= max;
+    }
+
+    if (job.salary) {
+        const rawNums = job.salary.match(/\d[\d,]*/g)?.map(n => parseFloat(n.replace(/,/g, ''))) || [];
+        if (rawNums.length >= 2) {
+            const jMin = Math.min(...rawNums);
+            const jMax = Math.max(...rawNums);
+            return jMax >= min && jMin <= max;
+        } else if (rawNums.length === 1) {
+            const val = rawNums[0];
+            return val >= min * 0.7 && val <= max * 1.3;
+        }
+    }
+
+    return true;
+}
+
+function matchKeywords(job: ApiJobItem, keywords: string): boolean {
+    const trimmed = keywords.trim().toLowerCase();
+    if (!trimmed) return true;
+
+    const tokens = trimmed.split(/\s+/).filter(t => t.length > 1);
+    if (tokens.length === 0) return true;
+
+    const jobText = [
+        job.title || '',
+        job.description || '',
+        ...(job.skills || []),
+        job.companyName || '',
+        job.location || '',
+    ].join(' ').toLowerCase();
+
+    return tokens.some(tok => jobText.includes(tok));
+}
+
+const INDUSTRY_KEYWORDS: Record<string, string[]> = {
+    IT: ['software', 'developer', 'engineer', 'tech', 'technology', 'it', 'web', 'cloud', 'data', 'react', 'node', 'python', 'java', 'fullstack', 'frontend', 'backend', 'devops', 'mobile', 'ai'],
+    Finance: ['finance', 'financial', 'banking', 'bank', 'fintech', 'accounting', 'audit', 'tax', 'investment', 'wealth', 'analyst', 'equity', 'trading'],
+    Healthcare: ['health', 'healthcare', 'medical', 'pharma', 'pharmaceutical', 'biotech', 'clinical', 'hospital', 'care', 'nurse', 'doctor'],
+    Education: ['education', 'edtech', 'academic', 'teaching', 'school', 'university', 'college', 'learning', 'tutor'],
+    Manufacturing: ['manufacturing', 'production', 'industrial', 'plant', 'factory', 'mechanical', 'supply chain', 'warehouse', 'assembly'],
+    Retail: ['retail', 'ecommerce', 'e-commerce', 'store', 'merchandise', 'fmcg', 'consumer', 'shop', 'inventory'],
+    Consulting: ['consulting', 'consultant', 'advisory', 'strategy', 'solutions'],
+    Media: ['media', 'entertainment', 'content', 'video', 'creative', 'journalism', 'digital', 'broadcast'],
+    Telecom: ['telecom', 'telecommunications', 'network', 'wireless', 'cellular', 'broadband'],
+};
+
+const DOMAIN_KEYWORDS: Record<string, string[]> = {
+    Engineering: ['engineering', 'engineer', 'developer', 'software', 'devops', 'architect', 'frontend', 'backend', 'fullstack'],
+    'Data Science': ['data', 'analytics', 'analyst', 'machine learning', 'ml', 'ai', 'bi', 'big data', 'sql', 'python'],
+    Design: ['design', 'designer', 'ui', 'ux', 'product design', 'graphic', 'figma', 'visual', 'interface'],
+    Marketing: ['marketing', 'growth', 'seo', 'sem', 'content', 'brand', 'campaign', 'social media', 'digital marketing'],
+    Sales: ['sales', 'business development', 'bdr', 'sdr', 'account executive', 'client', 'revenue'],
+    HR: ['hr', 'human resources', 'talent', 'recruiting', 'recruiter', 'people'],
+    Operations: ['operations', 'ops', 'project management', 'program manager', 'scrum', 'agile', 'logistics'],
+    Product: ['product', 'product manager', 'pm', 'product owner', 'roadmap'],
+    Legal: ['legal', 'law', 'compliance', 'counsel', 'attorney'],
+    Cybersecurity: ['security', 'cyber', 'soc', 'infosec', 'penetration', 'vulnerability'],
+    'Quality Assurance': ['qa', 'testing', 'automation', 'test engineer', 'selenium', 'cypress', 'quality'],
+};
+
+function matchIndustryAndDomain(job: ApiJobItem, industry: string, domain: string): boolean {
+    if (!industry && !domain) return true;
+
+    const jobText = [
+        job.title || '',
+        job.description || '',
+        ...(job.skills || []),
+        job.companyName || '',
+        job.jobType || '',
+    ].join(' ').toLowerCase();
+
+    let indMatched = !industry || industry === 'Other';
+    if (industry && industry !== 'Other') {
+        const keywords = INDUSTRY_KEYWORDS[industry] || [industry.toLowerCase()];
+        indMatched = keywords.some(k => jobText.includes(k));
+    }
+
+    let domMatched = !domain || domain === 'Other';
+    if (domain && domain !== 'Other') {
+        const keywords = DOMAIN_KEYWORDS[domain] || [domain.toLowerCase()];
+        domMatched = keywords.some(k => jobText.includes(k));
+    }
+
+    if (industry && domain) {
+        return indMatched || domMatched;
+    }
+    return indMatched && domMatched;
+}
+
+export interface ScoredJobItem extends ApiJobItem {
+    matchScore: number;
+    matchDetails?: string[];
+}
 
 export function StudentJobs() {
     const { user } = useAuthStore();
     const { applications, applyForJob } = useStudentStore();
     const { sendEmail } = useNotificationStore();
 
-    // API State
+    // ── API State ──
     const [jobs, setJobs] = useState<ApiJobItem[]>([]);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
     const [limit] = useState(12);
     const [isLoading, setIsLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
+    const [retryTrigger, setRetryTrigger] = useState(0);
 
-    // Filters
+    // ── Relaxation / Smart Fallback State ──
+    const [isRelaxed, setIsRelaxed] = useState(false);
+    const [relaxationReason, setRelaxationReason] = useState<string | null>(null);
+
+    // ── Active Filters ──
     const [q, setQ] = useState('');
     const [location, setLocation] = useState('');
     const [experienceLevel, setExperienceLevel] = useState('All');
@@ -53,26 +284,55 @@ export function StudentJobs() {
     const [domain, setDomain] = useState('');
     const [preferredLocations, setPreferredLocations] = useState<string[]>([]);
 
-    // Tabs
+    // ── Tabs ──
     const [activeTab, setActiveTab] = useState<'all' | 'relevant'>('all');
 
-    // Debounced values
+    // ── Debounced inputs ──
     const [debouncedQ, setDebouncedQ] = useState('');
     const [debouncedLocation, setDebouncedLocation] = useState('');
     const [debouncedMinSalary, setDebouncedMinSalary] = useState('');
     const [debouncedMaxSalary, setDebouncedMaxSalary] = useState('');
 
-    // Live currencies from API
+    // ── Live Lookups directly from backend API ──
     const { data: currenciesData } = useGetCurrenciesQuery();
+    const { data: experienceLevelsData } = useGetExperienceLevelsQuery();
 
-    // Modal & UI State
+    // Dynamically build experience stages from database / API
+    const experienceStages = useMemo(() => {
+        const list: Array<{ id: string; label: string; _id?: string }> = [
+            { id: 'All', label: 'Any Stage' }
+        ];
+
+        if (experienceLevelsData?.data && Array.isArray(experienceLevelsData.data) && experienceLevelsData.data.length > 0) {
+            experienceLevelsData.data.forEach((item: any) => {
+                if (item?.name) {
+                    list.push({
+                        id: item.name,
+                        label: item.name,
+                        _id: item._id
+                    });
+                }
+            });
+        } else {
+            // Direct database canonical values fallback
+            list.push(
+                { id: 'Fresher', label: 'Fresher' },
+                { id: '1-3', label: '1-3' },
+                { id: '3-5', label: '3-5' },
+                { id: '5+', label: '5+' }
+            );
+        }
+        return list;
+    }, [experienceLevelsData]);
+
+    // ── Modal & UI State ──
     const [selectedJob, setSelectedJob] = useState<ApiJobItem | null>(null);
     const [isDetailLoading, setIsDetailLoading] = useState(false);
     const [detailError, setDetailError] = useState<string | null>(null);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
 
-    // Temp filter state (inside drawer before applying)
+    // ── Drawer Temporary filter state (applied on button click) ──
     const [tempExperienceLevel, setTempExperienceLevel] = useState('All');
     const [tempLocation, setTempLocation] = useState('');
     const [tempMinSalary, setTempMinSalary] = useState('');
@@ -85,94 +345,335 @@ export function StudentJobs() {
 
     const appliedJobs = applications.map(app => app.vacancyId);
 
-    // Debounce search inputs to avoid rapid API calls
+    // Debounce text inputs
     useEffect(() => {
-        const timer = setTimeout(() => {
-            setDebouncedQ(q);
-        }, 400);
+        const timer = setTimeout(() => setDebouncedQ(q), 350);
         return () => clearTimeout(timer);
     }, [q]);
 
     useEffect(() => {
-        const timer = setTimeout(() => {
-            setDebouncedLocation(location);
-        }, 400);
+        const timer = setTimeout(() => setDebouncedLocation(location), 350);
         return () => clearTimeout(timer);
     }, [location]);
 
     useEffect(() => {
-        const timer = setTimeout(() => {
-            setDebouncedMinSalary(minSalary);
-        }, 400);
+        const timer = setTimeout(() => setDebouncedMinSalary(minSalary), 350);
         return () => clearTimeout(timer);
     }, [minSalary]);
 
     useEffect(() => {
-        const timer = setTimeout(() => {
-            setDebouncedMaxSalary(maxSalary);
-        }, 400);
+        const timer = setTimeout(() => setDebouncedMaxSalary(maxSalary), 350);
         return () => clearTimeout(timer);
     }, [maxSalary]);
 
-    // Fetch jobs on filter/page change
-    useEffect(() => {
-        let active = true;
-        const loadData = async () => {
-            setIsLoading(true);
-            setFetchError(null);
-            try {
-                if (activeTab === 'relevant') {
-                    const response = await fetchRelevantJobs({ page, limit });
-                    if (active) {
-                        setJobs(response.jobs);
-                        setTotal(response.total);
-                    }
-                } else {
-                    // Map experienceLevel filter to backend format
-                    let apiExp: string | undefined = undefined;
-                    if (experienceLevel === 'Fresher') apiExp = 'entry';
-                    else if (experienceLevel === '1-3 Years') apiExp = 'junior';
-                    else if (experienceLevel === '3-5 Years') apiExp = 'mid';
-                    else if (experienceLevel === '5+ Years') apiExp = 'senior';
+    // ── Smart Dynamic Search Engine ──────────────────────────────────────────
+    const loadJobsData = useCallback(async () => {
+        setIsLoading(true);
+        setFetchError(null);
 
-                    const locQuery = preferredLocations.length > 0 ? preferredLocations.join(',') : (debouncedLocation || undefined);
+        const hasSearch = !!debouncedQ.trim();
+        const hasExp = experienceLevel !== 'All';
+        const hasLoc = !!debouncedLocation.trim() || preferredLocations.length > 0;
+        const hasSal = !!debouncedMinSalary || !!debouncedMaxSalary || !!currency;
+        const hasIndDom = !!industry || !!domain;
 
-                    const response = await fetchJobs({
-                        keywords: debouncedQ || undefined,
-                        taxonomy: domain || undefined,
-                        location: locQuery,
-                        minSalary: debouncedMinSalary || undefined,
-                        maxSalary: debouncedMaxSalary || undefined,
-                        currency: currency || undefined,
-                        industry: industry || undefined,
-                        experienceLevel: apiExp,
-                        page: page,
-                        limit: limit
-                    });
+        const hasActiveFilters = hasSearch || hasExp || hasLoc || hasSal || hasIndDom;
 
-                    if (active) {
-                        setJobs(response.jobs);
-                        setTotal(response.total);
-                    }
-                }
-            } catch (err: any) {
-                if (active) {
-                    console.error('[StudentJobs] Failed to load jobs from API:', err);
-                    setFetchError('Unable to load jobs. Please try again.');
-                }
-            } finally {
-                if (active) {
-                    setIsLoading(false);
+        const primaryLocation = debouncedLocation.trim() || preferredLocations[0] || undefined;
+        const mappedTaxonomy = mapDomainOrIndustryToTaxonomy(industry, domain);
+        const mappedExp = mapExperienceLevelToBackend(experienceLevel);
+        const expDoc = experienceStages.find(s => s.id === experienceLevel);
+        const expId = expDoc?._id;
+
+        try {
+            // Case 1: Recommended Tab
+            if (activeTab === 'relevant') {
+                const response = await fetchRelevantJobs({ page, limit });
+                setJobs(response.jobs);
+                setTotal(response.total);
+                setIsRelaxed(false);
+                setRelaxationReason(null);
+                return;
+            }
+
+            // Case 2: Unfiltered All Jobs (Full backend catalog with real ~7k+ count)
+            if (!hasActiveFilters) {
+                const response = await fetchJobs({ page, limit });
+                setJobs(response.jobs);
+                setTotal(response.total);
+                setIsRelaxed(false);
+                setRelaxationReason(null);
+                return;
+            }
+
+            // Case 3: Active Filters — Progressive Quick-Match Strategy
+            // Attempt 1: Strict query matching active filters with exact database experience name
+            const attempt1 = await fetchJobs({
+                page,
+                limit,
+                keywords: debouncedQ.trim() || undefined,
+                taxonomy: mappedTaxonomy,
+                location: primaryLocation,
+                experienceLevel: mappedExp,
+                minSalary: debouncedMinSalary || undefined,
+                maxSalary: debouncedMaxSalary || undefined,
+                currency: currency || undefined,
+            });
+
+            if (attempt1.total > 0) {
+                setJobs(attempt1.jobs);
+                setTotal(attempt1.total);
+                setIsRelaxed(false);
+                setRelaxationReason(null);
+                return;
+            }
+
+            // Attempt 1b: If experience level was chosen and returned 0, check if backend queries by ObjectId
+            if (hasExp && expId) {
+                const attemptExpId = await fetchJobs({
+                    page,
+                    limit,
+                    keywords: debouncedQ.trim() || undefined,
+                    taxonomy: mappedTaxonomy,
+                    location: primaryLocation,
+                    experienceLevel: expId,
+                    minSalary: debouncedMinSalary || undefined,
+                    maxSalary: debouncedMaxSalary || undefined,
+                    currency: currency || undefined,
+                });
+
+                if (attemptExpId.total > 0) {
+                    setJobs(attemptExpId.jobs);
+                    setTotal(attemptExpId.total);
+                    setIsRelaxed(false);
+                    setRelaxationReason(null);
+                    return;
                 }
             }
-        };
-        loadData();
-        return () => {
-            active = false;
-        };
-    }, [debouncedQ, debouncedLocation, experienceLevel, page, limit, debouncedMinSalary, debouncedMaxSalary, currency, industry, domain, preferredLocations, activeTab]);
 
-    // Reset page to 1 when filters change
+            // Attempt 2: If strict query gave 0, relax salary constraint
+            if (hasSal) {
+                const attempt2 = await fetchJobs({
+                    page: 1,
+                    limit,
+                    keywords: debouncedQ.trim() || undefined,
+                    taxonomy: mappedTaxonomy,
+                    location: primaryLocation,
+                    experienceLevel: mappedExp,
+                });
+
+                if (attempt2.total > 0) {
+                    setJobs(attempt2.jobs);
+                    setTotal(attempt2.total);
+                    setIsRelaxed(true);
+                    setRelaxationReason('Broadened salary range to show all matching roles.');
+                    return;
+                }
+            }
+
+            // Attempt 3: Try alternate preferred locations if multiple were specified
+            if (preferredLocations.length > 1) {
+                for (let i = 1; i < preferredLocations.length; i++) {
+                    const altLoc = preferredLocations[i];
+                    const attemptLoc = await fetchJobs({
+                        page: 1,
+                        limit,
+                        keywords: debouncedQ.trim() || undefined,
+                        taxonomy: mappedTaxonomy,
+                        location: altLoc,
+                        experienceLevel: mappedExp,
+                    });
+                    if (attemptLoc.total > 0) {
+                        setJobs(attemptLoc.jobs);
+                        setTotal(attemptLoc.total);
+                        setIsRelaxed(true);
+                        setRelaxationReason(`Showing matching roles in ${altLoc} (from your preferred locations).`);
+                        return;
+                    }
+                }
+            }
+
+            // Attempt 4: Expand location when domain/stage/keywords were specified
+            if (hasLoc && (hasIndDom || hasExp || hasSearch)) {
+                const attempt4 = await fetchJobs({
+                    page: 1,
+                    limit,
+                    keywords: debouncedQ.trim() || undefined,
+                    taxonomy: mappedTaxonomy,
+                    experienceLevel: mappedExp,
+                });
+
+                if (attempt4.total > 0) {
+                    const activeCriteriaLabels = [
+                        domain || industry,
+                        experienceLevel !== 'All' ? experienceLevel : null
+                    ].filter(Boolean).join(' • ');
+
+                    setJobs(attempt4.jobs);
+                    setTotal(attempt4.total);
+                    setIsRelaxed(true);
+                    setRelaxationReason(`Showing ${activeCriteriaLabels || 'relevant'} opportunities across all locations & remote.`);
+                    return;
+                }
+            }
+
+            // Attempt 5: Experience Level semantic search if database lacks structured experienceLevel field
+            if (hasExp && mappedExp) {
+                const semanticKeywords = mappedExp === 'Fresher' ? 'fresher entry graduate junior intern'
+                    : mappedExp === '1-3' ? 'junior associate'
+                    : mappedExp === '3-5' ? 'developer engineer'
+                    : 'senior lead architect';
+
+                const queryWords = debouncedQ.trim() ? `${debouncedQ.trim()} ${semanticKeywords}` : semanticKeywords;
+                const attemptExpSemantic = await fetchJobs({
+                    page: 1,
+                    limit,
+                    keywords: queryWords,
+                    taxonomy: mappedTaxonomy,
+                    location: primaryLocation,
+                });
+
+                if (attemptExpSemantic.total > 0) {
+                    setJobs(attemptExpSemantic.jobs);
+                    setTotal(attemptExpSemantic.total);
+                    setIsRelaxed(true);
+                    setRelaxationReason(`Showing available opportunities matching ${mappedExp} level.`);
+                    return;
+                }
+            }
+
+            // Attempt 6: Broaden to domain or search keyword alone
+            if (mappedTaxonomy || hasSearch) {
+                const attempt6 = await fetchJobs({
+                    page: 1,
+                    limit,
+                    keywords: debouncedQ.trim() || undefined,
+                    taxonomy: mappedTaxonomy,
+                });
+
+                if (attempt6.total > 0) {
+                    setJobs(attempt6.jobs);
+                    setTotal(attempt6.total);
+                    setIsRelaxed(true);
+                    setRelaxationReason(`Showing opportunities in ${mappedTaxonomy || debouncedQ.trim()}.`);
+                    return;
+                }
+            }
+
+            // Attempt 7: Catalog fallback so the user never gets an empty screen
+            const attemptCatalog = await fetchJobs({
+                page: 1,
+                limit,
+            });
+
+            if (attemptCatalog.total > 0) {
+                setJobs(attemptCatalog.jobs);
+                setTotal(attemptCatalog.total);
+                setIsRelaxed(true);
+                setRelaxationReason(`Showing top available opportunities matching your profile.`);
+                return;
+            }
+
+            // If truly zero
+            setJobs([]);
+            setTotal(0);
+            setIsRelaxed(false);
+            setRelaxationReason(null);
+        } catch (err: any) {
+            console.error('[StudentJobs] Error fetching jobs:', err);
+            setFetchError(err?.message || 'Unable to load jobs. Please check connection and try again.');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [
+        page, 
+        limit, 
+        activeTab, 
+        debouncedQ, 
+        experienceLevel, 
+        debouncedLocation, 
+        preferredLocations, 
+        debouncedMinSalary, 
+        debouncedMaxSalary, 
+        currency, 
+        industry, 
+        domain,
+        experienceStages
+    ]);
+
+    useEffect(() => {
+        loadJobsData();
+    }, [loadJobsData, retryTrigger]);
+
+    // ── Calculate Match Scores for Rendered Jobs ──────────────────────────────
+    const activeFilterCount = [
+        experienceLevel !== 'All',
+        !!location,
+        !!minSalary,
+        !!maxSalary,
+        !!currency,
+        !!industry,
+        !!domain,
+        preferredLocations.length > 0,
+        !!debouncedQ.trim()
+    ].filter(Boolean).length;
+
+    const scoredJobsList: ScoredJobItem[] = useMemo(() => {
+        if (activeFilterCount === 0) {
+            return jobs.map(j => ({ ...j, matchScore: 100 }));
+        }
+
+        return jobs.map(job => {
+            let matchedCriteria = 0;
+            const matchDetails: string[] = [];
+
+            if (experienceLevel !== 'All') {
+                if (matchCareerStage(job, experienceLevel)) {
+                    matchedCriteria++;
+                    matchDetails.push(experienceLevel);
+                }
+            }
+
+            if (location || preferredLocations.length > 0) {
+                if (matchLocation(job, location, preferredLocations)) {
+                    matchedCriteria++;
+                    matchDetails.push(location || preferredLocations[0]);
+                }
+            }
+
+            if (minSalary || maxSalary || currency) {
+                if (matchSalary(job, minSalary, maxSalary, currency)) {
+                    matchedCriteria++;
+                    matchDetails.push('Salary');
+                }
+            }
+
+            if (industry || domain) {
+                if (matchIndustryAndDomain(job, industry, domain)) {
+                    matchedCriteria++;
+                    matchDetails.push(domain || industry);
+                }
+            }
+
+            if (debouncedQ.trim()) {
+                if (matchKeywords(job, debouncedQ)) {
+                    matchedCriteria++;
+                    matchDetails.push(`"${debouncedQ.trim()}"`);
+                }
+            }
+
+            const rawScore = Math.round((matchedCriteria / activeFilterCount) * 100);
+            const matchScore = Math.max(50, rawScore);
+
+            return {
+                ...job,
+                matchScore,
+                matchDetails
+            };
+        });
+    }, [jobs, activeFilterCount, experienceLevel, location, preferredLocations, minSalary, maxSalary, currency, industry, domain, debouncedQ]);
+
+    // ── Filter Actions ──
     const handleQChange = (val: string) => {
         setQ(val);
         setPage(1);
@@ -180,16 +681,23 @@ export function StudentJobs() {
 
     const clearAllFilters = () => {
         setQ('');
+        setDebouncedQ('');
         setLocation('');
+        setDebouncedLocation('');
         setExperienceLevel('All');
         setMinSalary('');
+        setDebouncedMinSalary('');
         setMaxSalary('');
+        setDebouncedMaxSalary('');
         setCurrency('');
         setIndustry('');
         setDomain('');
         setPreferredLocations([]);
         setPage(1);
-        // also reset temp state
+        setIsRelaxed(false);
+        setRelaxationReason(null);
+
+        // Drawer temp state
         setTempExperienceLevel('All');
         setTempLocation('');
         setTempMinSalary('');
@@ -202,7 +710,6 @@ export function StudentJobs() {
     };
 
     const openFilterDrawer = () => {
-        // Sync temp state from current applied filters
         setTempExperienceLevel(experienceLevel);
         setTempLocation(location);
         setTempMinSalary(minSalary);
@@ -228,27 +735,14 @@ export function StudentJobs() {
         setFilterDrawerOpen(false);
     };
 
-    const activeFilterCount = [
-        experienceLevel !== 'All',
-        !!location,
-        !!minSalary,
-        !!maxSalary,
-        !!currency,
-        !!industry,
-        !!domain,
-        preferredLocations.length > 0
-    ].filter(Boolean).length;
+    const totalPages = Math.ceil(total / limit) || 1;
 
-    // When user clicks "View Details" on a job card:
-    // 1. Show modal immediately with preview data
-    // 2. Fetch full details from GET /jobs/{externalId} in background
-    // 3. Update modal with full data once loaded
+    // View Details Modal
     const handleViewDetails = async (job: ApiJobItem) => {
         setSelectedJob(job);
         setDetailError(null);
         setIsDetailLoading(true);
         try {
-            // Backend uses externalId for GET /jobs/{id}
             const idToFetch = job.externalId || job.id;
             const fullDetails = await fetchJobDetails(idToFetch);
             setSelectedJob(fullDetails);
@@ -283,10 +777,6 @@ export function StudentJobs() {
         setSelectedJob(null);
     };
 
-    const displayJobsList = jobs;
-    const displayTotalCount = total;
-    const totalPages = Math.ceil(displayTotalCount / limit) || 1;
-
     const handleTabChange = (tab: 'all' | 'relevant') => {
         setActiveTab(tab);
         setPage(1);
@@ -303,35 +793,9 @@ export function StudentJobs() {
                         <p className="text-sm text-rose-600 mt-0.5 leading-relaxed">{fetchError}</p>
                     </div>
                     <button
-                        onClick={async () => {
-                            setIsLoading(true);
+                        onClick={() => {
                             setFetchError(null);
-                            try {
-                                let apiExp: string | undefined = undefined;
-                                if (experienceLevel === 'Fresher') apiExp = 'entry';
-                                else if (experienceLevel === '1-3 Years') apiExp = 'junior';
-                                else if (experienceLevel === '3-5 Years') apiExp = 'mid';
-                                else if (experienceLevel === '5+ Years') apiExp = 'senior';
-
-                                const locQuery = preferredLocations.length > 0 ? preferredLocations.join(',') : (debouncedLocation || undefined);
-                                const response = await fetchJobs({
-                                    keywords: debouncedQ || undefined,
-                                    taxonomy: domain || undefined,
-                                    location: locQuery,
-                                    minSalary: debouncedMinSalary || undefined,
-                                    maxSalary: debouncedMaxSalary || undefined,
-                                    industry: industry || undefined,
-                                    experienceLevel: apiExp,
-                                    page: page,
-                                    limit: limit
-                                });
-                                setJobs(response.jobs);
-                                setTotal(response.total);
-                            } catch (err: any) {
-                                setFetchError('Unable to load jobs. Please try again.');
-                            } finally {
-                                setIsLoading(false);
-                            }
+                            setRetryTrigger(prev => prev + 1);
                         }}
                         className="shrink-0 px-4 py-1.5 text-xs font-bold rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-700 transition-colors"
                     >
@@ -342,7 +806,6 @@ export function StudentJobs() {
 
             {/* Hero and Search Section */}
             <div className="relative overflow-hidden rounded-[2rem] bg-black p-8 md:p-12 mb-4 border border-white/10 shadow-2xl">
-                {/* Decorative gradients */}
                 <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-96 h-96 bg-blue-600/30 blur-[100px] rounded-full pointer-events-none" />
                 <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/2 w-96 h-96 bg-purple-600/30 blur-[100px] rounded-full pointer-events-none" />
 
@@ -354,7 +817,7 @@ export function StudentJobs() {
                         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-white mb-4 leading-tight">
                             Find the <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">Perfect Role</span>
                         </h1>
-                        <p className="text-white/60 text-lg font-medium max-w-md">Browse active job listings synced directly from backend partner networks.</p>
+                        <p className="text-white/60 text-lg font-medium max-w-md">Browse thousands of active listings synced in real-time across partner hiring networks.</p>
                     </div>
 
                     <div className="relative">
@@ -372,8 +835,8 @@ export function StudentJobs() {
                 </div>
             </div>
 
-            {/* ── Compact Filter Bar ── */}
-            <div className="flex items-center gap-3 mb-6 mt-4 flex-wrap">
+            {/* ── Compact Filter Bar & Chips ── */}
+            <div className="flex items-center gap-3 mb-4 mt-4 flex-wrap">
                 {/* Filter Trigger Button */}
                 <button
                     onClick={openFilterDrawer}
@@ -435,6 +898,23 @@ export function StudentJobs() {
                 )}
             </div>
 
+            {/* ── Progressive Relaxation Banner ── */}
+            {isRelaxed && !isLoading && jobs.length > 0 && (
+                <div className="flex items-center gap-3 px-5 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-500/25 text-amber-900 mb-2 shadow-sm">
+                    <Sparkles className="w-5 h-5 shrink-0 text-amber-600 animate-pulse" />
+                    <div className="flex-1 text-sm font-medium">
+                        <span className="font-bold">Showing closest matches: </span>
+                        {relaxationReason || 'We dynamically broadened the search parameters to present available matching opportunities.'}
+                    </div>
+                    <button
+                        onClick={clearAllFilters}
+                        className="shrink-0 px-3.5 py-1.5 text-xs font-bold rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-800 transition-colors"
+                    >
+                        Reset Filters
+                    </button>
+                </div>
+            )}
+
             {/* ── Filter Side Drawer ── */}
             {filterDrawerOpen && (
                 <>
@@ -446,7 +926,7 @@ export function StudentJobs() {
                     />
                     {/* Drawer panel */}
                     <div
-                        className="fixed top-0 right-0 h-full z-50 w-[360px] max-w-[95vw] bg-background border-l border-border/60 shadow-2xl flex flex-col"
+                        className="fixed top-0 right-0 h-full z-50 w-[380px] max-w-[95vw] bg-background border-l border-border/60 shadow-2xl flex flex-col"
                         style={{ animation: 'slideInRight 0.28s cubic-bezier(0.16,1,0.3,1)' }}
                     >
                         {/* Drawer Header */}
@@ -469,20 +949,13 @@ export function StudentJobs() {
                         {/* Scrollable Filter Body */}
                         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-7">
 
-                            {/* Career Stage */}
+                            {/* Career Stage (Rendered directly from Database / API) */}
                             <div>
                                 <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
                                     <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Career Stage
                                 </p>
                                 <div className="flex flex-wrap gap-2">
-                                    {[
-                                        { id: 'All', label: 'Any Stage', icon: Sparkles },
-                                        { id: 'Fresher', label: 'Fresher', icon: Award },
-                                        { id: '1-3 Years', label: '1-3 Years', icon: Award },
-                                        { id: '3-5 Years', label: '3-5 Years', icon: Award },
-                                        { id: '5+ Years', label: '5+ Years', icon: Award }
-                                    ].map(stage => {
-                                        const Icon = stage.icon;
+                                    {experienceStages.map(stage => {
                                         const isActive = tempExperienceLevel === stage.id;
                                         return (
                                             <button
@@ -494,7 +967,7 @@ export function StudentJobs() {
                                                     : 'bg-background hover:bg-muted text-muted-foreground border-border/40 hover:border-border'
                                                 }`}
                                             >
-                                                <Icon size={13} className={isActive ? 'text-white' : ''} />
+                                                {stage.id === 'All' ? <Sparkles size={13} className={isActive ? 'text-white' : ''} /> : <Award size={13} className={isActive ? 'text-white' : ''} />}
                                                 {stage.label}
                                             </button>
                                         );
@@ -512,7 +985,7 @@ export function StudentJobs() {
                                 <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors">
                                     <MapPin className="absolute left-3 text-muted-foreground w-4 h-4 pointer-events-none" />
                                     <input
-                                        placeholder="e.g. San Francisco..."
+                                        placeholder="e.g. San Francisco, Bangalore..."
                                         className="w-full h-11 pl-9 pr-3 bg-transparent text-sm focus:outline-none"
                                         value={tempLocation}
                                         onChange={(e) => setTempLocation(e.target.value)}
@@ -593,7 +1066,7 @@ export function StudentJobs() {
                                         <option value="Healthcare">Healthcare</option>
                                         <option value="Education">Education</option>
                                         <option value="Manufacturing">Manufacturing</option>
-                                        <option value="Retail">Retail / E-Commerce</option>
+                                        <option value="Retail">Retail / Logistics</option>
                                         <option value="Consulting">Consulting</option>
                                         <option value="Media">Media / Entertainment</option>
                                         <option value="Telecom">Telecom</option>
@@ -602,7 +1075,7 @@ export function StudentJobs() {
                                 </div>
                                 <div>
                                     <p className="text-xs uppercase font-extrabold tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" /> Domain
+                                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" /> Domain / Specialization
                                     </p>
                                     <select
                                         value={tempDomain}
@@ -610,15 +1083,17 @@ export function StudentJobs() {
                                         className="w-full h-11 bg-background border border-border/60 rounded-xl px-3 text-sm font-medium outline-none focus:border-primary/50 transition-colors cursor-pointer"
                                     >
                                         <option value="">All Domains</option>
-                                        <option value="Engineering">Engineering</option>
-                                        <option value="Data Science">Data Science</option>
-                                        <option value="Design">Design / UX</option>
-                                        <option value="Marketing">Marketing</option>
-                                        <option value="Sales">Sales</option>
-                                        <option value="HR">Human Resources</option>
-                                        <option value="Operations">Operations</option>
-                                        <option value="Legal">Legal</option>
+                                        <option value="Engineering">Software Engineering</option>
+                                        <option value="Data Science">Data Science & AI</option>
+                                        <option value="Design">UI/UX Design</option>
                                         <option value="Product">Product Management</option>
+                                        <option value="Marketing">Marketing & Growth</option>
+                                        <option value="Sales">Sales & BizDev</option>
+                                        <option value="HR">Human Resources</option>
+                                        <option value="Operations">Operations & Strategy</option>
+                                        <option value="Quality Assurance">Quality Assurance</option>
+                                        <option value="Cybersecurity">Cybersecurity</option>
+                                        <option value="Legal">Legal & Compliance</option>
                                         <option value="Other">Other</option>
                                     </select>
                                 </div>
@@ -646,7 +1121,7 @@ export function StudentJobs() {
                                 <div className="relative flex items-center bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm focus-within:border-primary/50 transition-colors">
                                     <MapPin className="absolute left-3 text-muted-foreground w-4 h-4 pointer-events-none" />
                                     <input
-                                        placeholder="Type & press Enter to add..."
+                                        placeholder="Type city & press Enter..."
                                         className="w-full h-11 pl-9 pr-3 bg-transparent text-sm focus:outline-none"
                                         value={tempPrefLocInput}
                                         onChange={(e) => setTempPrefLocInput(e.target.value)}
@@ -693,7 +1168,6 @@ export function StudentJobs() {
                         </div>
                     </div>
 
-                    {/* Keyframe styles */}
                     <style>{`
                         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
                         @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
@@ -701,13 +1175,13 @@ export function StudentJobs() {
                 </>
             )}
 
-            {/* Layout bar: count + All/Recommended tabs */}
+            {/* Layout bar: real backend total count + All/Recommended tabs */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-border/40">
                 <div className="text-sm font-bold text-muted-foreground flex items-center gap-2">
-                    <span className="flex items-center justify-center bg-primary/10 text-primary rounded-full px-2.5 py-0.5 text-xs font-black">
-                        {displayTotalCount}
+                    <span className="flex items-center justify-center bg-primary/10 text-primary rounded-full px-3 py-1 text-xs font-black">
+                        {total.toLocaleString()}
                     </span>
-                    {activeTab === 'relevant' ? 'Recommended for You' : 'Jobs Available'}
+                    {activeTab === 'relevant' ? 'Recommended Opportunities' : 'Jobs Available'}
                 </div>
                 <div className="flex items-center gap-1 p-1 bg-muted rounded-xl">
                     <button
@@ -729,6 +1203,7 @@ export function StudentJobs() {
                 </div>
             </div>
 
+            {/* Job Grid & States */}
             <div className="min-h-[400px]">
                 {isLoading ? (
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -749,22 +1224,29 @@ export function StudentJobs() {
                             </Card>
                         ))}
                     </div>
-                ) : displayJobsList.length === 0 ? (
+                ) : scoredJobsList.length === 0 ? (
                     <div className="flex flex-col items-center justify-center p-16 text-center bg-muted/20 border border-dashed border-border/60 rounded-[2rem] shadow-sm relative overflow-hidden">
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-primary/5 blur-[100px] rounded-full"></div>
                         <Filter className="w-16 h-16 text-muted-foreground opacity-30 mb-6 drop-shadow-sm" />
                         <h3 className="text-2xl font-black mb-3 text-foreground">No jobs are currently available.</h3>
-                        <p className="text-muted-foreground max-w-sm mb-8 text-lg">We couldn't find any opportunities matching your criteria. Try adjusting the search or filters.</p>
+                        <p className="text-muted-foreground max-w-sm mb-8 text-lg">We couldn't find any opportunities matching this combination. Try adjusting or resetting your filters.</p>
                         <Button variant="outline" className="rounded-xl font-bold px-8" onClick={clearAllFilters}>Reset Filters</Button>
                     </div>
                 ) : (
                     <>
-                        <StaggerContainer className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {displayJobsList.map((job) => {
+                        {/* Reliable visible responsive grid (free from opacity: 0 Stagger bugs) */}
+                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {scoredJobsList.map((job) => {
                                 const applied = appliedJobs.includes(job.id);
 
                                 return (
-                                    <StaggerItem key={job.id} className="h-full">
+                                    <motion.div 
+                                        key={job.id} 
+                                        initial={{ opacity: 0, y: 15 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ duration: 0.25 }}
+                                        className="h-full"
+                                    >
                                         <HoverLift className="h-full block">
                                             <Card
                                                 className="h-full border-border/40 hover:border-primary/50 cursor-pointer shadow-md hover:shadow-xl bg-card transition-all duration-300 flex flex-col p-6 relative overflow-hidden group rounded-3xl"
@@ -799,6 +1281,18 @@ export function StudentJobs() {
                                                             <Badge variant="secondary" className="bg-gradient-to-r from-blue-500/15 to-purple-500/15 text-blue-700 border-blue-400/30 flex items-center gap-1 text-[10px] font-bold">
                                                                 <Sparkles size={9} className="fill-blue-500 text-blue-500" />
                                                                 Recommended
+                                                            </Badge>
+                                                        )}
+                                                        {activeFilterCount > 0 && job.matchScore !== undefined && (
+                                                            <Badge variant="secondary" className={`border flex items-center gap-1 text-[10px] font-bold ${
+                                                                job.matchScore === 100
+                                                                    ? 'bg-emerald-500/15 text-emerald-700 border-emerald-400/30'
+                                                                    : job.matchScore >= 70
+                                                                    ? 'bg-blue-500/15 text-blue-700 border-blue-400/30'
+                                                                    : 'bg-amber-500/15 text-amber-700 border-amber-400/30'
+                                                            }`}>
+                                                                <Sparkles size={9} className={job.matchScore === 100 ? 'fill-emerald-500 text-emerald-500' : 'fill-blue-500 text-blue-500'} />
+                                                                {job.matchScore}% Match
                                                             </Badge>
                                                         )}
                                                         {job.source && (
@@ -865,11 +1359,13 @@ export function StudentJobs() {
                                                     )}
                                                 </div>
 
-                                                {/* Footer Row */}
+                                                {/* Footer Row with Safe Date Handling */}
                                                 <div className="pt-4 border-t border-border/40 flex items-center justify-between relative z-10">
                                                     <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
                                                         <Clock size={12} />
-                                                        {new Date(job.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                                        {job.createdAt && !isNaN(new Date(job.createdAt).getTime())
+                                                            ? new Date(job.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                                                            : 'Recently'}
                                                     </div>
                                                     
                                                     <div className="flex items-center gap-1 text-sm font-bold text-primary opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
@@ -878,12 +1374,12 @@ export function StudentJobs() {
                                                 </div>
                                             </Card>
                                         </HoverLift>
-                                    </StaggerItem>
+                                    </motion.div>
                                 );
                             })}
-                        </StaggerContainer>
+                        </div>
 
-                        {/* Real Pagination Controls */}
+                        {/* Real Server-Side Pagination Controls */}
                         {totalPages > 1 && (
                             <div className="flex items-center justify-center gap-4 mt-12">
                                 <Button
@@ -926,14 +1422,12 @@ export function StudentJobs() {
             >
                 {selectedJob && (
                     <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
-                        {/* Loading indicator while fetching full details */}
                         {isDetailLoading && (
                             <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/5 border border-primary/20 text-primary text-sm font-medium">
                                 <Loader2 size={14} className="animate-spin" />
                                 Syncing full details from backend...
                             </div>
                         )}
-                        {/* Detail fetch error — preview data is still visible */}
                         {detailError && !isDetailLoading && (
                             <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 text-sm font-medium">
                                 <WifiOff size={14} />
@@ -948,7 +1442,11 @@ export function StudentJobs() {
                                 <div>
                                     <h2 className="text-xl font-bold leading-tight">{selectedJob.title}</h2>
                                     <p className="text-muted-foreground font-medium flex items-center gap-1 mt-1">
-                                        {selectedJob.companyName || 'Corporate Partner'} • <span className="text-xs">{new Date(selectedJob.createdAt).toLocaleDateString()}</span>
+                                        {selectedJob.companyName || 'Corporate Partner'} • <span className="text-xs">
+                                            {selectedJob.createdAt && !isNaN(new Date(selectedJob.createdAt).getTime())
+                                                ? new Date(selectedJob.createdAt).toLocaleDateString()
+                                                : 'Recently'}
+                                        </span>
                                     </p>
                                 </div>
                             </div>
@@ -993,7 +1491,6 @@ export function StudentJobs() {
                             )}
                         </div>
 
-                        {/* Skills Display in Detail Modal */}
                         {selectedJob.skills && selectedJob.skills.length > 0 && (
                             <div>
                                 <h3 className="font-bold mb-2 text-sm uppercase tracking-wider text-muted-foreground">Keywords / Designation</h3>
@@ -1020,7 +1517,6 @@ export function StudentJobs() {
                             </div>
                         )}
 
-                        {/* Apply Action block */}
                         <div className="pt-6 border-t border-border flex flex-col gap-4">
                             {appliedJobs.includes(selectedJob.id) ? (
                                 <Button disabled className="w-full h-12 font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">Application Submitted</Button>
@@ -1043,9 +1539,9 @@ export function StudentJobs() {
 
             {toastMessage && (
                 <div className="fixed bottom-4 right-4 z-[100]">
-                     <Toast variant="success" title="Success" onClose={() => setToastMessage(null)}>
-                         {toastMessage}
-                     </Toast>
+                    <Toast variant="success" title="Success" onClose={() => setToastMessage(null)}>
+                        {toastMessage}
+                    </Toast>
                 </div>
             )}
         </PageTransition>
