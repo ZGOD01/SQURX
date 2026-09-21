@@ -20,6 +20,9 @@ export interface EducationHistoryItem {
   customUniversity?: string;
   customCourse?: string;
   customSpecialization?: string;
+  schoolCollegeName?: string;
+  college?: string;
+  institute?: string;
   courseType?: string; // e.g. Full-time, Part-time
   startYear?: string | number;
   endYear?: string | number;
@@ -100,6 +103,34 @@ export interface SalaryValue {
   currency: CurrencyObject | string | null;
 }
 
+/**
+ * One entry in certifications[].
+ * Matches backend schema with credential details and expiration.
+ */
+export interface CertificationItem {
+  _id?: string;
+  name: string;
+  status?: 'completed' | 'undergoing' | 'Completed' | 'Undergoing';
+  doesNotExpire?: boolean;
+  completionId?: string;
+  url?: string;
+  validFromMonth?: number | string;
+  validFromYear?: number | string;
+  validToMonth?: number | string;
+  validToYear?: number | string;
+}
+
+/**
+ * One entry in otherAchievements[].
+ * Matches backend schema supporting link and description.
+ */
+export interface OtherAchievementItem {
+  _id?: string;
+  name: string;
+  link?: string;
+  description?: string;
+}
+
 export interface StudentProfile {
   userId: string;
   fullName?: string;
@@ -109,6 +140,8 @@ export interface StudentProfile {
   location: string;
   jobType: string;
   careerGoal: string;
+  domain?: string | { _id: string; name: string };
+  customDomain?: string;
   skills: string[];
   locations: string[];
   jobTypes: string[];
@@ -135,19 +168,25 @@ export interface StudentProfile {
   currentLocation?: string;
   hometown?: string;
   hometownCountry?: string;
+  hometownCountryId?: string;
+  highestEducation?: string;
+  ugUniversity?: string;
+  pgUniversity?: string;
+  graduationUniversity?: string;
+  schoolCollegeName?: string;
   // ── Array fields — PUT replaces the whole stored array ──
   /** Array of known languages with proficiency and read/write/speak. */
   languagesKnown?: LanguageKnownItem[];
   educationHistory?: EducationHistoryItem[];
   /** Full employment history per backend spec. */
   employmentHistory?: EmploymentHistoryItem[];
-  certifications?: Array<{ name: string; status: 'completed' | 'undergoing' }>;
+  certifications?: CertificationItem[];
   awards?: string;
   /** Structured project list per backend spec. */
   projects?: ProjectItem[];
   internships?: Array<{ companyName: string; duration: string; role: string }>;
   profileSummary?: string;
-  otherAchievements?: string;
+  otherAchievements?: OtherAchievementItem[] | string;
 }
 
 export interface CompanyProfile {

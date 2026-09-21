@@ -67,6 +67,32 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
         await mockApi.updateStudentProfile(userId, {});
         profile = await mockApi.getStudentProfile(userId);
       }
+      if (profile && (!profile.internships || profile.internships.length === 0)) {
+        try {
+          if (typeof window !== 'undefined') {
+            const stored = localStorage.getItem(`squrx_internships_${userId}`);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                profile = { ...profile, internships: parsed };
+              }
+            }
+          }
+        } catch {}
+      }
+      if (profile && (!profile.projects || profile.projects.length === 0)) {
+        try {
+          if (typeof window !== 'undefined') {
+            const stored = localStorage.getItem(`squrx_projects_${userId}`);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                profile = { ...profile, projects: parsed };
+              }
+            }
+          }
+        } catch {}
+      }
       
       const [applications, activities] = await Promise.all([
         mockApi.getAppliedJobs(userId),
@@ -110,13 +136,57 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
       if (field in data) cvOverrides[field] = data[field] ?? null;
     }
     const hasCvOverride = Object.keys(cvOverrides).length > 0;
+    const hasInternshipsOverride = 'internships' in data;
+    const internshipsOverride = data.internships;
+    const hasProjectsOverride = 'projects' in data;
+    const projectsOverride = data.projects;
+
     try {
       console.log('[StudentStore] updateProfile called with:', data);
       await mockApi.updateStudentProfile(userId, data);
       const profile = await mockApi.getStudentProfile(userId);
-      // Re-apply explicit CV overrides on top of what the backend returned
-      // so a stale /user/me response cannot resurrect a deleted/replaced CV.
-      const mergedProfile = hasCvOverride ? { ...profile, ...cvOverrides } as any : profile;
+      // Re-apply explicit CV, internships, and projects overrides on top of what the backend returned
+      // so a stale /user/me response cannot resurrect a deleted/replaced CV or wipe local data.
+      let mergedInternships = profile?.internships;
+      if (hasInternshipsOverride) {
+        mergedInternships = internshipsOverride;
+      } else if (!mergedInternships || mergedInternships.length === 0) {
+        try {
+          if (typeof window !== 'undefined') {
+            const stored = localStorage.getItem(`squrx_internships_${userId}`);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                mergedInternships = parsed;
+              }
+            }
+          }
+        } catch {}
+      }
+
+      let mergedProjects = profile?.projects;
+      if (hasProjectsOverride) {
+        mergedProjects = projectsOverride;
+      } else if (!mergedProjects || mergedProjects.length === 0) {
+        try {
+          if (typeof window !== 'undefined') {
+            const stored = localStorage.getItem(`squrx_projects_${userId}`);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                mergedProjects = parsed;
+              }
+            }
+          }
+        } catch {}
+      }
+
+      const mergedProfile = {
+        ...profile,
+        ...(hasCvOverride ? cvOverrides : {}),
+        internships: mergedInternships || [],
+        projects: mergedProjects || []
+      } as any;
       set({ profile: mergedProfile, isLoading: false, saveError: null });
       console.log('[StudentStore] updateProfile succeeded, mergedProfile:', mergedProfile);
     } catch (err: any) {
@@ -297,9 +367,19 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
     }
 
     // 9. Awards, Recognitions & Other Achievements (5%)
-    const hasAwards = Boolean(p.awards && p.awards.trim().length > 0);
-    const hasOtherAchievements = Boolean(p.otherAchievements && p.otherAchievements.trim().length > 0);
-    const hasProfileSummary = Boolean(p.profileSummary && p.profileSummary.trim().length > 0);
+    const hasAwards = Boolean(
+      p.awards && (typeof p.awards === 'string' ? p.awards.trim().length > 0 : (Array.isArray(p.awards) && p.awards.length > 0))
+    );
+    const hasOtherAchievements = Boolean(
+      p.otherAchievements && (
+        Array.isArray(p.otherAchievements)
+          ? p.otherAchievements.length > 0 && p.otherAchievements.some((a: any) => (typeof a === 'string' && a.trim()) || (a?.name && String(a.name).trim()))
+          : (typeof p.otherAchievements === 'string' && p.otherAchievements.trim().length > 0)
+      )
+    );
+    const hasProfileSummary = Boolean(
+      p.profileSummary && typeof p.profileSummary === 'string' && p.profileSummary.trim().length > 0
+    );
     if (hasAwards || hasOtherAchievements || hasProfileSummary) {
       score += 5;
     }

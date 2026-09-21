@@ -162,6 +162,23 @@ export const authApi = baseApi.injectEndpoints({
         method: 'POST',
         body: data,
       }),
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data: res } = await queryFulfilled;
+          const resData = res?.data ?? res;
+          if (resData?._id) {
+            dispatch(
+              authApi.util.updateQueryData('getEducations', undefined as any, (draft) => {
+                if (draft?.data && Array.isArray(draft.data)) {
+                  if (!draft.data.some((d: any) => d._id === resData._id)) {
+                    draft.data.push({ _id: resData._id, name: arg.name, status: 'pending', isActive: true });
+                  }
+                }
+              })
+            );
+          }
+        } catch {}
+      },
     }),
     /** POST /universities — submit custom university value for admin approval */
     submitUniversity: builder.mutation<any, { name: string }>({
@@ -170,6 +187,23 @@ export const authApi = baseApi.injectEndpoints({
         method: 'POST',
         body: data,
       }),
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data: res } = await queryFulfilled;
+          const resData = res?.data ?? res;
+          if (resData?._id) {
+            dispatch(
+              authApi.util.updateQueryData('getUniversities', undefined as any, (draft) => {
+                if (draft?.data && Array.isArray(draft.data)) {
+                  if (!draft.data.some((u: any) => u._id === resData._id)) {
+                    draft.data.push({ _id: resData._id, name: arg.name, status: 'pending', isActive: true });
+                  }
+                }
+              })
+            );
+          }
+        } catch {}
+      },
     }),
     /** POST /courses — submit custom course value for admin approval */
     submitCourse: builder.mutation<any, { name: string }>({
@@ -178,6 +212,23 @@ export const authApi = baseApi.injectEndpoints({
         method: 'POST',
         body: data,
       }),
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data: res } = await queryFulfilled;
+          const resData = res?.data ?? res;
+          if (resData?._id) {
+            dispatch(
+              authApi.util.updateQueryData('getCourses', undefined as any, (draft) => {
+                if (draft?.data && Array.isArray(draft.data)) {
+                  if (!draft.data.some((c: any) => c._id === resData._id)) {
+                    draft.data.push({ _id: resData._id, name: arg.name, status: 'pending', isActive: true });
+                  }
+                }
+              })
+            );
+          }
+        } catch {}
+      },
     }),
     /** POST /specializations — submit custom specialization value for admin approval */
     submitSpecialization: builder.mutation<any, { name: string }>({
@@ -186,6 +237,23 @@ export const authApi = baseApi.injectEndpoints({
         method: 'POST',
         body: data,
       }),
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data: res } = await queryFulfilled;
+          const resData = res?.data ?? res;
+          if (resData?._id) {
+            dispatch(
+              authApi.util.updateQueryData('getSpecializations', undefined as any, (draft) => {
+                if (draft?.data && Array.isArray(draft.data)) {
+                  if (!draft.data.some((s: any) => s._id === resData._id)) {
+                    draft.data.push({ _id: resData._id, name: arg.name, status: 'pending', isActive: true });
+                  }
+                }
+              })
+            );
+          }
+        } catch {}
+      },
     }),
   }),
 });

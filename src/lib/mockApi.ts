@@ -34,6 +34,148 @@ const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: 
   }
 };
 
+/**
+ * Normalizes a joiningDate string for user display.
+ * Recovers corrupted year data from MongoDB Date parsing:
+ * e.g., numeric string "2023" parsed by Mongoose as 2023ms yields "1970-01-01T00:00:02.023Z",
+ * which getTime() = 2023 recovers into "2023".
+ * Also strips "YYYY-01-01T00:00:00.000Z" to "YYYY" if it was originally just a year.
+ */
+export function formatJoiningDateDisplay(rawDate: any): string {
+  if (!rawDate) return '';
+  const str = String(rawDate).trim();
+  if (!str) return '';
+
+  // 4-digit year like "2023"
+  if (/^\d{4}$/.test(str)) {
+    return str;
+  }
+
+  // Check if it was parsed as epoch milliseconds (e.g. 1970-01-01T00:00:02.023Z -> 2023)
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    if (d.getUTCFullYear() === 1970) {
+      const ms = d.getTime();
+      if (ms >= 1900 && ms <= 2100) {
+        return String(ms);
+      }
+    }
+    // If it's Jan 1 00:00:00.000Z (standard default date when only year is stored)
+    if (d.getUTCMonth() === 0 && d.getUTCDate() === 1 && d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) {
+      return String(d.getUTCFullYear());
+    }
+    // If it's a valid date, return formatted YYYY-MM or YYYY-MM-DD
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    if (day === '01') {
+      return `${y}-${m}`;
+    }
+    return `${y}-${m}-${day}`;
+  }
+
+  return str;
+}
+
+/**
+ * Normalizes a joiningDate string before sending to backend in PUT /user/me payload.
+ * Prevents Mongoose from treating 4-digit year "2023" as 2023ms (which produces 1970-01-01T00:00:02.023Z).
+ */
+export function formatJoiningDatePayload(raw: any): string {
+  if (!raw) return '';
+  const str = String(raw).trim();
+  if (!str) return '';
+
+  // If epoch corruption string was somehow passed in, recover year first
+  const d = new Date(str);
+  if (!isNaN(d.getTime()) && d.getUTCFullYear() === 1970) {
+    const ms = d.getTime();
+    if (ms >= 1900 && ms <= 2100) {
+      return `${ms}-01-01`;
+    }
+  }
+
+  // 4-digit year "2023" -> "2023-01-01"
+  if (/^\d{4}$/.test(str)) {
+    return `${str}-01-01`;
+  }
+
+  // "YYYY-MM" -> "YYYY-MM-01"
+  if (/^\d{4}-\d{2}$/.test(str)) {
+    return `${str}-01`;
+  }
+
+  // "MM/YYYY" -> "YYYY-MM-01"
+  const slashMatch = str.match(/^(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const m = slashMatch[1].padStart(2, '0');
+    const y = slashMatch[2];
+    return `${y}-${m}-01`;
+  }
+
+  // If valid Date, return ISO string
+  if (!isNaN(d.getTime())) {
+    return d.toISOString();
+  }
+
+  return str;
+}
+
+/**
+ * Normalizes any joiningDate string to YYYY-MM-DD format for HTML5 <input type="date"> elements.
+ * Handles 4-digit year "2023" -> "2023-01-01", epoch milliseconds "1970-01-01T00:00:02.023Z" -> "2023-01-01",
+ * and ISO timestamps "2001-05-31T00:00:00.000Z" -> "2001-05-31".
+ */
+export function toDateInputValue(val?: any): string {
+  if (!val) return '';
+  const str = String(val).trim();
+  if (!str) return '';
+
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+
+  // 4-digit year like "2023"
+  if (/^\d{4}$/.test(str)) {
+    return `${str}-01-01`;
+  }
+
+  // YYYY-MM
+  if (/^\d{4}-\d{2}$/.test(str)) {
+    return `${str}-01`;
+  }
+
+  // Parse as Date
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    if (d.getUTCFullYear() === 1970) {
+      const ms = d.getTime();
+      if (ms >= 1900 && ms <= 2100) {
+        return `${ms}-01-01`;
+      }
+    }
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  return '';
+}
+
+/**
+ * Determines if a certification is considered completed.
+ * Returns true if status is case-insensitively 'completed', or if a completion ID is present.
+ */
+export function isCertificationCompleted(c: any): boolean {
+  if (!c) return false;
+  const s = String(c.status || '').trim().toLowerCase();
+  if (s === 'completed') return true;
+  if (c.completionId && String(c.completionId).trim().length > 0) return true;
+  return false;
+}
+
 export const mockApi = {
   // Auth
   login: async (email: string): Promise<User | null> => {
@@ -142,6 +284,13 @@ export const mockApi = {
                     } else if (data.customDomain) {
                         profile.careerGoal = data.customDomain;
                     }
+                    // Separate Primary Domain & Custom Domain
+                    if (data.domain) {
+                        profile.domain = typeof data.domain === 'object' && data.domain ? (data.domain._id || data.domain.name) : data.domain;
+                    }
+                    if (data.customDomain !== undefined) {
+                        profile.customDomain = data.customDomain || '';
+                    }
                     // Store domain IDs directly on profile (no sessionStorage)
                     if (domainObj?._id) {
                         profile.preferredDomainIds = [domainObj._id];
@@ -151,7 +300,8 @@ export const mockApi = {
                             .filter(Boolean);
                     }
                     if (Array.isArray(data.educationHistory) && data.educationHistory.length > 0) {
-                        profile.educationHistory = data.educationHistory.map((item: any) => {
+                        profile.educationHistory = data.educationHistory.map((item: any, idx: number) => {
+                            const existingEdu = profile.educationHistory?.[idx];
                             const eduId = typeof item.education === 'object' && item.education ? (item.education._id || '') : (item.education || '');
                             const eduName = typeof item.education === 'object' && item.education ? (item.education.name || '') : '';
                             const uniId = typeof item.university === 'object' && item.university ? (item.university._id || '') : (item.university || '');
@@ -168,16 +318,24 @@ export const mockApi = {
                             else if (ctLower.includes('correspondence')) ct = 'Correspondence';
                             else ct = 'Full Time';
 
+                            let schoolCollegeName = item.schoolCollegeName || item.college || item.institute || item.school || data.schoolCollegeName || existingEdu?.schoolCollegeName || '';
+                            if (!schoolCollegeName && item.customUniversity && uniName && item.customUniversity.trim().toLowerCase() !== uniName.trim().toLowerCase()) {
+                                schoolCollegeName = item.customUniversity.trim();
+                            }
+
                             return {
                                 _id: item._id,
                                 education: eduId,
-                                customEducation: item.customEducation || eduName || '',
+                                customEducation: item.customEducation || eduName || existingEdu?.customEducation || '',
                                 university: uniId,
-                                customUniversity: item.customUniversity || uniName || '',
+                                customUniversity: item.customUniversity || uniName || existingEdu?.customUniversity || '',
                                 course: courseId,
-                                customCourse: item.customCourse || courseName || '',
+                                customCourse: item.customCourse || courseName || existingEdu?.customCourse || '',
                                 specialization: specId,
-                                customSpecialization: item.customSpecialization || specName || '',
+                                customSpecialization: item.customSpecialization || specName || existingEdu?.customSpecialization || '',
+                                schoolCollegeName: schoolCollegeName,
+                                college: schoolCollegeName,
+                                institute: schoolCollegeName,
                                 courseType: ct,
                                 startYear: item.startYear || '',
                                 endYear: item.endYear || item.passingYear || '',
@@ -189,6 +347,7 @@ export const mockApi = {
                         });
                     } else if (data.education && typeof data.education === 'object' && Object.keys(data.education).length > 0) {
                         const item = data.education;
+                        const existingEdu = profile.educationHistory?.[0];
                         const eduId = typeof item.education === 'object' && item.education ? (item.education._id || '') : (item.education || item._id || '');
                         const eduName = typeof item.education === 'object' && item.education ? (item.education.name || '') : (item.name || '');
                         const uniId = typeof item.university === 'object' && item.university ? (item.university._id || '') : (item.university || '');
@@ -197,17 +356,24 @@ export const mockApi = {
                         const courseName = typeof item.course === 'object' && item.course ? (item.course.name || '') : '';
                         const specId = typeof item.specialization === 'object' && item.specialization ? (item.specialization._id || '') : (item.specialization || '');
                         const specName = typeof item.specialization === 'object' && item.specialization ? (item.specialization.name || '') : '';
+                        let schoolCollegeName = item.schoolCollegeName || item.college || item.institute || item.school || data.schoolCollegeName || existingEdu?.schoolCollegeName || '';
+                        if (!schoolCollegeName && item.customUniversity && uniName && item.customUniversity.trim().toLowerCase() !== uniName.trim().toLowerCase()) {
+                            schoolCollegeName = item.customUniversity.trim();
+                        }
 
                         profile.educationHistory = [{
                             _id: item._id || 'edu-0',
                             education: eduId,
-                            customEducation: item.customEducation || eduName || '',
+                            customEducation: item.customEducation || eduName || existingEdu?.customEducation || '',
                             university: uniId,
-                            customUniversity: item.customUniversity || uniName || '',
+                            customUniversity: item.customUniversity || uniName || existingEdu?.customUniversity || '',
                             course: courseId,
-                            customCourse: item.customCourse || courseName || '',
+                            customCourse: item.customCourse || courseName || existingEdu?.customCourse || '',
                             specialization: specId,
-                            customSpecialization: item.customSpecialization || specName || '',
+                            customSpecialization: item.customSpecialization || specName || existingEdu?.customSpecialization || '',
+                            schoolCollegeName: schoolCollegeName,
+                            college: schoolCollegeName,
+                            institute: schoolCollegeName,
                             courseType: item.courseType || 'Full Time',
                             startYear: item.startYear || '',
                             endYear: item.endYear || item.passingYear || '',
@@ -219,6 +385,12 @@ export const mockApi = {
                     } else {
                         profile.educationHistory = [];
                     }
+
+                    profile.schoolCollegeName = data.schoolCollegeName || profile.educationHistory?.[0]?.schoolCollegeName || '';
+                    profile.highestEducation = data.highestEducation || '';
+                    profile.ugUniversity = data.ugUniversity || '';
+                    profile.pgUniversity = data.pgUniversity || '';
+                    profile.graduationUniversity = data.graduationUniversity || '';
 
                     // Experience level
                     // Backend may return a populated object { _id, name } or a raw ObjectID string.
@@ -354,7 +526,25 @@ export const mockApi = {
                     profile.dob = data.dob || '';
                     profile.currentLocation = data.currentLocation || '';
                     profile.hometown = data.hometown || '';
-                    profile.hometownCountry = data.hometownCountry || '';
+                    // Hometown Country — backend may return populated object { _id, name } or raw ObjectId string
+                    if (data.hometownCountry) {
+                        if (typeof data.hometownCountry === 'object' && data.hometownCountry) {
+                            profile.hometownCountry = data.hometownCountry.name || '';
+                            profile.hometownCountryId = data.hometownCountry._id || '';
+                        } else if (typeof data.hometownCountry === 'string') {
+                            if (/^[0-9a-fA-F]{24}$/.test(data.hometownCountry.trim())) {
+                                profile.hometownCountryId = data.hometownCountry.trim();
+                                profile.hometownCountry = '';
+                            } else {
+                                profile.hometownCountry = data.hometownCountry.trim();
+                            }
+                        }
+                    } else {
+                        profile.hometownCountry = '';
+                    }
+                    if (data.hometownCountryId && !profile.hometownCountryId) {
+                        profile.hometownCountryId = data.hometownCountryId;
+                    }
 
                     // languagesKnown[] — array of { language, proficiency, read, write, speak }
                     if (Array.isArray(data.languagesKnown)) {
@@ -390,12 +580,14 @@ export const mockApi = {
                             totalExperienceMonths: e.totalExperienceMonths != null ? Number(e.totalExperienceMonths) : undefined,
                             companyName: e.companyName || e.company || '',
                             jobTitle: e.jobTitle || e.role || '',
-                            joiningDate: e.joiningDate || e.startDate || '',
+                            joiningDate: formatJoiningDateDisplay(e.joiningDate || e.startDate || ''),
                             currentSalary: typeof e.currentSalary === 'object' && e.currentSalary ? {
                                 amount: e.currentSalary.amount != null ? Number(e.currentSalary.amount) : null,
                                 currency: typeof e.currentSalary.currency === 'object' && e.currentSalary.currency ? e.currentSalary.currency : (e.currentSalary.currency || null)
                             } : (e.currentSalary != null && e.currentSalary !== '' ? (isNaN(Number(e.currentSalary)) ? String(e.currentSalary) : { amount: Number(e.currentSalary), currency: null }) : null),
-                            skillsUsed: Array.isArray(e.skillsUsed) ? e.skillsUsed : [],
+                            skillsUsed: Array.isArray(e.skillsUsed)
+                                ? e.skillsUsed.map((s: any) => typeof s === 'object' && s ? (s.name || s._id) : String(s)).filter(Boolean)
+                                : (typeof e.skillsUsed === 'string' && e.skillsUsed.trim() ? e.skillsUsed.split(',').map((s: string) => s.trim()).filter(Boolean) : []),
                             jobProfile: e.jobProfile || e.description || '',
                             noticePeriod: e.noticePeriod || ''
                         }));
@@ -403,13 +595,24 @@ export const mockApi = {
                         profile.employmentHistory = [];
                     }
 
-                    profile.certifications = Array.isArray(data.certifications) ? data.certifications : [];
+                    profile.certifications = Array.isArray(data.certifications) ? data.certifications.map((c: any) => ({
+                        _id: c._id,
+                        name: c.name || '',
+                        status: isCertificationCompleted(c) ? 'Completed' : 'Undergoing',
+                        doesNotExpire: !!c.doesNotExpire,
+                        completionId: c.completionId || '',
+                        url: c.url || '',
+                        validFromMonth: c.validFromMonth != null ? c.validFromMonth : '',
+                        validFromYear: c.validFromYear != null ? c.validFromYear : '',
+                        validToMonth: c.validToMonth != null ? c.validToMonth : '',
+                        validToYear: c.validToYear != null ? c.validToYear : ''
+                    })) : [];
                     profile.awards = Array.isArray(data.awards)
                         ? data.awards.map((a: any) => typeof a === 'string' ? a : (a?.title || a?.name || JSON.stringify(a))).join('\n')
                         : (data.awards || '');
 
                     // projects[] — exact backend fields (title, tag, client, status: "Ongoing"|"Completed", details, projectSite, teamSize, role, etc.)
-                    if (Array.isArray(data.projects)) {
+                    if (Array.isArray(data.projects) && data.projects.length > 0) {
                         profile.projects = data.projects.map((p: any) => ({
                             title: p.title || '',
                             tag: p.tag || '',
@@ -426,17 +629,85 @@ export const mockApi = {
                             teamSize: p.teamSize || undefined,
                             role: typeof p.role === 'object' && p.role ? p.role._id : (p.role || ''),
                             roleDescription: p.roleDescription || '',
-                            skillsUsed: p.skillsUsed || ''
+                            skillsUsed: Array.isArray(p.skillsUsed) ? p.skillsUsed.join(', ') : (p.skillsUsed || '')
                         }));
+                        try {
+                            if (typeof window !== 'undefined') {
+                                localStorage.setItem(`squrx_projects_${userId}`, JSON.stringify(profile.projects));
+                            }
+                        } catch {}
                     } else {
-                        profile.projects = [];
+                        let localProjects: any[] | null = null;
+                        try {
+                            if (typeof window !== 'undefined') {
+                                const stored = localStorage.getItem(`squrx_projects_${userId}`);
+                                if (stored) localProjects = JSON.parse(stored);
+                            }
+                        } catch {}
+
+                        if (Array.isArray(localProjects) && localProjects.length > 0) {
+                            profile.projects = localProjects;
+                        } else if (Array.isArray(profile.projects) && profile.projects.length > 0) {
+                            try {
+                                if (typeof window !== 'undefined') {
+                                    localStorage.setItem(`squrx_projects_${userId}`, JSON.stringify(profile.projects));
+                                }
+                            } catch {}
+                        } else if (Array.isArray(data.projects)) {
+                            profile.projects = [];
+                        } else {
+                            profile.projects = profile.projects || [];
+                        }
                     }
 
-                    profile.internships = Array.isArray(data.internships) ? data.internships : [];
+                    if (Array.isArray(data.internships) && data.internships.length > 0) {
+                        profile.internships = data.internships;
+                        try {
+                            if (typeof window !== 'undefined') {
+                                localStorage.setItem(`squrx_internships_${userId}`, JSON.stringify(data.internships));
+                            }
+                        } catch {}
+                    } else {
+                        // Backend did not return internships (or returned empty array).
+                        // Restore from localStorage backup or preserve existing MockDB internships so user data is never lost!
+                        let localInternships: any[] | null = null;
+                        try {
+                            if (typeof window !== 'undefined') {
+                                const stored = localStorage.getItem(`squrx_internships_${userId}`);
+                                if (stored) localInternships = JSON.parse(stored);
+                            }
+                        } catch {}
+
+                        if (Array.isArray(localInternships) && localInternships.length > 0) {
+                            profile.internships = localInternships;
+                        } else if (Array.isArray(profile.internships) && profile.internships.length > 0) {
+                            try {
+                                if (typeof window !== 'undefined') {
+                                    localStorage.setItem(`squrx_internships_${userId}`, JSON.stringify(profile.internships));
+                                }
+                            } catch {}
+                        } else if (Array.isArray(data.internships)) {
+                            profile.internships = [];
+                        } else {
+                            profile.internships = profile.internships || [];
+                        }
+                    }
                     profile.profileSummary = data.profileSummary || '';
-                    profile.otherAchievements = Array.isArray(data.otherAchievements)
-                        ? data.otherAchievements.map((a: any) => typeof a === 'string' ? a : (a?.title || a?.name || JSON.stringify(a))).join('\n')
-                        : (data.otherAchievements || '');
+                    if (Array.isArray(data.otherAchievements)) {
+                        profile.otherAchievements = data.otherAchievements.map((a: any) => {
+                            if (typeof a === 'string') return { name: a, link: '', description: '' };
+                            return {
+                                _id: a._id,
+                                name: a.name || a.title || '',
+                                link: a.link || a.url || '',
+                                description: a.description || a.details || ''
+                            };
+                        });
+                    } else if (typeof data.otherAchievements === 'string' && data.otherAchievements.trim()) {
+                        profile.otherAchievements = data.otherAchievements.split('\n').filter(Boolean).map((s: string) => ({ name: s, link: '', description: '' }));
+                    } else {
+                        profile.otherAchievements = [];
+                    }
 
                     // Persist synced data back to local MockDB cache
                     MockDB.updateStudentProfile(userId, profile);
@@ -446,11 +717,62 @@ export const mockApi = {
     } catch(e) {
         console.error("Failed to fetch real profile data from /user/me", e);
     }
+    // Final check: if profile.internships or profile.projects are still empty, restore from localStorage if available
+    if (profile && (!profile.internships || profile.internships.length === 0)) {
+        try {
+            if (typeof window !== 'undefined') {
+                const stored = localStorage.getItem(`squrx_internships_${userId}`);
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        profile.internships = parsed;
+                    }
+                }
+            }
+        } catch {}
+    }
+    if (profile && (!profile.projects || profile.projects.length === 0)) {
+        try {
+            if (typeof window !== 'undefined') {
+                const stored = localStorage.getItem(`squrx_projects_${userId}`);
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        profile.projects = parsed;
+                    }
+                }
+            }
+        } catch {}
+    }
     return profile;
   },
 
   updateStudentProfile: async (userId: string, data: Partial<StudentProfile> & Record<string, any>): Promise<void> => {
     await delay();
+    if (data.internships !== undefined) {
+        const cleanedInternships = Array.isArray(data.internships)
+            ? data.internships
+                .filter((i: any) => i && (i.companyName?.trim() || i.role?.trim() || i.duration?.trim()))
+                .map((i: any) => ({
+                    companyName: i.companyName?.trim() || '',
+                    duration: i.duration?.trim() || '',
+                    role: i.role?.trim() || ''
+                }))
+            : [];
+        try {
+            if (typeof window !== 'undefined') {
+                localStorage.setItem(`squrx_internships_${userId}`, JSON.stringify(cleanedInternships));
+            }
+        } catch {}
+        data = { ...data, internships: cleanedInternships };
+    }
+    if (data.projects !== undefined && Array.isArray(data.projects)) {
+        try {
+            if (typeof window !== 'undefined') {
+                localStorage.setItem(`squrx_projects_${userId}`, JSON.stringify(data.projects));
+            }
+        } catch {}
+    }
     MockDB.updateStudentProfile(userId, data);
     
     // Sync with real backend via PUT /api/v1/user/me
@@ -489,6 +811,17 @@ export const mockApi = {
                 payload.currentSalary = formatSalaryPayload(data.currentSalary);
             }
 
+            if (data.domain !== undefined) {
+                if (isValidObjectId(data.domain)) {
+                    payload.domain = data.domain;
+                } else if (typeof data.domain === 'object' && data.domain?._id && isValidObjectId(data.domain._id)) {
+                    payload.domain = data.domain._id;
+                }
+            }
+            if (data.customDomain !== undefined) {
+                payload.customDomain = data.customDomain;
+            }
+
             if (data.preferredDomains !== undefined) {
                 payload.preferredDomains = Array.isArray(data.preferredDomains) ? data.preferredDomains.filter(isValidObjectId) : [];
             }
@@ -500,6 +833,18 @@ export const mockApi = {
                     if (isValidObjectId(item.university)) edu.university = item.university;
                     if (isValidObjectId(item.course)) edu.course = item.course;
                     if (isValidObjectId(item.specialization)) edu.specialization = item.specialization;
+                    if (item.customEducation) edu.customEducation = item.customEducation;
+                    if (item.customUniversity) edu.customUniversity = item.customUniversity;
+                    if (item.customCourse) edu.customCourse = item.customCourse;
+                    if (item.customSpecialization) edu.customSpecialization = item.customSpecialization;
+                    const collegeVal = item.schoolCollegeName || item.college;
+                    if (collegeVal && String(collegeVal).trim()) {
+                        edu.schoolCollegeName = String(collegeVal).trim();
+                        edu.college = String(collegeVal).trim();
+                        if (edu.university) {
+                            edu.customUniversity = String(collegeVal).trim();
+                        }
+                    }
                     if (item.courseType) {
                         const ctLower = String(item.courseType).toLowerCase().replace(/[-_]/g, ' ').trim();
                         if (ctLower.includes('part')) edu.courseType = 'Part Time';
@@ -509,13 +854,19 @@ export const mockApi = {
                     }
                     // startYear — form uses startYear directly
                     if (item.startYear != null && item.startYear !== '') edu.startYear = Number(item.startYear);
-                    // passingYear — form edits endYear, so use endYear as fallback for passingYear
+                    // passingYear & endYear
                     const passingYear = item.endYear || item.passingYear;
-                    if (passingYear != null && passingYear !== '') edu.passingYear = Number(passingYear);
+                    if (passingYear != null && passingYear !== '') {
+                        edu.passingYear = Number(passingYear);
+                        edu.endYear = Number(passingYear);
+                    }
                     if (item.gradingSystem) edu.gradingSystem = item.gradingSystem;
-                    // marks — form edits gradingValue, so use gradingValue as fallback for marks
+                    // marks & gradingValue
                     const marks = item.gradingValue || item.marks;
-                    if (marks != null && marks !== '') edu.marks = Number(marks);
+                    if (marks != null && marks !== '') {
+                        edu.marks = Number(marks);
+                        edu.gradingValue = Number(marks);
+                    }
                     return edu;
                 }) : [];
             }
@@ -576,7 +927,20 @@ export const mockApi = {
             if (dobFormatted) payload.dob = dobFormatted;
             if (data.currentLocation && data.currentLocation.trim()) payload.currentLocation = data.currentLocation.trim();
             if (data.hometown && data.hometown.trim()) payload.hometown = data.hometown.trim();
-            if (data.hometownCountry && data.hometownCountry.trim()) payload.hometownCountry = data.hometownCountry.trim();
+            if (data.hometownCountry || data.hometownCountryId) {
+                const rawCountry = isValidObjectId(data.hometownCountryId)
+                    ? data.hometownCountryId
+                    : (typeof data.hometownCountry === 'object' && data.hometownCountry ? data.hometownCountry._id : data.hometownCountry);
+                if (typeof rawCountry === 'string' && isValidObjectId(rawCountry.trim())) {
+                    payload.hometownCountry = rawCountry.trim();
+                }
+            }
+
+            if (data.schoolCollegeName) payload.schoolCollegeName = data.schoolCollegeName;
+            if (data.highestEducation) payload.highestEducation = data.highestEducation;
+            if (data.ugUniversity) payload.ugUniversity = data.ugUniversity;
+            if (data.pgUniversity) payload.pgUniversity = data.pgUniversity;
+            if (data.graduationUniversity) payload.graduationUniversity = data.graduationUniversity;
 
             // languagesKnown[] — array of { language, proficiency, read, write, speak }
             // Only filter out entries that have no valid language selected at all.
@@ -605,9 +969,13 @@ export const mockApi = {
                         isCurrentEmployment: !!e.isCurrentEmployment,
                         companyName: e.companyName || '',
                         jobTitle: e.jobTitle || '',
-                        joiningDate: e.joiningDate || '',
+                        joiningDate: formatJoiningDatePayload(e.joiningDate),
                         currentSalary: formatSalaryPayload(e.currentSalary),
-                        skillsUsed: Array.isArray(e.skillsUsed) ? e.skillsUsed.filter(isValidObjectId) : [],
+                        skillsUsed: Array.isArray(e.skillsUsed)
+                            ? e.skillsUsed
+                                .map((s: any) => typeof s === 'object' && s ? (s._id || s.name) : String(s).trim())
+                                .filter(isValidObjectId)
+                            : [],
                         jobProfile: e.jobProfile || '',
                         noticePeriod: e.noticePeriod || ''
                     };
@@ -624,10 +992,22 @@ export const mockApi = {
                 payload.certifications = Array.isArray(data.certifications)
                     ? data.certifications
                         .filter((c: any) => c && typeof c.name === 'string' && c.name.trim().length > 0)
-                        .map((c: any) => ({
-                            name: c.name.trim(),
-                            status: c.status === 'completed' ? 'completed' : 'undergoing'
-                        }))
+                        .map((c: any) => {
+                            const certObj: Record<string, any> = {
+                                name: c.name.trim(),
+                                status: isCertificationCompleted(c) ? 'Completed' : 'Undergoing',
+                                doesNotExpire: !!c.doesNotExpire
+                            };
+                            if (c.completionId && c.completionId.trim()) certObj.completionId = c.completionId.trim();
+                            if (c.url && c.url.trim()) certObj.url = c.url.trim();
+                            if (c.validFromMonth != null && c.validFromMonth !== '') certObj.validFromMonth = Number(c.validFromMonth);
+                            if (c.validFromYear != null && c.validFromYear !== '') certObj.validFromYear = Number(c.validFromYear);
+                            if (!c.doesNotExpire) {
+                                if (c.validToMonth != null && c.validToMonth !== '') certObj.validToMonth = Number(c.validToMonth);
+                                if (c.validToYear != null && c.validToYear !== '') certObj.validToYear = Number(c.validToYear);
+                            }
+                            return certObj;
+                        })
                     : [];
             }
 
@@ -658,15 +1038,27 @@ export const mockApi = {
                             if (p.client) proj.client = p.client;
                             if (p.workedFromYear != null && p.workedFromYear !== '') proj.workedFromYear = Number(p.workedFromYear);
                             if (p.workedFromMonth != null && p.workedFromMonth !== '') proj.workedFromMonth = Number(p.workedFromMonth);
-                            if (p.workedTillYear != null && p.workedTillYear !== '') proj.workedTillYear = Number(p.workedTillYear);
-                            if (p.workedTillMonth != null && p.workedTillMonth !== '') proj.workedTillMonth = Number(p.workedTillMonth);
+                            // For completed projects, record workedTill dates; for ongoing, do not pass stale end dates
+                            if (p.status === 'Completed') {
+                                if (p.workedTillYear != null && p.workedTillYear !== '') proj.workedTillYear = Number(p.workedTillYear);
+                                if (p.workedTillMonth != null && p.workedTillMonth !== '') proj.workedTillMonth = Number(p.workedTillMonth);
+                            }
                             if (p.location) proj.location = p.location;
                             if (p.projectSite) proj.projectSite = p.projectSite;
                             if (isValidObjectId(p.natureOfEmployment)) proj.natureOfEmployment = p.natureOfEmployment;
                             if (p.teamSize) proj.teamSize = p.teamSize;
                             if (isValidObjectId(p.role)) proj.role = p.role;
                             if (p.roleDescription) proj.roleDescription = p.roleDescription;
-                            if (p.skillsUsed) proj.skillsUsed = p.skillsUsed;
+                            if (p.skillsUsed !== undefined && p.skillsUsed !== null) {
+                                const skillsStr = typeof p.skillsUsed === 'string'
+                                    ? p.skillsUsed.trim()
+                                    : (Array.isArray(p.skillsUsed)
+                                        ? p.skillsUsed.map((s: any) => typeof s === 'object' && s ? (s.name || s._id) : String(s).trim()).filter(Boolean).join(', ')
+                                        : String(p.skillsUsed).trim());
+                                if (skillsStr) {
+                                    proj.skillsUsed = skillsStr;
+                                }
+                            }
                             return proj;
                         });
                 } else {
@@ -695,8 +1087,12 @@ export const mockApi = {
                     payload.otherAchievements = data.otherAchievements
                         .map((item: any) => {
                             if (typeof item === 'object' && item !== null) {
-                                const val = (item.title || item.name || '').trim();
-                                return val ? { name: val, title: val } : null;
+                                const nameVal = (item.name || item.title || '').trim();
+                                if (!nameVal) return null;
+                                const achObj: Record<string, any> = { name: nameVal, title: nameVal };
+                                if (item.link && item.link.trim()) achObj.link = item.link.trim();
+                                if (item.description && item.description.trim()) achObj.description = item.description.trim();
+                                return achObj;
                             }
                             if (typeof item === 'string' && item.trim()) {
                                 return { name: item.trim(), title: item.trim() };

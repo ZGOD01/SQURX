@@ -51,6 +51,10 @@ export function clearSqurxLocalStorageKeys() {
       const lowerKey = key.toLowerCase();
       // DO NOT delete explicit CV deletion preference so deleted CVs don't resurrect across sessions!
       if (lowerKey.startsWith('squrx_deleted_cv_')) continue;
+      // DO NOT delete stored student internships so they persist across sessions
+      if (lowerKey.startsWith('squrx_internships_')) continue;
+      // DO NOT delete stored student projects so they persist across sessions
+      if (lowerKey.startsWith('squrx_projects_')) continue;
 
       const matchesPattern = prefixes.some(p => lowerKey.startsWith(p)) || 
                              lowerKey === 'token' || 

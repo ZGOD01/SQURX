@@ -8,7 +8,10 @@ import { Button, Input, Badge } from '@/components/ui';
 import { PageTransition } from '@/components/motion';
 import { ArrowRight, Loader2, Check, UploadCloud } from 'lucide-react';
 import { consultationApi } from '@/lib/consultationApi';
+import type { EmploymentHistoryItem, CertificationItem, ProjectItem } from '@/lib/mockDb/schema';
+import { formatJoiningDateDisplay, formatJoiningDatePayload, isCertificationCompleted, toDateInputValue } from '@/lib/mockApi';
 import {
+    useGetCountriesQuery,
     useGetEducationsQuery,
     useGetSkillsQuery,
     useGetJobTypesQuery,
@@ -18,8 +21,13 @@ import {
     useGetCurrenciesQuery,
     useGetLanguagesQuery,
     useGetLanguageProficienciesQuery,
-    useGetUniversitiesQuery
+    useGetUniversitiesQuery,
+    useGetRolesQuery
 } from '@/lib/store/authApi';
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const YEARS = Array.from({ length: 30 }, (_, i) => String(new Date().getFullYear() - i));
+
 // Helper to get location with country in brackets
 export const getLocationLabel = (l: any): string => {
     if (!l) return '';
@@ -59,8 +67,9 @@ export function Onboarding() {
 
     const [skills, setSkills] = useState('');
 
-    const [experienceLevel, setExperienceLevel] = useState('Fresher');
-    const [experienceLevelQuery, setExperienceLevelQuery] = useState('Fresher');
+    const [experienceLevel, setExperienceLevel] = useState('');
+    const [experienceLevelQuery, setExperienceLevelQuery] = useState('');
+    const [experienceLevelId, setExperienceLevelId] = useState('');
     const [showExpSuggestions, setShowExpSuggestions] = useState(false);
 
     const [careerGoal, setCareerGoal] = useState('');
@@ -91,12 +100,16 @@ export function Onboarding() {
     const [ugUniversity, setUgUniversity] = useState('');
     const [schoolCollegeName, setSchoolCollegeName] = useState('');
     const [languages, setLanguages] = useState('');
-    const [certifications, setCertifications] = useState<Array<{ name: string; status: 'completed' | 'undergoing' }>>([]);
+    const [certifications, setCertifications] = useState<CertificationItem[]>([]);
     const [awards, setAwards] = useState('');
-    const [projects, setProjects] = useState('');
+    const [projects, setProjects] = useState<ProjectItem[]>([]);
     const [internships, setInternships] = useState<Array<{ companyName: string; duration: string; role: string }>>([]);
     const [profileSummary, setProfileSummary] = useState('');
     const [otherAchievements, setOtherAchievements] = useState('');
+    const [domain, setDomain] = useState('');
+    const [customDomain, setCustomDomain] = useState('');
+    const [hometownCountry, setHometownCountry] = useState('');
+    const [employmentHistory, setEmploymentHistory] = useState<EmploymentHistoryItem[]>([]);
 
     const [isProfileSaving, setIsProfileSaving] = useState(false);
     const [isUploadingCV, setIsUploadingCV] = useState(false);
@@ -118,13 +131,17 @@ export function Onboarding() {
     const { data: educationsData } = useGetEducationsQuery({ search: educationQuery });
     const { data: skillsData } = useGetSkillsQuery({ search: lastSkillPart });
     const { data: jobTypesData } = useGetJobTypesQuery(undefined);
-    const { data: experienceLevelsData } = useGetExperienceLevelsQuery({ search: experienceLevelQuery });
+    const { data: experienceLevelsData } = useGetExperienceLevelsQuery(undefined);
     const { data: locationsData } = useGetLocationsQuery({ search: lastLocationPart });
     const { data: domainsData } = useGetDomainsQuery({ search: lastDomainPart });
+    const { data: allDomainsData } = useGetDomainsQuery(undefined);
     const { data: currenciesData } = useGetCurrenciesQuery();
     const { data: languagesData } = useGetLanguagesQuery(undefined);
     const { data: languageProficienciesData } = useGetLanguageProficienciesQuery(undefined);
     const { data: universitiesData } = useGetUniversitiesQuery(undefined);
+    const { data: countriesData } = useGetCountriesQuery(undefined);
+    const { data: allSkillsData } = useGetSkillsQuery(undefined);
+    const { data: rolesData } = useGetRolesQuery(undefined);
 
     const [showSkillSuggestions, setShowSkillSuggestions] = useState(false);
 
@@ -227,9 +244,11 @@ export function Onboarding() {
 
             setSkills(profile?.skills ? profile.skills.join(', ') : '');
 
-            const initialExp = profile?.experienceLevel || 'Fresher';
+            const initialExp = profile?.experienceLevel || '';
+            const initialExpId = profile?.experienceLevelId || '';
             setExperienceLevel(initialExp);
-            setExperienceLevelQuery(initialExp === 'Fresher' || initialExp.includes('Years') ? initialExp : `${initialExp} Years`);
+            setExperienceLevelId(initialExpId);
+            setExperienceLevelQuery(initialExp ? (initialExp === 'Fresher' || initialExp.includes('Years') ? initialExp : `${initialExp} Years`) : '');
 
             const initialCareerGoal = profile?.careerGoal || '';
             setCareerGoal(initialCareerGoal);
@@ -237,9 +256,9 @@ export function Onboarding() {
             const initialLocation = profile?.location || '';
             setLocation(initialLocation);
 
-            const initialJobType = profile?.jobType || 'Full-Time';
+            const initialJobType = profile?.jobType || '';
             setJobType(initialJobType);
-            setJobTypeQuery(initialJobType);
+            setJobTypeQuery('');
 
             if (profile?.expectedSalary) {
                 if (typeof profile.expectedSalary === 'object') {
@@ -269,12 +288,21 @@ export function Onboarding() {
             setDob(profile?.dob || '');
             setCurrentLocation(profile?.currentLocation || '');
             setHometown(profile?.hometown || '');
+            const rawCountry = profile?.hometownCountry;
+            const countryId = typeof rawCountry === 'object' && rawCountry ? (rawCountry._id || '') : (rawCountry || '');
+            setHometownCountry(countryId);
+            const initialDomain = profile?.domain ? (typeof profile.domain === 'object' ? (profile.domain._id || '') : profile.domain) : '';
+            setDomain(initialDomain);
+            setCustomDomain(profile?.customDomain || '');
+            setEmploymentHistory(profile?.employmentHistory || []);
             
             // Map qualifications fields locally for wizard UI
             if (firstEdu) {
-                setHighestEducation('UG');
-                setUgUniversity(firstEdu.university || firstEdu.customUniversity || '');
-                setSchoolCollegeName(firstEdu.university || firstEdu.customUniversity || '');
+                setHighestEducation((profile as any)?.highestEducation || 'UG');
+                setUgUniversity((profile as any)?.ugUniversity || firstEdu.customUniversity || firstEdu.university || '');
+                setSchoolCollegeName(firstEdu.schoolCollegeName || firstEdu.college || (profile as any)?.schoolCollegeName || '');
+                setPgUniversity((profile as any)?.pgUniversity || '');
+                setGraduationUniversity((profile as any)?.graduationUniversity || '');
             }
             setLanguages(
                 Array.isArray(profile?.languagesKnown)
@@ -289,14 +317,32 @@ export function Onboarding() {
             );
             setCertifications(profile?.certifications || []);
             setAwards(profile?.awards || '');
-            if (Array.isArray(profile?.projects)) {
-                setProjects(profile!.projects.map((p: any) => typeof p === 'string' ? p : (p.title || '')).filter(Boolean).join(', '));
-            } else if (typeof profile?.projects === 'string') {
-                setProjects(profile.projects);
-            }
-            setInternships(profile?.internships || []);
+            const savedProjects = (() => {
+                try {
+                    const raw = typeof window !== 'undefined' && user?.id ? localStorage.getItem(`squrx_projects_${user.id}`) : null;
+                    return raw ? JSON.parse(raw) : null;
+                } catch { return null; }
+            })();
+            const effectiveProjects = (Array.isArray(profile?.projects) && profile.projects.length > 0)
+                ? profile.projects
+                : (Array.isArray(savedProjects) && savedProjects.length > 0 ? savedProjects : (profile?.projects || []));
+            setProjects(Array.isArray(effectiveProjects) ? effectiveProjects : []);
+            const savedInternships = (() => {
+                try {
+                    const raw = typeof window !== 'undefined' && user?.id ? localStorage.getItem(`squrx_internships_${user.id}`) : null;
+                    return raw ? JSON.parse(raw) : null;
+                } catch { return null; }
+            })();
+            const effectiveInternships = (profile?.internships && profile.internships.length > 0)
+                ? profile.internships
+                : (Array.isArray(savedInternships) && savedInternships.length > 0 ? savedInternships : (profile?.internships || []));
+            setInternships(effectiveInternships);
             setProfileSummary(profile?.profileSummary || '');
-            setOtherAchievements(profile?.otherAchievements || '');
+            setOtherAchievements(
+                Array.isArray(profile?.otherAchievements)
+                    ? (profile?.otherAchievements as any[]).map(a => typeof a === 'string' ? a : (a?.name || '')).filter(Boolean).join(', ')
+                    : (profile?.otherAchievements || '')
+            );
 
             if (profile?.cvUrl) {
                 setCvName(profile.cvName || profile.resumeName || getCleanFileName(profile.cvUrl));
@@ -334,6 +380,31 @@ export function Onboarding() {
             }
         }
     }, [languagesData, profile?.languagesKnown, languages]);
+
+    useEffect(() => {
+        if (countriesData?.data && hometownCountry && !/^[0-9a-fA-F]{24}$/.test(hometownCountry)) {
+            const match = countriesData.data.find((c: any) => c.name.toLowerCase() === hometownCountry.toLowerCase());
+            if (match?._id) setHometownCountry(match._id);
+        }
+    }, [countriesData, hometownCountry]);
+
+    useEffect(() => {
+        if (experienceLevelsData?.data && experienceLevelsData.data.length > 0) {
+            if (experienceLevelId && !experienceLevel) {
+                const match = experienceLevelsData.data.find((el: any) => el._id === experienceLevelId);
+                if (match) {
+                    setExperienceLevel(match.name);
+                    setExperienceLevelQuery(match.name === 'Fresher' ? 'Fresher' : `${match.name} Years`);
+                }
+            } else if (experienceLevel && !experienceLevelId) {
+                const match = experienceLevelsData.data.find((el: any) => el.name.toLowerCase() === experienceLevel.toLowerCase() || el._id === experienceLevel);
+                if (match) {
+                    setExperienceLevelId(match._id);
+                    if (match.name) setExperienceLevel(match.name);
+                }
+            }
+        }
+    }, [experienceLevelsData, experienceLevelId, experienceLevel]);
 
     // Auto-select first currency if available and none selected yet
     useEffect(() => {
@@ -378,7 +449,8 @@ export function Onboarding() {
                 .filter(Boolean);
 
             const eduMatch = educationsData?.data?.find((e: any) => e.name === education);
-            const expMatch = experienceLevelsData?.data?.find((e: any) => e.name === experienceLevel);
+            const expMatch = experienceLevelsData?.data?.find((e: any) => e._id === experienceLevelId || e.name.toLowerCase() === experienceLevel.toLowerCase());
+            const resolvedExpId = experienceLevelId || expMatch?._id || (/^[0-9a-fA-F]{24}$/.test(experienceLevel) ? experienceLevel : undefined);
 
             // Use pre-captured IDs (populated at selection time) to avoid stale-cache race condition.
             // Fall back to re-resolution only if the user typed locations manually without selecting from dropdown.
@@ -414,15 +486,48 @@ export function Onboarding() {
 
             if (uniMatch?._id) firstEduItem.university = uniMatch._id;
             else if (selectedUniName && /^[0-9a-fA-F]{24}$/.test(selectedUniName)) firstEduItem.university = selectedUniName;
-            if (selectedUniName) firstEduItem.customUniversity = selectedUniName;
+
+            if (schoolCollegeName && schoolCollegeName.trim()) {
+                firstEduItem.schoolCollegeName = schoolCollegeName.trim();
+                firstEduItem.college = schoolCollegeName.trim();
+                firstEduItem.institute = schoolCollegeName.trim();
+                firstEduItem.customUniversity = schoolCollegeName.trim();
+            } else if (selectedUniName) {
+                firstEduItem.customUniversity = selectedUniName;
+            }
 
             const defaultProfId = languageProficienciesData?.data?.[0]?._id || '';
             const defaultProfName = languageProficienciesData?.data?.[0]?.name || '';
 
+            if (user?.id) {
+                try {
+                    localStorage.setItem(`squrx_internships_${user.id}`, JSON.stringify(internships));
+                } catch {}
+            }
+
+            const cleanProjects = projects.filter(p => p && p.title?.trim()).map(p => ({
+                title: p.title.trim(),
+                tag: p.tag?.trim() || undefined,
+                client: p.client?.trim() || undefined,
+                status: p.status === 'Completed' ? ('Completed' as const) : ('Ongoing' as const),
+                workedFromYear: p.workedFromYear ? Number(p.workedFromYear) : undefined,
+                workedFromMonth: p.workedFromMonth ? Number(p.workedFromMonth) : undefined,
+                workedTillYear: p.status === 'Ongoing' ? undefined : (p.workedTillYear ? Number(p.workedTillYear) : undefined),
+                workedTillMonth: p.status === 'Ongoing' ? undefined : (p.workedTillMonth ? Number(p.workedTillMonth) : undefined),
+                details: p.details?.trim() || '',
+                location: p.location?.trim() || undefined,
+                projectSite: p.projectSite || undefined,
+                natureOfEmployment: p.natureOfEmployment || undefined,
+                teamSize: p.teamSize || undefined,
+                role: p.role || undefined,
+                roleDescription: p.roleDescription?.trim() || undefined,
+                skillsUsed: typeof p.skillsUsed === 'string' ? p.skillsUsed.trim() : (p.skillsUsed || undefined)
+            }));
+
             await updateProfile(user.id, {
                 fullName,
-                experienceLevel: expMatch?._id || experienceLevel,
-                experienceLevelId: expMatch?._id || experienceLevel,
+                experienceLevel: resolvedExpId,
+                experienceLevelId: resolvedExpId,
                 currentSalary: curSalPayload,
                 expectedSalary: expSalPayload,
                 preferredDomains: domainIds,
@@ -441,7 +546,47 @@ export function Onboarding() {
                 dob,
                 currentLocation,
                 hometown,
-                educationHistory: [firstEduItem],
+                hometownCountry: (() => {
+                    let resolved = hometownCountry;
+                    if (hometownCountry && !/^[0-9a-fA-F]{24}$/.test(hometownCountry) && countriesData?.data) {
+                        const match = countriesData.data.find((c: any) => c.name.toLowerCase() === hometownCountry.toLowerCase());
+                        if (match?._id) resolved = match._id;
+                    }
+                    return /^[0-9a-fA-F]{24}$/.test(resolved) ? resolved : undefined;
+                })(),
+                domain: domain || undefined,
+                customDomain: domain === 'other' ? customDomain : undefined,
+                schoolCollegeName: schoolCollegeName?.trim() || undefined,
+                highestEducation: highestEducation || undefined,
+                ugUniversity: ugUniversity?.trim() || undefined,
+                pgUniversity: pgUniversity?.trim() || undefined,
+                graduationUniversity: graduationUniversity?.trim() || undefined,
+                educationHistory: [
+                    {
+                        ...(profile?.educationHistory?.[0] || {}),
+                        ...firstEduItem
+                    },
+                    ...((profile?.educationHistory || []).slice(1))
+                ],
+                employmentHistory: employmentHistory.map(e => {
+                    const rawSkills = Array.isArray(e.skillsUsed)
+                        ? e.skillsUsed
+                        : (typeof e.skillsUsed === 'string' ? (e.skillsUsed as string).split(',').map(s => s.trim()).filter(Boolean) : []);
+                    const resolvedSkillIds = rawSkills
+                        .map(s => {
+                            const str = typeof s === 'object' && s ? (s._id || s.name) : String(s).trim();
+                            if (/^[0-9a-fA-F]{24}$/.test(str)) return str;
+                            const matched = allSkillsData?.data?.find((sd: any) => sd.name.toLowerCase() === str.toLowerCase())
+                                || skillsData?.data?.find((sd: any) => sd.name.toLowerCase() === str.toLowerCase());
+                            return matched?._id || '';
+                        })
+                        .filter((id: string) => /^[0-9a-fA-F]{24}$/.test(id));
+                    return {
+                        ...e,
+                        joiningDate: formatJoiningDatePayload(e.joiningDate),
+                        skillsUsed: resolvedSkillIds
+                    };
+                }),
                 // Convert comma-separated languages string → languagesKnown array
                 // Matches against lookup data so valid MongoDB ObjectIds are provided to the backend
                 languagesKnown: languages
@@ -462,13 +607,24 @@ export function Onboarding() {
                         };
                     })
                     : [],
-                certifications,
+                certifications: certifications.map(c => ({
+                    ...c,
+                    status: isCertificationCompleted(c) ? 'Completed' : 'Undergoing'
+                })),
                 awards,
-                projects: projects ? [{ title: projects }] : [],
+                projects: cleanProjects,
                 internships,
                 profileSummary,
                 otherAchievements,
             });
+
+            if (user?.id) {
+                try {
+                    localStorage.setItem(`squrx_internships_${user.id}`, JSON.stringify(internships));
+                    localStorage.setItem(`squrx_projects_${user.id}`, JSON.stringify(cleanProjects));
+                } catch {}
+            }
+
             setOnboardingStep(1);
         } catch (err) {
             console.error(err);
@@ -640,7 +796,20 @@ export function Onboarding() {
                                 </p>
                             </div>
 
-                            <form onSubmit={handleProfileSubmit} className="space-y-6">
+                            <form
+                                onSubmit={handleProfileSubmit}
+                                onKeyDown={(e) => {
+                                    // Prevent accidental form submission when pressing Enter in input or select fields
+                                    if (e.key === 'Enter') {
+                                        const target = e.target as HTMLElement;
+                                        const tagName = target?.tagName?.toUpperCase();
+                                        if (tagName !== 'TEXTAREA' && tagName !== 'BUTTON') {
+                                            e.preventDefault();
+                                        }
+                                    }
+                                }}
+                                className="space-y-6"
+                            >
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                     {/* Full Name */}
                                     <div className="space-y-1.5">
@@ -721,39 +890,27 @@ export function Onboarding() {
                                     </div>
 
                                     {/* Experience Level */}
-                                    <div className="space-y-1.5 relative">
+                                    <div className="space-y-1.5">
                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Experience Level</label>
-                                        <Input
+                                        <select
                                             required
-                                            placeholder="Search & select experience..."
-                                            value={experienceLevelQuery}
+                                            value={experienceLevelId}
                                             onChange={(e) => {
-                                                setExperienceLevelQuery(e.target.value);
-                                                setShowExpSuggestions(true);
+                                                const selId = e.target.value;
+                                                setExperienceLevelId(selId);
+                                                const found = experienceLevelsData?.data?.find((el: any) => el._id === selId);
+                                                setExperienceLevel(found?.name || '');
+                                                setExperienceLevelQuery(found?.name === 'Fresher' ? 'Fresher' : (found ? `${found.name} Years` : ''));
                                             }}
-                                            onFocus={() => setShowExpSuggestions(true)}
-                                            onBlur={() => setTimeout(() => setShowExpSuggestions(false), 250)}
-                                            className="h-12 rounded-xl"
-                                        />
-                                        {showExpSuggestions && experienceLevelsData?.data && experienceLevelsData.data.length > 0 && (
-                                            <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto p-1.5 flex flex-col gap-0.5">
-                                                {experienceLevelsData.data.map((el: any) => (
-                                                    <button
-                                                        key={el._id || el.name}
-                                                        type="button"
-                                                        onMouseDown={() => {
-                                                            const displayName = el.name === 'Fresher' ? 'Fresher' : `${el.name} Years`;
-                                                            setExperienceLevel(el.name);
-                                                            setExperienceLevelQuery(displayName);
-                                                            setShowExpSuggestions(false);
-                                                        }}
-                                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded-lg transition-colors cursor-pointer text-black"
-                                                    >
-                                                        {el.name === 'Fresher' ? 'Fresher' : `${el.name} Years`}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
+                                            className="w-full h-12 bg-white border border-gray-200 focus:border-black focus:ring-2 focus:ring-black/10 rounded-xl px-3 text-sm font-semibold outline-none transition-all cursor-pointer"
+                                        >
+                                            <option value="">Select Experience Level</option>
+                                            {experienceLevelsData?.data?.map((el: any) => (
+                                                <option key={el._id || el.name} value={el._id}>
+                                                    {el.name === 'Fresher' || el.name.includes('Years') ? el.name : `${el.name} Years`}
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
 
                                     {/* Expected Salary */}
@@ -804,6 +961,32 @@ export function Onboarding() {
                                                 onChange={(e) => setCurrentSalaryAmount(e.target.value)}
                                                 className="h-12 rounded-xl flex-1"
                                             />
+                                        </div>
+                                    </div>
+
+                                    {/* Primary Domain */}
+                                    <div className="space-y-1.5 md:col-span-2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Primary Domain</label>
+                                        <div className="space-y-2">
+                                            <select
+                                                value={domain}
+                                                onChange={(e) => setDomain(e.target.value)}
+                                                className="w-full h-12 bg-white border border-gray-200 focus:border-black focus:ring-2 focus:ring-black/10 rounded-xl px-3 text-sm font-semibold outline-none transition-all cursor-pointer"
+                                            >
+                                                <option value="">Select Primary Domain</option>
+                                                {allDomainsData?.data?.map((d: any) => (
+                                                    <option key={d._id || d.name} value={d._id}>{d.name}</option>
+                                                ))}
+                                                <option value="other">Other</option>
+                                            </select>
+                                            {domain === 'other' && (
+                                                <Input
+                                                    placeholder="Enter Custom Domain"
+                                                    value={customDomain}
+                                                    onChange={(e) => setCustomDomain(e.target.value)}
+                                                    className="h-12 rounded-xl"
+                                                />
+                                            )}
                                         </div>
                                     </div>
 
@@ -1044,15 +1227,30 @@ export function Onboarding() {
                                         />
                                     </div>
 
-                                    {/* Hometown / Native Place & Country */}
+                                    {/* Hometown / Native Place */}
                                     <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Hometown / Native Place & Country</label>
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Hometown / Native Place</label>
                                         <Input
-                                            placeholder="e.g. Mumbai, India"
+                                            placeholder="e.g. Mumbai"
                                             value={hometown}
                                             onChange={(e) => setHometown(e.target.value)}
                                             className="h-12 rounded-xl"
                                         />
+                                    </div>
+
+                                    {/* Hometown Country */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Hometown Country</label>
+                                        <select
+                                            value={hometownCountry}
+                                            onChange={(e) => setHometownCountry(e.target.value)}
+                                            className="w-full h-12 bg-white border border-gray-200 focus:border-black focus:ring-2 focus:ring-black/10 rounded-xl px-3 text-sm font-semibold outline-none transition-all cursor-pointer"
+                                        >
+                                            <option value="">Select Country</option>
+                                            {countriesData?.data?.map((c: any) => (
+                                                <option key={c._id || c.name} value={c._id}>{c.name}</option>
+                                            ))}
+                                        </select>
                                     </div>
 
                                     {/* Languages Known */}
@@ -1147,13 +1345,260 @@ export function Onboarding() {
                                         </>
                                     )}
 
+                                    {/* ─── EMPLOYMENT HISTORY ─── */}
+                                    <div className="md:col-span-2 border-t border-gray-100 pt-6">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400">Employment History</h3>
+                                            <Button
+                                                type="button"
+                                                onClick={() => setEmploymentHistory([...employmentHistory, {
+                                                    companyName: '',
+                                                    jobTitle: '',
+                                                    employmentType: '',
+                                                    isCurrentEmployment: false,
+                                                    joiningDate: '',
+                                                    workedTill: '',
+                                                    totalExperienceYears: undefined,
+                                                    totalExperienceMonths: undefined,
+                                                    currentSalary: null,
+                                                    skillsUsed: [],
+                                                    jobProfile: '',
+                                                    noticePeriod: ''
+                                                }])}
+                                                variant="outline"
+                                                className="h-8 rounded-lg text-xs font-bold px-3 border-gray-200"
+                                            >
+                                                + Add Employment
+                                            </Button>
+                                        </div>
+                                        {employmentHistory.length === 0 ? (
+                                            <p className="text-xs text-gray-400 pl-1 italic">
+                                                {experienceLevel === 'Fresher'
+                                                    ? 'Fresher candidate (employment history optional). Click + Add Employment if you have work experience.'
+                                                    : 'No employment history added yet. Click + Add Employment to record previous jobs.'}
+                                            </p>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {employmentHistory.map((emp, idx) => (
+                                                    <div key={idx} className="bg-gray-50/60 p-4 rounded-2xl border border-gray-100 space-y-3">
+                                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                                            <select
+                                                                value={emp.employmentType || ''}
+                                                                onChange={(e) => {
+                                                                    const c = [...employmentHistory];
+                                                                    c[idx] = { ...c[idx], employmentType: e.target.value };
+                                                                    setEmploymentHistory(c);
+                                                                }}
+                                                                className="h-11 rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-black/10"
+                                                            >
+                                                                <option value="">Select Employment Type</option>
+                                                                {jobTypesData?.data?.map((jt: any) => (
+                                                                    <option key={jt._id} value={jt._id}>{jt.name}</option>
+                                                                ))}
+                                                            </select>
+                                                            <Input
+                                                                placeholder="Company Name"
+                                                                value={emp.companyName || ''}
+                                                                onChange={(e) => {
+                                                                    const c = [...employmentHistory];
+                                                                    c[idx] = { ...c[idx], companyName: e.target.value };
+                                                                    setEmploymentHistory(c);
+                                                                }}
+                                                                className="h-11 rounded-xl bg-white text-xs font-semibold"
+                                                            />
+                                                            <Input
+                                                                placeholder="Job Title / Role"
+                                                                value={emp.jobTitle || ''}
+                                                                onChange={(e) => {
+                                                                    const c = [...employmentHistory];
+                                                                    c[idx] = { ...c[idx], jobTitle: e.target.value };
+                                                                    setEmploymentHistory(c);
+                                                                }}
+                                                                className="h-11 rounded-xl bg-white text-xs font-semibold"
+                                                            />
+                                                        </div>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                                            <Input
+                                                                type="date"
+                                                                title="Joining Date"
+                                                                value={toDateInputValue(emp.joiningDate)}
+                                                                onClick={(e) => {
+                                                                    try {
+                                                                        (e.target as HTMLInputElement).showPicker?.();
+                                                                    } catch {}
+                                                                }}
+                                                                onChange={(e) => {
+                                                                    const c = [...employmentHistory];
+                                                                    c[idx] = { ...c[idx], joiningDate: e.target.value };
+                                                                    setEmploymentHistory(c);
+                                                                }}
+                                                                className="h-11 rounded-xl bg-white text-xs font-semibold cursor-pointer"
+                                                            />
+                                                            <Input
+                                                                type="number"
+                                                                placeholder="Total Exp (Years)"
+                                                                value={emp.totalExperienceYears != null ? String(emp.totalExperienceYears) : ''}
+                                                                onChange={(e) => {
+                                                                    const c = [...employmentHistory];
+                                                                    c[idx] = { ...c[idx], totalExperienceYears: e.target.value ? Number(e.target.value) : undefined };
+                                                                    setEmploymentHistory(c);
+                                                                }}
+                                                                className="h-11 rounded-xl bg-white text-xs font-semibold"
+                                                            />
+                                                            <Input
+                                                                type="number"
+                                                                placeholder="Total Exp (Months)"
+                                                                value={emp.totalExperienceMonths != null ? String(emp.totalExperienceMonths) : ''}
+                                                                onChange={(e) => {
+                                                                    const c = [...employmentHistory];
+                                                                    c[idx] = { ...c[idx], totalExperienceMonths: e.target.value ? Number(e.target.value) : undefined };
+                                                                    setEmploymentHistory(c);
+                                                                }}
+                                                                className="h-11 rounded-xl bg-white text-xs font-semibold"
+                                                            />
+                                                        </div>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                                            <div className="flex gap-2">
+                                                                <select
+                                                                    value={typeof emp.currentSalary === 'object' && emp.currentSalary 
+                                                                        ? (typeof emp.currentSalary.currency === 'object' && emp.currentSalary.currency ? emp.currentSalary.currency._id : String(emp.currentSalary.currency || ''))
+                                                                        : ''}
+                                                                    onChange={(e) => {
+                                                                        const c = [...employmentHistory];
+                                                                        const prevAmt = typeof c[idx].currentSalary === 'object' && c[idx].currentSalary ? c[idx].currentSalary.amount : c[idx].currentSalary;
+                                                                        c[idx] = { 
+                                                                            ...c[idx], 
+                                                                            currentSalary: { 
+                                                                                amount: prevAmt != null && prevAmt !== '' ? Number(prevAmt) : null, 
+                                                                                currency: e.target.value 
+                                                                            } 
+                                                                        };
+                                                                        setEmploymentHistory(c);
+                                                                    }}
+                                                                    className="h-11 w-28 bg-white border border-gray-200 rounded-xl px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-black/10 shrink-0"
+                                                                >
+                                                                    <option value="">Currency</option>
+                                                                    {currenciesData?.data?.map((curr: any) => (
+                                                                        <option key={curr._id} value={curr._id}>{curr.code} ({curr.symbol})</option>
+                                                                    ))}
+                                                                </select>
+                                                                <Input
+                                                                    type="number"
+                                                                    placeholder="Salary (e.g. 50000)"
+                                                                    value={typeof emp.currentSalary === 'object' && emp.currentSalary 
+                                                                        ? (emp.currentSalary.amount != null ? String(emp.currentSalary.amount) : '')
+                                                                        : (emp.currentSalary || '')}
+                                                                    onChange={(e) => {
+                                                                        const c = [...employmentHistory];
+                                                                        const prevCurr = typeof c[idx].currentSalary === 'object' && c[idx].currentSalary 
+                                                                            ? (typeof c[idx].currentSalary.currency === 'object' && c[idx].currentSalary.currency ? c[idx].currentSalary.currency._id : c[idx].currentSalary.currency)
+                                                                            : (currenciesData?.data?.[0]?._id || '');
+                                                                        c[idx] = { 
+                                                                            ...c[idx], 
+                                                                            currentSalary: { 
+                                                                                amount: e.target.value ? Number(e.target.value) : null, 
+                                                                                currency: prevCurr || (currenciesData?.data?.[0]?._id || '')
+                                                                            } 
+                                                                        };
+                                                                        setEmploymentHistory(c);
+                                                                    }}
+                                                                    className="h-11 rounded-xl bg-white text-xs font-semibold flex-1"
+                                                                />
+                                                            </div>
+                                                            <Input
+                                                                placeholder="Notice Period (e.g. 1 Month)"
+                                                                value={emp.noticePeriod || ''}
+                                                                onChange={(e) => {
+                                                                    const c = [...employmentHistory];
+                                                                    c[idx] = { ...c[idx], noticePeriod: e.target.value };
+                                                                    setEmploymentHistory(c);
+                                                                }}
+                                                                className="h-11 rounded-xl bg-white text-xs font-semibold"
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="checkbox"
+                                                                id={`onb-emp-current-${idx}`}
+                                                                checked={!!emp.isCurrentEmployment}
+                                                                onChange={(e) => {
+                                                                    const c = [...employmentHistory];
+                                                                    c[idx] = { ...c[idx], isCurrentEmployment: e.target.checked };
+                                                                    setEmploymentHistory(c);
+                                                                }}
+                                                                className="rounded border-gray-300 w-4 h-4 cursor-pointer"
+                                                            />
+                                                            <label htmlFor={`onb-emp-current-${idx}`} className="text-xs font-semibold text-gray-600 cursor-pointer select-none">
+                                                                Current Employment
+                                                            </label>
+                                                        </div>
+                                                        <div>
+                                                            <Input
+                                                                placeholder="Key Skills Used (comma-separated, e.g. React, Node.js)"
+                                                                value={Array.isArray(emp.skillsUsed)
+                                                                    ? emp.skillsUsed.map((s: any) => {
+                                                                        if (typeof s === 'string' && /^[0-9a-fA-F]{24}$/.test(s)) {
+                                                                            const found = allSkillsData?.data?.find((sd: any) => sd._id === s) || skillsData?.data?.find((sd: any) => sd._id === s);
+                                                                            return found?.name || s;
+                                                                        }
+                                                                        return typeof s === 'object' && s ? (s.name || s._id) : String(s);
+                                                                    }).join(', ')
+                                                                    : (emp.skillsUsed || '')}
+                                                                onChange={(e) => {
+                                                                    const c = [...employmentHistory];
+                                                                    c[idx] = {
+                                                                        ...c[idx],
+                                                                        skillsUsed: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                                                                    };
+                                                                    setEmploymentHistory(c);
+                                                                }}
+                                                                className="h-11 rounded-xl bg-white text-xs font-semibold"
+                                                            />
+                                                        </div>
+                                                        <textarea
+                                                            placeholder="Job Profile / Description of responsibilities..."
+                                                            value={emp.jobProfile || ''}
+                                                            onChange={(e) => {
+                                                                const c = [...employmentHistory];
+                                                                c[idx] = { ...c[idx], jobProfile: e.target.value };
+                                                                setEmploymentHistory(c);
+                                                            }}
+                                                            rows={2}
+                                                            className="w-full rounded-xl border border-gray-200 bg-white p-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-black/10 transition-all resize-none shadow-sm"
+                                                        />
+                                                        <div className="flex justify-end">
+                                                            <Button
+                                                                type="button"
+                                                                onClick={() => setEmploymentHistory(employmentHistory.filter((_, i) => i !== idx))}
+                                                                variant="outline"
+                                                                className="h-8 rounded-lg text-xs font-bold text-red-500 border-red-100 hover:bg-red-50 px-2"
+                                                            >
+                                                                Remove
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
                                     {/* ─── CERTIFICATIONS DYNAMIC ADD LIST ─── */}
                                     <div className="md:col-span-2 border-t border-gray-100 pt-6">
                                         <div className="flex justify-between items-center mb-4">
                                             <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400">Certifications</h3>
                                             <Button
                                                 type="button"
-                                                onClick={() => setCertifications([...certifications, { name: '', status: 'undergoing' }])}
+                                                onClick={() => setCertifications([...certifications, {
+                                                    name: '',
+                                                    status: 'undergoing',
+                                                    doesNotExpire: false,
+                                                    completionId: '',
+                                                    url: '',
+                                                    validFromMonth: '',
+                                                    validFromYear: '',
+                                                    validToMonth: '',
+                                                    validToYear: ''
+                                                }])}
                                                 variant="outline"
                                                 className="h-8 rounded-lg text-xs font-bold px-3 border-gray-200"
                                             >
@@ -1163,43 +1608,159 @@ export function Onboarding() {
                                         {certifications.length === 0 ? (
                                             <p className="text-xs text-gray-400 pl-1 italic">No certifications added yet.</p>
                                         ) : (
-                                            <div className="space-y-3">
+                                            <div className="space-y-4">
                                                 {certifications.map((cert, index) => (
-                                                    <div key={index} className="flex gap-3 items-center bg-gray-50/50 p-3 rounded-xl border border-gray-100">
-                                                        <Input
-                                                            placeholder="Certification Name"
-                                                            value={cert.name}
-                                                            onChange={(e) => {
-                                                                const copy = [...certifications];
-                                                                copy[index].name = e.target.value;
-                                                                setCertifications(copy);
-                                                            }}
-                                                            className="h-10 rounded-lg flex-1 bg-white"
-                                                        />
-                                                        <div className="flex items-center gap-2">
-                                                            <input
-                                                                type="checkbox"
-                                                                id={`cert-status-${index}`}
-                                                                checked={cert.status === 'completed'}
+                                                    <div key={index} className="bg-gray-50/60 p-4 rounded-2xl border border-gray-100 space-y-3">
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                                            <Input
+                                                                placeholder="Certification Name"
+                                                                value={cert.name}
                                                                 onChange={(e) => {
                                                                     const copy = [...certifications];
-                                                                    copy[index].status = e.target.checked ? 'completed' : 'undergoing';
+                                                                    copy[index].name = e.target.value;
                                                                     setCertifications(copy);
                                                                 }}
-                                                                className="rounded border-gray-300 text-primary w-4 h-4 cursor-pointer"
+                                                                className="h-11 rounded-xl bg-white text-xs font-semibold"
                                                             />
-                                                            <label htmlFor={`cert-status-${index}`} className="text-xs font-semibold text-gray-600 select-none cursor-pointer">
-                                                                Completed
-                                                            </label>
+                                                            <Input
+                                                                placeholder="Completion / License ID"
+                                                                value={cert.completionId || ''}
+                                                                onChange={(e) => {
+                                                                    const copy = [...certifications];
+                                                                    copy[index].completionId = e.target.value;
+                                                                    setCertifications(copy);
+                                                                }}
+                                                                className="h-11 rounded-xl bg-white text-xs font-semibold"
+                                                            />
                                                         </div>
-                                                        <Button
-                                                            type="button"
-                                                            onClick={() => setCertifications(certifications.filter((_, i) => i !== index))}
-                                                            variant="outline"
-                                                            className="h-8 w-8 p-0 text-red-500 border-red-100 hover:bg-red-50 rounded-lg flex items-center justify-center"
-                                                        >
-                                                            ✕
-                                                        </Button>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                                            <Input
+                                                                placeholder="Credential URL (https://...)"
+                                                                value={cert.url || ''}
+                                                                onChange={(e) => {
+                                                                    const copy = [...certifications];
+                                                                    copy[index].url = e.target.value;
+                                                                    setCertifications(copy);
+                                                                }}
+                                                                className="h-11 rounded-xl bg-white text-xs font-semibold"
+                                                            />
+                                                            <div className="flex items-center gap-4">
+                                                                <div className="flex items-center gap-2">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        id={`cert-status-${index}`}
+                                                                        checked={isCertificationCompleted(cert)}
+                                                                        onChange={(e) => {
+                                                                            const copy = [...certifications];
+                                                                            copy[index] = {
+                                                                                ...copy[index],
+                                                                                status: e.target.checked ? 'Completed' : 'Undergoing',
+                                                                                completionId: e.target.checked ? copy[index].completionId : ''
+                                                                            };
+                                                                            setCertifications(copy);
+                                                                        }}
+                                                                        className="rounded border-gray-300 text-primary w-4 h-4 cursor-pointer"
+                                                                    />
+                                                                    <label htmlFor={`cert-status-${index}`} className="text-xs font-semibold text-gray-600 select-none cursor-pointer">
+                                                                        Completed
+                                                                    </label>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        id={`cert-expire-${index}`}
+                                                                        checked={!!cert.doesNotExpire}
+                                                                        onChange={(e) => {
+                                                                            const copy = [...certifications];
+                                                                            copy[index].doesNotExpire = e.target.checked;
+                                                                            if (e.target.checked) {
+                                                                                copy[index].validToMonth = '';
+                                                                                copy[index].validToYear = '';
+                                                                            }
+                                                                            setCertifications(copy);
+                                                                        }}
+                                                                        className="rounded border-gray-300 text-primary w-4 h-4 cursor-pointer"
+                                                                    />
+                                                                    <label htmlFor={`cert-expire-${index}`} className="text-xs font-semibold text-gray-600 select-none cursor-pointer">
+                                                                        Does Not Expire
+                                                                    </label>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                                            <div>
+                                                                <label className="text-[11px] font-bold text-gray-400 block mb-1">Valid From (Month)</label>
+                                                                <select
+                                                                    value={cert.validFromMonth || ''}
+                                                                    onChange={(e) => {
+                                                                        const copy = [...certifications];
+                                                                        copy[index].validFromMonth = e.target.value;
+                                                                        setCertifications(copy);
+                                                                    }}
+                                                                    className="h-9 w-full bg-white border border-gray-200 rounded-lg px-2 text-xs font-semibold outline-none"
+                                                                >
+                                                                    <option value="">Month</option>
+                                                                    {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+                                                                </select>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[11px] font-bold text-gray-400 block mb-1">Valid From (Year)</label>
+                                                                <select
+                                                                    value={cert.validFromYear || ''}
+                                                                    onChange={(e) => {
+                                                                        const copy = [...certifications];
+                                                                        copy[index].validFromYear = e.target.value;
+                                                                        setCertifications(copy);
+                                                                    }}
+                                                                    className="h-9 w-full bg-white border border-gray-200 rounded-lg px-2 text-xs font-semibold outline-none"
+                                                                >
+                                                                    <option value="">Year</option>
+                                                                    {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                                                                </select>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[11px] font-bold text-gray-400 block mb-1">Valid Till (Month)</label>
+                                                                <select
+                                                                    disabled={cert.doesNotExpire}
+                                                                    value={cert.validToMonth || ''}
+                                                                    onChange={(e) => {
+                                                                        const copy = [...certifications];
+                                                                        copy[index].validToMonth = e.target.value;
+                                                                        setCertifications(copy);
+                                                                    }}
+                                                                    className="h-9 w-full bg-white border border-gray-200 rounded-lg px-2 text-xs font-semibold outline-none disabled:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                >
+                                                                    <option value="">Month</option>
+                                                                    {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+                                                                </select>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[11px] font-bold text-gray-400 block mb-1">Valid Till (Year)</label>
+                                                                <select
+                                                                    disabled={cert.doesNotExpire}
+                                                                    value={cert.validToYear || ''}
+                                                                    onChange={(e) => {
+                                                                        const copy = [...certifications];
+                                                                        copy[index].validToYear = e.target.value;
+                                                                        setCertifications(copy);
+                                                                    }}
+                                                                    className="h-9 w-full bg-white border border-gray-200 rounded-lg px-2 text-xs font-semibold outline-none disabled:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                >
+                                                                    <option value="">Year</option>
+                                                                    {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex justify-end">
+                                                            <Button
+                                                                type="button"
+                                                                onClick={() => setCertifications(certifications.filter((_, i) => i !== index))}
+                                                                variant="outline"
+                                                                className="h-8 rounded-lg text-xs font-bold text-red-500 border-red-100 hover:bg-red-50 px-2"
+                                                            >
+                                                                Remove
+                                                            </Button>
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>
@@ -1279,15 +1840,216 @@ export function Onboarding() {
                                     </div>
 
                                     {/* Projects */}
-                                    <div className="space-y-1.5 md:col-span-2">
-                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">Key Projects</label>
-                                        <textarea
-                                            placeholder="Write about major projects you worked on..."
-                                            value={projects}
-                                            onChange={(e) => setProjects(e.target.value)}
-                                            rows={3}
-                                            className="w-full bg-white border border-gray-200 focus:border-black focus:ring-2 focus:ring-black/10 rounded-xl p-3 text-sm font-semibold outline-none transition-all resize-none shadow-sm"
-                                        />
+                                    <div className="space-y-2 md:col-span-2">
+                                        <div className="flex justify-between items-center pl-1">
+                                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Key Projects</label>
+                                            <Button
+                                                type="button"
+                                                onClick={() => setProjects([...projects, {
+                                                    title: '',
+                                                    tag: '',
+                                                    client: '',
+                                                    status: 'Ongoing',
+                                                    details: '',
+                                                    location: '',
+                                                    projectSite: 'Onsite',
+                                                    teamSize: '1-5',
+                                                    role: '',
+                                                    roleDescription: '',
+                                                    skillsUsed: ''
+                                                }])}
+                                                variant="outline"
+                                                className="h-8 rounded-lg text-xs font-bold px-3 border-gray-200"
+                                            >
+                                                + Add Project
+                                            </Button>
+                                        </div>
+                                        {projects.length === 0 ? (
+                                            <p className="text-xs text-gray-400 pl-1 italic">No projects added yet. Click + Add Project to add your major projects.</p>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {projects.map((proj, idx) => (
+                                                    <div key={idx} className="space-y-2.5 bg-gray-50/50 p-3.5 rounded-xl border border-gray-100">
+                                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                            <Input
+                                                                placeholder="Project Title *"
+                                                                value={proj.title || ''}
+                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], title: e.target.value }; setProjects(c); }}
+                                                                className="h-10 rounded-lg bg-white"
+                                                            />
+                                                            <Input
+                                                                placeholder="Tag (e.g. #Mobile / Web App)"
+                                                                value={proj.tag || ''}
+                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], tag: e.target.value }; setProjects(c); }}
+                                                                className="h-10 rounded-lg bg-white"
+                                                            />
+                                                            <Input
+                                                                placeholder="Client (e.g. Internal / ACME)"
+                                                                value={proj.client || ''}
+                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], client: e.target.value }; setProjects(c); }}
+                                                                className="h-10 rounded-lg bg-white"
+                                                            />
+                                                        </div>
+
+                                                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                                                            {/* Status */}
+                                                            <select
+                                                                value={proj.status === 'Completed' ? 'Completed' : 'Ongoing'}
+                                                                onChange={(e) => {
+                                                                    const nextStatus = e.target.value as 'Ongoing' | 'Completed';
+                                                                    const c = [...projects];
+                                                                    c[idx] = {
+                                                                        ...c[idx],
+                                                                        status: nextStatus,
+                                                                        workedTillMonth: nextStatus === 'Ongoing' ? undefined : c[idx].workedTillMonth,
+                                                                        workedTillYear: nextStatus === 'Ongoing' ? undefined : c[idx].workedTillYear
+                                                                    };
+                                                                    setProjects(c);
+                                                                }}
+                                                                className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium outline-none focus:border-black focus:ring-2 focus:ring-black/10 shadow-sm"
+                                                            >
+                                                                <option value="Ongoing">Ongoing</option>
+                                                                <option value="Completed">Completed</option>
+                                                            </select>
+
+                                                            {/* Project Site */}
+                                                            <select
+                                                                value={proj.projectSite || 'Onsite'}
+                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], projectSite: e.target.value as 'Onsite' | 'Remote' | 'Hybrid' }; setProjects(c); }}
+                                                                className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium outline-none focus:border-black focus:ring-2 focus:ring-black/10 shadow-sm"
+                                                            >
+                                                                <option value="Onsite">Onsite</option>
+                                                                <option value="Remote">Remote</option>
+                                                                <option value="Hybrid">Hybrid</option>
+                                                            </select>
+
+                                                            {/* Nature of Employment */}
+                                                            <select
+                                                                value={proj.natureOfEmployment || ''}
+                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], natureOfEmployment: e.target.value }; setProjects(c); }}
+                                                                className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium outline-none focus:border-black focus:ring-2 focus:ring-black/10 shadow-sm"
+                                                            >
+                                                                <option value="">Nature of Employment</option>
+                                                                <option value="Full Time">Full Time</option>
+                                                                <option value="Part Time">Part Time</option>
+                                                                <option value="Contract">Contract</option>
+                                                                <option value="Freelance">Freelance</option>
+                                                                <option value="Internship">Internship</option>
+                                                            </select>
+
+                                                            {/* Team Size */}
+                                                            <select
+                                                                value={proj.teamSize || ''}
+                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], teamSize: e.target.value as any }; setProjects(c); }}
+                                                                className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium outline-none focus:border-black focus:ring-2 focus:ring-black/10 shadow-sm"
+                                                            >
+                                                                <option value="">Team Size</option>
+                                                                <option value="1-5">1-5</option>
+                                                                <option value="6-10">6-10</option>
+                                                                <option value="11-20">11-20</option>
+                                                                <option value="21-50">21-50</option>
+                                                                <option value="50+">50+</option>
+                                                            </select>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                            {/* Role (lookup from rolesData) */}
+                                                            <select
+                                                                value={proj.role || ''}
+                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], role: e.target.value }; setProjects(c); }}
+                                                                className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium outline-none focus:border-black focus:ring-2 focus:ring-black/10 shadow-sm"
+                                                            >
+                                                                <option value="">Select Role</option>
+                                                                {rolesData?.data?.map((r: any) => (
+                                                                    <option key={r._id} value={r._id}>{r.name}</option>
+                                                                ))}
+                                                            </select>
+
+                                                            <Input
+                                                                placeholder="Location (e.g. London / India)"
+                                                                value={proj.location || ''}
+                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], location: e.target.value }; setProjects(c); }}
+                                                                className="h-10 rounded-lg bg-white"
+                                                            />
+                                                        </div>
+
+                                                        {/* Project Duration */}
+                                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                                            <Input
+                                                                type="number"
+                                                                placeholder="From Month (1-12)"
+                                                                min={1}
+                                                                max={12}
+                                                                value={proj.workedFromMonth != null ? String(proj.workedFromMonth) : ''}
+                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], workedFromMonth: e.target.value ? Number(e.target.value) : undefined }; setProjects(c); }}
+                                                                className="h-10 rounded-lg bg-white"
+                                                            />
+                                                            <Input
+                                                                type="number"
+                                                                placeholder="From Year"
+                                                                value={proj.workedFromYear != null ? String(proj.workedFromYear) : ''}
+                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], workedFromYear: e.target.value ? Number(e.target.value) : undefined }; setProjects(c); }}
+                                                                className="h-10 rounded-lg bg-white"
+                                                            />
+                                                            <Input
+                                                                type="number"
+                                                                placeholder={proj.status === 'Ongoing' ? 'Ongoing' : 'Till Month'}
+                                                                min={1}
+                                                                max={12}
+                                                                disabled={proj.status === 'Ongoing'}
+                                                                value={proj.status !== 'Ongoing' && proj.workedTillMonth != null ? String(proj.workedTillMonth) : ''}
+                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], workedTillMonth: e.target.value ? Number(e.target.value) : undefined }; setProjects(c); }}
+                                                                className={`h-10 rounded-lg bg-white ${proj.status === 'Ongoing' ? 'opacity-50 cursor-not-allowed bg-gray-100' : ''}`}
+                                                            />
+                                                            <Input
+                                                                type="number"
+                                                                placeholder={proj.status === 'Ongoing' ? 'Present' : 'Till Year'}
+                                                                disabled={proj.status === 'Ongoing'}
+                                                                value={proj.status !== 'Ongoing' && proj.workedTillYear != null ? String(proj.workedTillYear) : ''}
+                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], workedTillYear: e.target.value ? Number(e.target.value) : undefined }; setProjects(c); }}
+                                                                className={`h-10 rounded-lg bg-white ${proj.status === 'Ongoing' ? 'opacity-50 cursor-not-allowed bg-gray-100' : ''}`}
+                                                            />
+                                                        </div>
+
+                                                        <Input
+                                                            placeholder="Skills Used (e.g. React, Node.js, GraphQL)"
+                                                            value={proj.skillsUsed || ''}
+                                                            onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], skillsUsed: e.target.value }; setProjects(c); }}
+                                                            className="h-10 rounded-lg bg-white"
+                                                        />
+
+                                                        {/* Details */}
+                                                        <textarea
+                                                            placeholder="Project details..."
+                                                            value={proj.details || ''}
+                                                            onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], details: e.target.value }; setProjects(c); }}
+                                                            rows={2}
+                                                            className="w-full bg-white border border-gray-200 focus:border-black focus:ring-2 focus:ring-black/10 rounded-xl p-3 text-sm font-semibold outline-none transition-all resize-none shadow-sm"
+                                                        />
+
+                                                        {/* Role Description */}
+                                                        <textarea
+                                                            placeholder="Role description & key responsibilities..."
+                                                            value={proj.roleDescription || ''}
+                                                            onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], roleDescription: e.target.value }; setProjects(c); }}
+                                                            rows={2}
+                                                            className="w-full bg-white border border-gray-200 focus:border-black focus:ring-2 focus:ring-black/10 rounded-xl p-3 text-sm font-semibold outline-none transition-all resize-none shadow-sm"
+                                                        />
+
+                                                        <div className="flex justify-end">
+                                                            <Button
+                                                                type="button"
+                                                                onClick={() => setProjects(projects.filter((_, i) => i !== idx))}
+                                                                variant="outline"
+                                                                className="h-8 rounded-lg text-xs font-bold text-red-500 border-red-100 hover:bg-red-50 px-2"
+                                                            >
+                                                                Remove
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Awards */}

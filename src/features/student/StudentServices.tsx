@@ -319,10 +319,10 @@ Our specialized applicant care team has been notified. A career mentor will cont
 
                             <div className="px-6 pb-6 pt-0">
                                 <Button 
-                                    onClick={() => handleOpenCheckout(service)}
-                                    className={`w-full h-11 rounded-2xl bg-gradient-to-r ${service.gradient} text-white font-bold shadow-lg transition-transform hover:scale-[1.02] flex items-center justify-center gap-2`}
+                                    disabled
+                                    className={`w-full h-11 rounded-2xl bg-gradient-to-r ${service.gradient} text-white font-bold shadow-md cursor-not-allowed opacity-90 disabled:opacity-85 flex items-center justify-center gap-2`}
                                 >
-                                    Activate Service <ArrowRight className="w-4 h-4" />
+                                    Coming Soon
                                 </Button>
                             </div>
                         </Card>

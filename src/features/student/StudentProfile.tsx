@@ -4,11 +4,13 @@ import { Card, CardHeader, CardTitle, CardContent, Button, Input, Toast, Modal, 
 import { PageTransition } from '@/components/motion';
 import { useAuthStore } from '../auth/store';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, UploadCloud, FileText, Trash2, ShieldCheck, Plus, X, Check, Eye, Lock, Pencil } from 'lucide-react';
+import { Loader2, UploadCloud, FileText, Trash2, ShieldCheck, Plus, X, Check, Eye, Lock, Pencil, ExternalLink } from 'lucide-react';
 import { consultationApi } from '@/lib/consultationApi';
 import { useNotificationStore } from '@/lib/store/notifications';
-import type { EducationHistoryItem, EmploymentHistoryItem, ProjectItem, LanguageKnownItem } from '@/lib/mockDb/schema';
+import type { EducationHistoryItem, EmploymentHistoryItem, ProjectItem, LanguageKnownItem, CertificationItem, OtherAchievementItem } from '@/lib/mockDb/schema';
+import { formatJoiningDateDisplay, formatJoiningDatePayload, isCertificationCompleted, toDateInputValue } from '@/lib/mockApi';
 import {
+    useGetCountriesQuery,
     useGetEducationsQuery,
     useGetSkillsQuery,
     useGetJobTypesQuery,
@@ -27,6 +29,8 @@ import {
     useSubmitCourseMutation,
     useSubmitSpecializationMutation,
 } from '@/lib/store/authApi';
+
+const isHexId = (val: any): boolean => typeof val === 'string' && /^[0-9a-fA-F]{24}$/.test(val);
 
 // ─────────────────────────────────────────────
 // Inline Tag editor component (for skills)
@@ -166,6 +170,8 @@ export function StudentProfile() {
     const [jobType, setJobType] = useState('');
     const [jobTypeQuery, setJobTypeQuery] = useState('');
     const [careerGoal, setCareerGoal] = useState('');
+    const [domain, setDomain] = useState('');
+    const [customDomain, setCustomDomain] = useState('');
     const [experienceLevel, setExperienceLevel] = useState('');
     const [experienceLevelQuery, setExperienceLevelQuery] = useState('');
     const [experienceLevelId, setExperienceLevelId] = useState('');
@@ -181,15 +187,16 @@ export function StudentProfile() {
     const [currentLocation, setCurrentLocation] = useState('');
     const [hometown, setHometown] = useState('');
     const [hometownCountry, setHometownCountry] = useState('');
+    const [hometownCountryId, setHometownCountryId] = useState('');
     const [languagesKnown, setLanguagesKnown] = useState<LanguageKnownItem[]>([]);
     const [educationHistory, setEducationHistory] = useState<EducationHistoryItem[]>([]);
     const [employmentHistory, setEmploymentHistory] = useState<EmploymentHistoryItem[]>([]);
-    const [certifications, setCertifications] = useState<Array<{ name: string; status: 'completed' | 'undergoing' }>>([]);
+    const [certifications, setCertifications] = useState<CertificationItem[]>([]);
     const [awards, setAwards] = useState('');
     const [projects, setProjects] = useState<ProjectItem[]>([]);
     const [internships, setInternships] = useState<Array<{ companyName: string; duration: string; role: string }>>([]);
     const [profileSummary, setProfileSummary] = useState('');
-    const [otherAchievements, setOtherAchievements] = useState('');
+    const [otherAchievements, setOtherAchievements] = useState<OtherAchievementItem[]>([]);
 
     // ── Autocomplete dropdowns ───────────────────
     const [showExpSuggestions, setShowExpSuggestions] = useState(false);
@@ -221,6 +228,8 @@ export function StudentProfile() {
         location: string; locationQuery: string; selectedLocationId: string;
         jobType: string; jobTypeQuery: string;
         careerGoal: string;
+        domain: string;
+        customDomain: string;
         experienceLevel: string; experienceLevelQuery: string; experienceLevelId: string;
         expectedSalaryAmount: string; expectedSalaryCurrency: string;
         currentSalaryAmount: string; currentSalaryCurrency: string;
@@ -234,15 +243,16 @@ export function StudentProfile() {
         currentLocation: string;
         hometown: string;
         hometownCountry: string;
+        hometownCountryId: string;
         languagesKnown: LanguageKnownItem[];
         educationHistory: EducationHistoryItem[];
         employmentHistory: EmploymentHistoryItem[];
-        certifications: Array<{ name: string; status: 'completed' | 'undergoing' }>;
+        certifications: CertificationItem[];
         awards: string;
         projects: ProjectItem[];
         internships: Array<{ companyName: string; duration: string; role: string }>;
         profileSummary: string;
-        otherAchievements: string;
+        otherAchievements: OtherAchievementItem[];
     } | null>(null);
 
     // ── Refs ─────────────────────────────────────
@@ -251,6 +261,7 @@ export function StudentProfile() {
     const fetchedRef = useRef(false);
 
     // ── API queries & mutations ─────────────────
+    const { data: countriesData } = useGetCountriesQuery(undefined);
     const { data: currenciesData } = useGetCurrenciesQuery(undefined);
     const { data: educationsData } = useGetEducationsQuery(undefined);
     const { data: experienceLevelsData } = useGetExperienceLevelsQuery(undefined);
@@ -379,18 +390,67 @@ export function StudentProfile() {
                 }
             }
             setDob(displayDob);
+            setDomain(profile.domain || '');
+            setCustomDomain(profile.customDomain || '');
             setCurrentLocation(profile.currentLocation || '');
             setHometown(profile.hometown || '');
-            setHometownCountry(profile.hometownCountry || '');
+            
+            let initCountryName = '';
+            let initCountryId = '';
+            if (typeof profile.hometownCountry === 'object' && profile.hometownCountry) {
+                initCountryName = (profile.hometownCountry as any).name || '';
+                initCountryId = (profile.hometownCountry as any)._id || '';
+            } else if (typeof profile.hometownCountry === 'string') {
+                if (/^[0-9a-fA-F]{24}$/.test(profile.hometownCountry.trim())) {
+                    initCountryId = profile.hometownCountry.trim();
+                } else {
+                    initCountryName = profile.hometownCountry.trim();
+                }
+            }
+            if ((profile as any).hometownCountryId) {
+                initCountryId = (profile as any).hometownCountryId;
+            }
+            setHometownCountry(initCountryName);
+            setHometownCountryId(initCountryId);
             setLanguagesKnown(profile.languagesKnown || []);
-            setEducationHistory(profile.educationHistory || []);
+            const loadedEduHistory = (profile.educationHistory || []).map((eh, i) => {
+                if (i === 0 && !eh.schoolCollegeName && (profile as any)?.schoolCollegeName) {
+                    return { ...eh, schoolCollegeName: (profile as any).schoolCollegeName, college: (profile as any).schoolCollegeName };
+                }
+                return eh;
+            });
+            setEducationHistory(loadedEduHistory);
             setEmploymentHistory(profile.employmentHistory || []);
             setCertifications(profile.certifications || []);
             setAwards(profile.awards || '');
-            setProjects(profile.projects || []);
-            setInternships(profile.internships || []);
+            const savedProjects = (() => {
+                try {
+                    const raw = typeof window !== 'undefined' && user?.id ? localStorage.getItem(`squrx_projects_${user.id}`) : null;
+                    return raw ? JSON.parse(raw) : null;
+                } catch { return null; }
+            })();
+            const effectiveProjects = (Array.isArray(profile.projects) && profile.projects.length > 0)
+                ? profile.projects
+                : (Array.isArray(savedProjects) && savedProjects.length > 0 ? savedProjects : (profile.projects || []));
+            setProjects(effectiveProjects);
+            const savedInternships = (() => {
+                try {
+                    const raw = typeof window !== 'undefined' && user?.id ? localStorage.getItem(`squrx_internships_${user.id}`) : null;
+                    return raw ? JSON.parse(raw) : null;
+                } catch { return null; }
+            })();
+            const effectiveInternships = (profile.internships && profile.internships.length > 0)
+                ? profile.internships
+                : (Array.isArray(savedInternships) && savedInternships.length > 0 ? savedInternships : (profile.internships || []));
+            setInternships(effectiveInternships);
             setProfileSummary(profile.profileSummary || '');
-            setOtherAchievements(profile.otherAchievements || '');
+            if (Array.isArray(profile.otherAchievements)) {
+                setOtherAchievements(profile.otherAchievements);
+            } else if (typeof profile.otherAchievements === 'string' && (profile.otherAchievements as string).trim()) {
+                setOtherAchievements([{ name: (profile.otherAchievements as string).trim(), link: '', description: '' }]);
+            } else {
+                setOtherAchievements([]);
+            }
 
             setProfileInitialized(true);
         }
@@ -424,6 +484,18 @@ export function StudentProfile() {
             setExperienceLevelId(match._id);
         }
     }, [experienceLevelsData, experienceLevelId, experienceLevel, profile]);
+
+    // ── Resolve Hometown Country raw ObjectID → human-readable name ──
+    useEffect(() => {
+        if (!countriesData?.data || countriesData.data.length === 0) return;
+        if (hometownCountryId && (!hometownCountry || /^[0-9a-fA-F]{24}$/.test(hometownCountry))) {
+            const match = countriesData.data.find((c: any) => c._id === hometownCountryId);
+            if (match) setHometownCountry(match.name);
+        } else if (hometownCountry && !hometownCountryId) {
+            const match = countriesData.data.find((c: any) => c.name.toLowerCase() === (typeof hometownCountry === 'string' ? hometownCountry.toLowerCase() : ''));
+            if (match) setHometownCountryId(match._id);
+        }
+    }, [countriesData, hometownCountryId, hometownCountry]);
 
     // ── Resolve Skill raw ObjectIDs → human-readable names ──
     // When the backend returns skills as unpopulated ObjectID strings,
@@ -620,18 +692,67 @@ export function StudentProfile() {
                 }
             }
             setDob(displayDob);
+            setDomain(profile.domain || '');
+            setCustomDomain(profile.customDomain || '');
             setCurrentLocation(profile.currentLocation || '');
             setHometown(profile.hometown || '');
-            setHometownCountry(profile.hometownCountry || '');
+            
+            let reCountryName = '';
+            let reCountryId = '';
+            if (typeof profile.hometownCountry === 'object' && profile.hometownCountry) {
+                reCountryName = (profile.hometownCountry as any).name || '';
+                reCountryId = (profile.hometownCountry as any)._id || '';
+            } else if (typeof profile.hometownCountry === 'string') {
+                if (/^[0-9a-fA-F]{24}$/.test(profile.hometownCountry.trim())) {
+                    reCountryId = profile.hometownCountry.trim();
+                } else {
+                    reCountryName = profile.hometownCountry.trim();
+                }
+            }
+            if ((profile as any).hometownCountryId) {
+                reCountryId = (profile as any).hometownCountryId;
+            }
+            setHometownCountry(reCountryName);
+            setHometownCountryId(reCountryId);
             setLanguagesKnown(profile.languagesKnown || []);
-            setEducationHistory(profile.educationHistory || []);
+            const loadedEduHistory = (profile.educationHistory || []).map((eh, i) => {
+                if (i === 0 && !eh.schoolCollegeName && (profile as any)?.schoolCollegeName) {
+                    return { ...eh, schoolCollegeName: (profile as any).schoolCollegeName, college: (profile as any).schoolCollegeName };
+                }
+                return eh;
+            });
+            setEducationHistory(loadedEduHistory);
             setEmploymentHistory(profile.employmentHistory || []);
             setCertifications(profile.certifications || []);
             setAwards(profile.awards || '');
-            setProjects(profile.projects || []);
-            setInternships(profile.internships || []);
+            const savedProjects2 = (() => {
+                try {
+                    const raw = typeof window !== 'undefined' && user?.id ? localStorage.getItem(`squrx_projects_${user.id}`) : null;
+                    return raw ? JSON.parse(raw) : null;
+                } catch { return null; }
+            })();
+            const effectiveProjects2 = (Array.isArray(profile.projects) && profile.projects.length > 0)
+                ? profile.projects
+                : (Array.isArray(savedProjects2) && savedProjects2.length > 0 ? savedProjects2 : (profile.projects || []));
+            setProjects(effectiveProjects2);
+            const savedInternships2 = (() => {
+                try {
+                    const raw = typeof window !== 'undefined' && user?.id ? localStorage.getItem(`squrx_internships_${user.id}`) : null;
+                    return raw ? JSON.parse(raw) : null;
+                } catch { return null; }
+            })();
+            const effectiveInternships2 = (profile.internships && profile.internships.length > 0)
+                ? profile.internships
+                : (Array.isArray(savedInternships2) && savedInternships2.length > 0 ? savedInternships2 : (profile.internships || []));
+            setInternships(effectiveInternships2);
             setProfileSummary(profile.profileSummary || '');
-            setOtherAchievements(profile.otherAchievements || '');
+            if (Array.isArray(profile.otherAchievements)) {
+                setOtherAchievements(profile.otherAchievements);
+            } else if (typeof profile.otherAchievements === 'string' && (profile.otherAchievements as string).trim()) {
+                setOtherAchievements([{ name: (profile.otherAchievements as string).trim(), link: '', description: '' }]);
+            } else {
+                setOtherAchievements([]);
+            }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [profile]);
@@ -677,6 +798,8 @@ export function StudentProfile() {
             location, locationQuery, selectedLocationId,
             jobType, jobTypeQuery,
             careerGoal,
+            domain,
+            customDomain,
             experienceLevel, experienceLevelQuery, experienceLevelId,
             expectedSalaryAmount, expectedSalaryCurrency,
             currentSalaryAmount, currentSalaryCurrency,
@@ -690,6 +813,7 @@ export function StudentProfile() {
             currentLocation,
             hometown,
             hometownCountry,
+            hometownCountryId,
             languagesKnown: languagesKnown ? [...languagesKnown.map(l => ({ ...l }))] : [],
             educationHistory: educationHistory ? [...educationHistory.map(eh => ({ ...eh }))] : [],
             employmentHistory: employmentHistory ? [...employmentHistory.map(e => ({ ...e }))] : [],
@@ -698,7 +822,7 @@ export function StudentProfile() {
             projects: projects ? [...projects.map(p => ({ ...p }))] : [],
             internships: internships ? [...internships.map(i => ({ ...i }))] : [],
             profileSummary,
-            otherAchievements,
+            otherAchievements: otherAchievements ? [...otherAchievements.map(o => ({ ...o }))] : [],
         });
         setIsEditing(true);
         if (careerGoal && !careerGoal.trim().endsWith(',')) {
@@ -715,6 +839,8 @@ export function StudentProfile() {
             setJobType(formSnapshot.jobType);
             setJobTypeQuery(formSnapshot.jobTypeQuery);
             setCareerGoal(formSnapshot.careerGoal);
+            setDomain(formSnapshot.domain);
+            setCustomDomain(formSnapshot.customDomain);
             setExperienceLevel(formSnapshot.experienceLevel);
             setExperienceLevelQuery(formSnapshot.experienceLevelQuery);
             setExperienceLevelId(formSnapshot.experienceLevelId);
@@ -732,6 +858,7 @@ export function StudentProfile() {
             setCurrentLocation(formSnapshot.currentLocation);
             setHometown(formSnapshot.hometown);
             setHometownCountry(formSnapshot.hometownCountry);
+            setHometownCountryId(formSnapshot.hometownCountryId || '');
             setLanguagesKnown(formSnapshot.languagesKnown);
             setEducationHistory(formSnapshot.educationHistory);
             setEmploymentHistory(formSnapshot.employmentHistory);
@@ -780,47 +907,49 @@ export function StudentProfile() {
                 educationHistory.map(async (item) => {
                     const copy = { ...item };
 
-                    if (copy.education === 'other' && copy.customEducation?.trim()) {
+                    if ((copy.education === 'other' || !educationsData?.data?.some((d: any) => d._id === copy.education)) && copy.customEducation?.trim()) {
                         try {
                             const res = await submitEducation({ name: copy.customEducation.trim() }).unwrap();
                             const resData = res?.data ?? res;
                             if (resData?._id) copy.education = resData._id;
                         } catch (err: any) {
-                            const errMsg = err?.data?.message || err?.message || `Failed to submit custom degree "${copy.customEducation}"`;
-                            throw new Error(errMsg);
+                            console.warn('Could not submit custom degree:', err);
                         }
                     }
 
-                    if (copy.university === 'other' && copy.customUniversity?.trim()) {
+                    if ((copy.university === 'other' || !universitiesData?.data?.some((u: any) => u._id === copy.university)) && copy.customUniversity?.trim()) {
                         try {
                             const res = await submitUniversity({ name: copy.customUniversity.trim() }).unwrap();
                             const resData = res?.data ?? res;
                             if (resData?._id) copy.university = resData._id;
                         } catch (err: any) {
-                            const errMsg = err?.data?.message || err?.message || `Failed to submit custom university "${copy.customUniversity}"`;
-                            throw new Error(errMsg);
+                            console.warn('Could not submit custom university:', err);
                         }
                     }
 
-                    if (copy.course === 'other' && copy.customCourse?.trim()) {
+                    if (copy.schoolCollegeName?.trim()) {
+                        if (copy.university && copy.university !== 'other') {
+                            copy.customUniversity = copy.schoolCollegeName.trim();
+                        }
+                    }
+
+                    if ((copy.course === 'other' || !coursesData?.data?.some((c: any) => c._id === copy.course)) && copy.customCourse?.trim()) {
                         try {
                             const res = await submitCourse({ name: copy.customCourse.trim() }).unwrap();
                             const resData = res?.data ?? res;
                             if (resData?._id) copy.course = resData._id;
                         } catch (err: any) {
-                            const errMsg = err?.data?.message || err?.message || `Failed to submit custom course "${copy.customCourse}"`;
-                            throw new Error(errMsg);
+                            console.warn('Could not submit custom course:', err);
                         }
                     }
 
-                    if (copy.specialization === 'other' && copy.customSpecialization?.trim()) {
+                    if ((copy.specialization === 'other' || !specializationsData?.data?.some((s: any) => s._id === copy.specialization)) && copy.customSpecialization?.trim()) {
                         try {
                             const res = await submitSpecialization({ name: copy.customSpecialization.trim() }).unwrap();
                             const resData = res?.data ?? res;
                             if (resData?._id) copy.specialization = resData._id;
                         } catch (err: any) {
-                            const errMsg = err?.data?.message || err?.message || `Failed to submit custom specialization "${copy.customSpecialization}"`;
-                            throw new Error(errMsg);
+                            console.warn('Could not submit custom specialization:', err);
                         }
                     }
 
@@ -870,8 +999,11 @@ export function StudentProfile() {
                 currency: expectedSalaryCurrency || defaultCurrId
             } : null;
 
-            const expMatch = experienceLevelsData?.data?.find((e: any) => e.name.toLowerCase() === experienceLevel.toLowerCase());
-            const expId = experienceLevelId || expMatch?._id || experienceLevel;
+            const expMatch = experienceLevelsData?.data?.find((e: any) => e._id === experienceLevelId || e.name.toLowerCase() === experienceLevel.toLowerCase());
+            const expId = experienceLevelId || expMatch?._id || (/^[0-9a-fA-F]{24}$/.test(experienceLevel) ? experienceLevel : undefined);
+
+            const countryMatch = countriesData?.data?.find((c: any) => c._id === hometownCountryId || c.name.toLowerCase() === (typeof hometownCountry === 'string' ? hometownCountry.toLowerCase() : ''));
+            const resolvedCountryId = hometownCountryId || countryMatch?._id || (typeof hometownCountry === 'string' && /^[0-9a-fA-F]{24}$/.test(hometownCountry.trim()) ? hometownCountry.trim() : undefined);
 
             const currentSalaryPayload = (currentSalaryAmount !== '' && !isNaN(Number(currentSalaryAmount))) ? {
                 amount: Number(currentSalaryAmount),
@@ -882,6 +1014,8 @@ export function StudentProfile() {
                 location,
                 jobType,
                 careerGoal,
+                domain: domain || undefined,
+                customDomain: domain === 'other' ? (customDomain || undefined) : undefined,
                 experienceLevel: expId,
                 experienceLevelId: expId,
                 expectedSalary: expectedSalaryPayload,
@@ -896,7 +1030,8 @@ export function StudentProfile() {
                 dob,
                 currentLocation,
                 hometown,
-                hometownCountry,
+                hometownCountry: resolvedCountryId || undefined,
+                hometownCountryId: resolvedCountryId || undefined,
                 languagesKnown: languagesKnown.map(lk => ({
                     language: lk.language,
                     proficiency: lk.proficiency,
@@ -907,6 +1042,7 @@ export function StudentProfile() {
                     proficiencyName: lk.proficiencyName || ''
                 })),
                 educationHistory: processedEducationHistory,
+                schoolCollegeName: processedEducationHistory[0]?.schoolCollegeName || (profile as any)?.schoolCollegeName || undefined,
                 employmentHistory: employmentHistory.map(e => {
                     let salaryPayload: any = null;
                     if (e.currentSalary) {
@@ -933,14 +1069,32 @@ export function StudentProfile() {
                         totalExperienceMonths: e.totalExperienceMonths ? Number(e.totalExperienceMonths) : undefined,
                         companyName: e.companyName || '',
                         jobTitle: e.jobTitle || '',
-                        joiningDate: e.joiningDate || '',
+                        joiningDate: formatJoiningDatePayload(e.joiningDate),
                         currentSalary: salaryPayload,
-                        skillsUsed: Array.isArray(e.skillsUsed) ? e.skillsUsed : [],
+                        skillsUsed: (Array.isArray(e.skillsUsed)
+                            ? e.skillsUsed
+                            : (typeof e.skillsUsed === 'string' ? (e.skillsUsed as string).split(',').map((s: string) => s.trim()).filter(Boolean) : [])
+                        ).map((s: any) => {
+                            const str = typeof s === 'object' && s ? (s._id || s.name) : String(s).trim();
+                            if (/^[0-9a-fA-F]{24}$/.test(str)) return str;
+                            const matched = skillsData?.data?.find((sd: any) => sd.name.toLowerCase() === str.toLowerCase());
+                            return matched?._id || '';
+                        }).filter((id: string) => /^[0-9a-fA-F]{24}$/.test(id)),
                         jobProfile: e.jobProfile || '',
                         noticePeriod: e.noticePeriod || ''
                     };
                 }),
-                certifications,
+                certifications: certifications.map(c => ({
+                    name: c.name || '',
+                    status: isCertificationCompleted(c) ? 'Completed' : 'Undergoing',
+                    doesNotExpire: !!c.doesNotExpire,
+                    completionId: c.completionId || undefined,
+                    url: c.url || undefined,
+                    validFromMonth: c.validFromMonth ? Number(c.validFromMonth) : undefined,
+                    validFromYear: c.validFromYear ? Number(c.validFromYear) : undefined,
+                    validToMonth: c.doesNotExpire ? undefined : (c.validToMonth ? Number(c.validToMonth) : undefined),
+                    validToYear: c.doesNotExpire ? undefined : (c.validToYear ? Number(c.validToYear) : undefined),
+                })),
                 awards,
                 projects: projects.map(p => ({
                     title: p.title || '',
@@ -949,8 +1103,8 @@ export function StudentProfile() {
                     status: p.status === 'Completed' ? 'Completed' : 'Ongoing',
                     workedFromYear: p.workedFromYear ? Number(p.workedFromYear) : undefined,
                     workedFromMonth: p.workedFromMonth ? Number(p.workedFromMonth) : undefined,
-                    workedTillYear: p.workedTillYear ? Number(p.workedTillYear) : undefined,
-                    workedTillMonth: p.workedTillMonth ? Number(p.workedTillMonth) : undefined,
+                    workedTillYear: p.status === 'Ongoing' ? undefined : (p.workedTillYear ? Number(p.workedTillYear) : undefined),
+                    workedTillMonth: p.status === 'Ongoing' ? undefined : (p.workedTillMonth ? Number(p.workedTillMonth) : undefined),
                     details: p.details || '',
                     location: p.location || undefined,
                     projectSite: p.projectSite || undefined,
@@ -962,12 +1116,23 @@ export function StudentProfile() {
                 })),
                 internships,
                 profileSummary,
-                otherAchievements,
+                otherAchievements: otherAchievements.filter(o => o.name?.trim()).map(o => ({
+                    name: o.name.trim(),
+                    link: o.link?.trim() || undefined,
+                    description: o.description?.trim() || undefined
+                })),
                 cvUrl: profile?.cvUrl ?? null,
                 resume: profile?.resume ?? null,
                 cvName: profile?.cvName ?? null,
                 resumeName: profile?.resumeName ?? null,
             });
+
+            if (user?.id) {
+                try {
+                    localStorage.setItem(`squrx_internships_${user.id}`, JSON.stringify(internships));
+                    localStorage.setItem(`squrx_projects_${user.id}`, JSON.stringify(projects));
+                } catch {}
+            }
 
             setSaveSuccess(true);
             setIsEditing(false);
@@ -1270,30 +1435,43 @@ export function StudentProfile() {
                                     {/* Experience Level */}
                                     <div className="space-y-1.5 relative">
                                         <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Experience Level</label>
-                                        <Input
-                                            placeholder="Search & select level..."
-                                            value={experienceLevelQuery}
-                                            onChange={e => { setExperienceLevelQuery(e.target.value); setShowExpSuggestions(true); }}
-                                            onFocus={() => setShowExpSuggestions(true)}
-                                            onBlur={() => setTimeout(() => setShowExpSuggestions(false), 200)}
-                                            disabled={!isEditing}
-                                            className="h-11"
-                                        />
-                                        {isEditing && showExpSuggestions && experienceLevelsData?.data && experienceLevelsData.data.length > 0 && (
-                                            <div className="absolute z-20 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-1.5 flex flex-col gap-0.5">
-                                                {experienceLevelsData.data.map((el: any) => {
-                                                    const displayName = el.name === 'Fresher' ? 'Fresher' : `${el.name} Years`;
-                                                    return (
-                                                        <button key={el._id} type="button"
-                                                            onMouseDown={() => { setExperienceLevel(el.name); setExperienceLevelQuery(displayName); setExperienceLevelId(el._id); setShowExpSuggestions(false); }}
-                                                            className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-lg transition-colors"
-                                                        >{displayName}</button>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-                                        {experienceLevel && !/^[0-9a-fA-F]{24}$/.test(experienceLevel) && !showExpSuggestions && (
-                                            <p className="text-xs text-muted-foreground">Selected: <span className="font-semibold text-foreground">{experienceLevel === 'Fresher' ? 'Fresher' : `${experienceLevel} Years`}</span></p>
+                                        {isEditing ? (
+                                            <select
+                                                value={experienceLevelId || (() => {
+                                                    const match = experienceLevelsData?.data?.find((el: any) => el.name.toLowerCase() === experienceLevel.toLowerCase());
+                                                    return match?._id || '';
+                                                })()}
+                                                onChange={(e) => {
+                                                    const selId = e.target.value;
+                                                    setExperienceLevelId(selId);
+                                                    const found = experienceLevelsData?.data?.find((el: any) => el._id === selId);
+                                                    setExperienceLevel(found?.name || '');
+                                                    setExperienceLevelQuery(found?.name === 'Fresher' ? 'Fresher' : (found ? `${found.name} Years` : ''));
+                                                }}
+                                                className="w-full h-11 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 font-medium cursor-pointer"
+                                            >
+                                                <option value="">Select Experience Level</option>
+                                                {experienceLevelsData?.data?.map((el: any) => (
+                                                    <option key={el._id} value={el._id}>
+                                                        {el.name === 'Fresher' || el.name.includes('Years') ? el.name : `${el.name} Years`}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            <Input
+                                                value={
+                                                    (experienceLevelId && experienceLevelsData?.data?.find((el: any) => el._id === experienceLevelId) ? (
+                                                        experienceLevelsData.data.find((el: any) => el._id === experienceLevelId).name === 'Fresher'
+                                                            ? 'Fresher'
+                                                            : `${experienceLevelsData.data.find((el: any) => el._id === experienceLevelId).name} Years`
+                                                    ) : '') ||
+                                                    experienceLevelQuery ||
+                                                    (experienceLevel ? (experienceLevel === 'Fresher' || experienceLevel.includes('Years') ? experienceLevel : `${experienceLevel} Years`) : '') ||
+                                                    '—'
+                                                }
+                                                disabled
+                                                className="h-11 bg-muted/30 border-border/40 text-muted-foreground font-medium cursor-not-allowed"
+                                            />
                                         )}
                                     </div>
 
@@ -1671,6 +1849,53 @@ export function StudentProfile() {
                                         )}
                                         {formErrors.careerGoal && <p className="text-destructive text-xs">{formErrors.careerGoal}</p>}
                                     </div>
+
+                                    {/* Primary Domain */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Primary Domain</label>
+                                        {isEditing ? (
+                                            <div className="space-y-2">
+                                                <select
+                                                    value={domain}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setDomain(val);
+                                                        if (val !== 'other') {
+                                                            setCustomDomain('');
+                                                        }
+                                                    }}
+                                                    className="w-full h-11 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 font-medium"
+                                                >
+                                                    <option value="">Select Primary Domain</option>
+                                                    {domainsData?.data?.map((d: any) => (
+                                                        <option key={d._id} value={d._id}>{d.name}</option>
+                                                    ))}
+                                                    <option value="other">Other (Custom Domain)</option>
+                                                </select>
+                                                {domain === 'other' && (
+                                                    <Input
+                                                        placeholder="Enter custom domain name"
+                                                        value={customDomain}
+                                                        onChange={(e) => setCustomDomain(e.target.value)}
+                                                        className="h-10 text-sm"
+                                                    />
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="h-11 px-3 py-2.5 rounded-md border border-border/40 bg-muted/20 text-sm font-medium flex items-center">
+                                                {(() => {
+                                                    if (domain === 'other' || profile?.domain === 'other') {
+                                                        return customDomain || profile?.customDomain || 'Other';
+                                                    }
+                                                    const dId = domain || profile?.domain;
+                                                    const match = domainsData?.data?.find((d: any) => d._id === dId || d.name === dId);
+                                                    if (match) return match.name;
+                                                    if (dId && !/^[0-9a-fA-F]{24}$/.test(dId)) return dId;
+                                                    return <span className="text-muted-foreground italic">Not specified</span>;
+                                                })()}
+                                            </div>
+                                        )}
+                                    </div>
                             </div>
 
                                 {/* Skills */}
@@ -1744,13 +1969,40 @@ export function StudentProfile() {
                                         {/* Hometown Country */}
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Hometown Country</label>
-                                            <Input
-                                                placeholder="e.g. India"
-                                                value={hometownCountry}
-                                                onChange={(e) => setHometownCountry(e.target.value)}
-                                                disabled={!isEditing}
-                                                className={`h-11 ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : ''}`}
-                                            />
+                                            {isEditing ? (
+                                                <select
+                                                    value={hometownCountryId || (() => {
+                                                        const match = countriesData?.data?.find((c: any) => c.name.toLowerCase() === (typeof hometownCountry === 'string' ? hometownCountry.toLowerCase() : ''));
+                                                        return match?._id || '';
+                                                    })()}
+                                                    onChange={(e) => {
+                                                        const selId = e.target.value;
+                                                        setHometownCountryId(selId);
+                                                        const match = countriesData?.data?.find((c: any) => c._id === selId);
+                                                        setHometownCountry(match?.name || '');
+                                                    }}
+                                                    className="w-full h-11 bg-background border border-input focus:border-ring focus:ring-2 focus:ring-ring/20 rounded-md px-3 text-sm font-medium outline-none transition-all cursor-pointer"
+                                                >
+                                                    <option value="">Select Country</option>
+                                                    {countriesData?.data?.map((c: any) => (
+                                                        <option key={c._id || c.name} value={c._id}>{c.name}</option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <Input
+                                                    placeholder="e.g. India"
+                                                    value={
+                                                        (typeof hometownCountry === 'object' && hometownCountry ? (hometownCountry as any).name : (
+                                                            (hometownCountry && !/^[0-9a-fA-F]{24}$/.test(hometownCountry)) ? hometownCountry : (
+                                                                (hometownCountryId || hometownCountry) && countriesData?.data?.find((c: any) => c._id === (hometownCountryId || hometownCountry))?.name
+                                                            )
+                                                        )) ||
+                                                        '—'
+                                                    }
+                                                    disabled
+                                                    className="h-11 bg-muted/30 border-border/40 text-muted-foreground font-medium cursor-not-allowed"
+                                                />
+                                            )}
                                         </div>
 
                                         {/* Languages Known — array of { language, proficiency, read, write, speak } per backend spec */}
@@ -1931,10 +2183,25 @@ export function StudentProfile() {
                                     ) : (
                                         <div className="space-y-4">
                                             {educationHistory.map((item, idx) => {
-                                                const degreeName = item.education === 'other' ? (item.customEducation || 'Custom Degree') : (educationsData?.data?.find((d: any) => d._id === item.education)?.name || item.education || '—');
-                                                const uniName = item.university === 'other' ? (item.customUniversity || 'Custom University') : (universitiesData?.data?.find((u: any) => u._id === item.university)?.name || item.university || '—');
-                                                const courseName = item.course === 'other' ? (item.customCourse || 'Custom Course') : (coursesData?.data?.find((c: any) => c._id === item.course)?.name || item.course || '—');
-                                                const specName = item.specialization === 'other' ? (item.customSpecialization || 'Custom Specialization') : (specializationsData?.data?.find((s: any) => s._id === item.specialization)?.name || item.specialization || '—');
+                                                const matchedDegree = educationsData?.data?.find((d: any) => d._id === item.education)?.name;
+                                                const degreeName = item.education === 'other'
+                                                    ? (item.customEducation || 'Custom Degree')
+                                                    : (matchedDegree || item.customEducation || (!isHexId(item.education) && item.education !== 'other' ? item.education : '') || '—');
+
+                                                const matchedUni = universitiesData?.data?.find((u: any) => u._id === item.university)?.name;
+                                                const uniName = item.university === 'other'
+                                                    ? (item.customUniversity || 'Custom University')
+                                                    : (matchedUni || item.customUniversity || (!isHexId(item.university) && item.university !== 'other' ? item.university : '') || '—');
+
+                                                const matchedCourse = coursesData?.data?.find((c: any) => c._id === item.course)?.name;
+                                                const courseName = item.course === 'other'
+                                                    ? (item.customCourse || 'Custom Course')
+                                                    : (matchedCourse || item.customCourse || (!isHexId(item.course) && item.course !== 'other' ? item.course : ''));
+
+                                                const matchedSpec = specializationsData?.data?.find((s: any) => s._id === item.specialization)?.name;
+                                                const specName = item.specialization === 'other'
+                                                    ? (item.customSpecialization || 'Custom Specialization')
+                                                    : (matchedSpec || item.customSpecialization || (!isHexId(item.specialization) && item.specialization !== 'other' ? item.specialization : ''));
 
                                                 return (
                                                     <div key={idx} className="bg-muted/20 p-4 rounded-xl border border-border/40 space-y-3">
@@ -1942,131 +2209,203 @@ export function StudentProfile() {
                                                             <>
                                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                                     {/* Degree */}
-                                                                    <div className="space-y-1">
-                                                                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Degree</label>
-                                                                        <select
-                                                                            value={item.education || ''}
-                                                                            onChange={(e) => {
-                                                                                const copy = [...educationHistory];
-                                                                                copy[idx] = { ...copy[idx], education: e.target.value, customEducation: e.target.value === 'other' ? '' : copy[idx].customEducation };
-                                                                                setEducationHistory(copy);
-                                                                            }}
-                                                                            className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
-                                                                        >
-                                                                            <option value="">Select Degree</option>
-                                                                            {educationsData?.data?.map((d: any) => (
-                                                                                <option key={d._id} value={d._id}>{d.name}</option>
-                                                                            ))}
-                                                                            <option value="other">Other / Custom Degree</option>
-                                                                        </select>
-                                                                        {item.education === 'other' && (
-                                                                            <Input
-                                                                                placeholder="Enter Custom Degree"
-                                                                                value={item.customEducation || ''}
-                                                                                onChange={(e) => {
-                                                                                    const copy = [...educationHistory];
-                                                                                    copy[idx] = { ...copy[idx], customEducation: e.target.value };
-                                                                                    setEducationHistory(copy);
-                                                                                }}
-                                                                                className="h-8 mt-1 text-xs"
-                                                                            />
-                                                                        )}
-                                                                    </div>
+                                                                    {(() => {
+                                                                        const isKnownDegree = educationsData?.data?.some((d: any) => d._id === item.education);
+                                                                        const isCustomDegree = !isKnownDegree && (item.education === 'other' || Boolean(item.customEducation) || isHexId(item.education));
+                                                                        const selectDegreeVal = isKnownDegree ? item.education : (isCustomDegree ? 'other' : (item.education || ''));
+
+                                                                        return (
+                                                                            <div className="space-y-1">
+                                                                                <label className="text-[10px] font-bold text-muted-foreground uppercase">Degree</label>
+                                                                                <select
+                                                                                    value={selectDegreeVal}
+                                                                                    onChange={(e) => {
+                                                                                        const val = e.target.value;
+                                                                                        const copy = [...educationHistory];
+                                                                                        copy[idx] = {
+                                                                                            ...copy[idx],
+                                                                                            education: val,
+                                                                                            customEducation: val === 'other' ? (copy[idx].customEducation || '') : ''
+                                                                                        };
+                                                                                        setEducationHistory(copy);
+                                                                                    }}
+                                                                                    className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
+                                                                                >
+                                                                                    <option value="">Select Degree</option>
+                                                                                    {educationsData?.data?.map((d: any) => (
+                                                                                        <option key={d._id} value={d._id}>{d.name}</option>
+                                                                                    ))}
+                                                                                    <option value="other">Other / Custom Degree</option>
+                                                                                </select>
+                                                                                {(selectDegreeVal === 'other' || isCustomDegree) && (
+                                                                                    <Input
+                                                                                        placeholder="Enter Custom Degree"
+                                                                                        value={item.customEducation || ''}
+                                                                                        onChange={(e) => {
+                                                                                            const copy = [...educationHistory];
+                                                                                            copy[idx] = { ...copy[idx], education: 'other', customEducation: e.target.value };
+                                                                                            setEducationHistory(copy);
+                                                                                        }}
+                                                                                        className="h-8 mt-1 text-xs"
+                                                                                    />
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })()}
 
                                                                     {/* Course */}
-                                                                    <div className="space-y-1">
-                                                                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Course</label>
-                                                                        <select
-                                                                            value={item.course || ''}
-                                                                            onChange={(e) => {
-                                                                                const copy = [...educationHistory];
-                                                                                copy[idx] = { ...copy[idx], course: e.target.value, customCourse: e.target.value === 'other' ? '' : copy[idx].customCourse };
-                                                                                setEducationHistory(copy);
-                                                                            }}
-                                                                            className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
-                                                                        >
-                                                                            <option value="">Select Course</option>
-                                                                            {coursesData?.data?.map((c: any) => (
-                                                                                <option key={c._id} value={c._id}>{c.name}</option>
-                                                                            ))}
-                                                                            <option value="other">Other / Custom Course</option>
-                                                                        </select>
-                                                                        {item.course === 'other' && (
-                                                                            <Input
-                                                                                placeholder="Enter Custom Course"
-                                                                                value={item.customCourse || ''}
-                                                                                onChange={(e) => {
-                                                                                    const copy = [...educationHistory];
-                                                                                    copy[idx] = { ...copy[idx], customCourse: e.target.value };
-                                                                                    setEducationHistory(copy);
-                                                                                }}
-                                                                                className="h-8 mt-1 text-xs"
-                                                                            />
-                                                                        )}
-                                                                    </div>
+                                                                    {(() => {
+                                                                        const isKnownCourse = coursesData?.data?.some((c: any) => c._id === item.course);
+                                                                        const isCustomCourse = !isKnownCourse && (item.course === 'other' || Boolean(item.customCourse) || isHexId(item.course));
+                                                                        const selectCourseVal = isKnownCourse ? item.course : (isCustomCourse ? 'other' : (item.course || ''));
+
+                                                                        return (
+                                                                            <div className="space-y-1">
+                                                                                <label className="text-[10px] font-bold text-muted-foreground uppercase">Course</label>
+                                                                                <select
+                                                                                    value={selectCourseVal}
+                                                                                    onChange={(e) => {
+                                                                                        const val = e.target.value;
+                                                                                        const copy = [...educationHistory];
+                                                                                        copy[idx] = {
+                                                                                            ...copy[idx],
+                                                                                            course: val,
+                                                                                            customCourse: val === 'other' ? (copy[idx].customCourse || '') : ''
+                                                                                        };
+                                                                                        setEducationHistory(copy);
+                                                                                    }}
+                                                                                    className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
+                                                                                >
+                                                                                    <option value="">Select Course</option>
+                                                                                    {coursesData?.data?.map((c: any) => (
+                                                                                        <option key={c._id} value={c._id}>{c.name}</option>
+                                                                                    ))}
+                                                                                    <option value="other">Other / Custom Course</option>
+                                                                                </select>
+                                                                                {(selectCourseVal === 'other' || isCustomCourse) && (
+                                                                                    <Input
+                                                                                        placeholder="Enter Custom Course"
+                                                                                        value={item.customCourse || ''}
+                                                                                        onChange={(e) => {
+                                                                                            const copy = [...educationHistory];
+                                                                                            copy[idx] = { ...copy[idx], course: 'other', customCourse: e.target.value };
+                                                                                            setEducationHistory(copy);
+                                                                                        }}
+                                                                                        className="h-8 mt-1 text-xs"
+                                                                                    />
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })()}
 
                                                                     {/* Specialization */}
-                                                                    <div className="space-y-1">
-                                                                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Specialization</label>
-                                                                        <select
-                                                                            value={item.specialization || ''}
-                                                                            onChange={(e) => {
-                                                                                const copy = [...educationHistory];
-                                                                                copy[idx] = { ...copy[idx], specialization: e.target.value, customSpecialization: e.target.value === 'other' ? '' : copy[idx].customSpecialization };
-                                                                                setEducationHistory(copy);
-                                                                            }}
-                                                                            className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
-                                                                        >
-                                                                            <option value="">Select Specialization</option>
-                                                                            {specializationsData?.data?.map((s: any) => (
-                                                                                <option key={s._id} value={s._id}>{s.name}</option>
-                                                                            ))}
-                                                                            <option value="other">Other / Custom Specialization</option>
-                                                                        </select>
-                                                                        {item.specialization === 'other' && (
-                                                                            <Input
-                                                                                placeholder="Enter Custom Specialization"
-                                                                                value={item.customSpecialization || ''}
-                                                                                onChange={(e) => {
-                                                                                    const copy = [...educationHistory];
-                                                                                    copy[idx] = { ...copy[idx], customSpecialization: e.target.value };
-                                                                                    setEducationHistory(copy);
-                                                                                }}
-                                                                                className="h-8 mt-1 text-xs"
-                                                                            />
-                                                                        )}
-                                                                    </div>
+                                                                    {(() => {
+                                                                        const isKnownSpec = specializationsData?.data?.some((s: any) => s._id === item.specialization);
+                                                                        const isCustomSpec = !isKnownSpec && (item.specialization === 'other' || Boolean(item.customSpecialization) || isHexId(item.specialization));
+                                                                        const selectSpecVal = isKnownSpec ? item.specialization : (isCustomSpec ? 'other' : (item.specialization || ''));
+
+                                                                        return (
+                                                                            <div className="space-y-1">
+                                                                                <label className="text-[10px] font-bold text-muted-foreground uppercase">Specialization</label>
+                                                                                <select
+                                                                                    value={selectSpecVal}
+                                                                                    onChange={(e) => {
+                                                                                        const val = e.target.value;
+                                                                                        const copy = [...educationHistory];
+                                                                                        copy[idx] = {
+                                                                                            ...copy[idx],
+                                                                                            specialization: val,
+                                                                                            customSpecialization: val === 'other' ? (copy[idx].customSpecialization || '') : ''
+                                                                                        };
+                                                                                        setEducationHistory(copy);
+                                                                                    }}
+                                                                                    className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
+                                                                                >
+                                                                                    <option value="">Select Specialization</option>
+                                                                                    {specializationsData?.data?.map((s: any) => (
+                                                                                        <option key={s._id} value={s._id}>{s.name}</option>
+                                                                                    ))}
+                                                                                    <option value="other">Other / Custom Specialization</option>
+                                                                                </select>
+                                                                                {(selectSpecVal === 'other' || isCustomSpec) && (
+                                                                                    <Input
+                                                                                        placeholder="Enter Custom Specialization"
+                                                                                        value={item.customSpecialization || ''}
+                                                                                        onChange={(e) => {
+                                                                                            const copy = [...educationHistory];
+                                                                                            copy[idx] = { ...copy[idx], specialization: 'other', customSpecialization: e.target.value };
+                                                                                            setEducationHistory(copy);
+                                                                                        }}
+                                                                                        className="h-8 mt-1 text-xs"
+                                                                                    />
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })()}
 
                                                                     {/* University */}
+                                                                    {(() => {
+                                                                        const isKnownUni = universitiesData?.data?.some((u: any) => u._id === item.university);
+                                                                        const isCustomUni = !isKnownUni && (item.university === 'other' || (Boolean(item.customUniversity) && item.customUniversity !== item.schoolCollegeName) || isHexId(item.university));
+                                                                        const selectUniVal = isKnownUni ? item.university : (isCustomUni ? 'other' : (item.university || ''));
+
+                                                                        return (
+                                                                            <div className="space-y-1">
+                                                                                <label className="text-[10px] font-bold text-muted-foreground uppercase">University</label>
+                                                                                <select
+                                                                                    value={selectUniVal}
+                                                                                    onChange={(e) => {
+                                                                                        const val = e.target.value;
+                                                                                        const copy = [...educationHistory];
+                                                                                        copy[idx] = {
+                                                                                            ...copy[idx],
+                                                                                            university: val,
+                                                                                            customUniversity: val === 'other' ? (copy[idx].customUniversity || '') : copy[idx].customUniversity
+                                                                                        };
+                                                                                        setEducationHistory(copy);
+                                                                                    }}
+                                                                                    className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
+                                                                                >
+                                                                                    <option value="">Select University</option>
+                                                                                    {universitiesData?.data?.map((u: any) => (
+                                                                                        <option key={u._id} value={u._id}>{u.name}</option>
+                                                                                    ))}
+                                                                                    <option value="other">Other / Custom University</option>
+                                                                                </select>
+                                                                                {(selectUniVal === 'other' || isCustomUni) && (
+                                                                                    <Input
+                                                                                        placeholder="Enter Custom University"
+                                                                                        value={item.customUniversity || ''}
+                                                                                        onChange={(e) => {
+                                                                                            const copy = [...educationHistory];
+                                                                                            copy[idx] = { ...copy[idx], university: 'other', customUniversity: e.target.value };
+                                                                                            setEducationHistory(copy);
+                                                                                        }}
+                                                                                        className="h-8 mt-1 text-xs"
+                                                                                    />
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })()}
+
+                                                                    {/* School / College Name */}
                                                                     <div className="space-y-1">
-                                                                        <label className="text-[10px] font-bold text-muted-foreground uppercase">University</label>
-                                                                        <select
-                                                                            value={item.university || ''}
+                                                                        <label className="text-[10px] font-bold text-muted-foreground uppercase">School / College Name</label>
+                                                                        <Input
+                                                                            placeholder="e.g. St. Francis College"
+                                                                            value={item.schoolCollegeName || item.college || (item.customUniversity && item.customUniversity !== uniName ? item.customUniversity : '') || (idx === 0 ? (profile as any)?.schoolCollegeName : '') || ''}
                                                                             onChange={(e) => {
                                                                                 const copy = [...educationHistory];
-                                                                                copy[idx] = { ...copy[idx], university: e.target.value, customUniversity: e.target.value === 'other' ? '' : copy[idx].customUniversity };
+                                                                                copy[idx] = {
+                                                                                    ...copy[idx],
+                                                                                    schoolCollegeName: e.target.value,
+                                                                                    college: e.target.value,
+                                                                                    customUniversity: (copy[idx].university && copy[idx].university !== 'other') ? e.target.value : copy[idx].customUniversity
+                                                                                };
                                                                                 setEducationHistory(copy);
                                                                             }}
-                                                                            className="w-full h-9 bg-background border border-input rounded-md px-2 text-xs font-medium outline-none"
-                                                                        >
-                                                                            <option value="">Select University</option>
-                                                                            {universitiesData?.data?.map((u: any) => (
-                                                                                <option key={u._id} value={u._id}>{u.name}</option>
-                                                                            ))}
-                                                                            <option value="other">Other / Custom University</option>
-                                                                        </select>
-                                                                        {item.university === 'other' && (
-                                                                            <Input
-                                                                                placeholder="Enter Custom University"
-                                                                                value={item.customUniversity || ''}
-                                                                                onChange={(e) => {
-                                                                                    const copy = [...educationHistory];
-                                                                                    copy[idx] = { ...copy[idx], customUniversity: e.target.value };
-                                                                                    setEducationHistory(copy);
-                                                                                }}
-                                                                                className="h-8 mt-1 text-xs"
-                                                                            />
-                                                                        )}
+                                                                            className="h-9 text-xs"
+                                                                        />
                                                                     </div>
 
                                                                     {/* Course Type */}
@@ -2167,10 +2506,31 @@ export function StudentProfile() {
                                                             <div className="flex flex-col gap-1">
                                                                 <div className="flex justify-between items-start">
                                                                     <span className="text-sm font-semibold text-foreground">{degreeName}</span>
-                                                                    <span className="text-xs font-medium text-muted-foreground">{item.startYear && item.endYear ? `${item.startYear} - ${item.endYear}` : '—'}</span>
+                                                                    {item.startYear && item.endYear ? (
+                                                                        <span className="text-xs font-medium text-muted-foreground">{item.startYear} - {item.endYear}</span>
+                                                                    ) : (item.endYear || item.passingYear || item.startYear) ? (
+                                                                        <span className="text-xs font-medium text-muted-foreground">{item.endYear || item.passingYear || item.startYear}</span>
+                                                                    ) : null}
                                                                 </div>
-                                                                <span className="text-xs text-foreground font-medium">{courseName} {specName !== '—' && `· ${specName}`}</span>
-                                                                <span className="text-xs text-muted-foreground">{uniName}</span>
+                                                                {((courseName && courseName !== '—') || (specName && specName !== '—')) && (
+                                                                    <span className="text-xs text-foreground font-medium">
+                                                                        {courseName && courseName !== '—' ? courseName : ''}
+                                                                        {specName && specName !== '—' ? (courseName && courseName !== '—' ? ` · ${specName}` : specName) : ''}
+                                                                    </span>
+                                                                )}
+                                                                {(() => {
+                                                                    const collegeVal = item.schoolCollegeName || item.college || item.institute || (item.customUniversity && item.customUniversity !== uniName ? item.customUniversity : '') || (idx === 0 ? (profile as any)?.schoolCollegeName : '');
+                                                                    return (
+                                                                        <div className="flex flex-col">
+                                                                            {collegeVal && (
+                                                                                <span className="text-xs font-semibold text-foreground">{collegeVal}</span>
+                                                                            )}
+                                                                            {uniName && uniName !== '—' && (
+                                                                                <span className="text-xs text-muted-foreground">{uniName}</span>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })()}
                                                                 <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
                                                                     <span>Course Type: <span className="font-semibold text-foreground">{item.courseType || 'Full Time'}</span></span>
                                                                     {item.gradingValue && (
@@ -2220,7 +2580,7 @@ export function StudentProfile() {
                                     ) : (
                                         <div className="space-y-3">
                                             {employmentHistory.map((emp, idx) => {
-                                                const empTypeName = jobTypesData?.data?.find((jt: any) => jt._id === emp.employmentType)?.name || emp.employmentType || '';
+                                                const empTypeName = jobTypesData?.data?.find((jt: any) => jt._id === emp.employmentType)?.name || (!isHexId(emp.employmentType) ? emp.employmentType : '') || '';
                                                 return (
                                                     <div key={idx} className="bg-muted/20 p-3.5 rounded-xl border border-border/40 space-y-2.5">
                                                         {isEditing ? (
@@ -2252,10 +2612,16 @@ export function StudentProfile() {
                                                                 </div>
                                                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                                                     <Input
-                                                                        placeholder="Joining Date (e.g. 2021-06-15)"
-                                                                        value={emp.joiningDate || ''}
+                                                                        type="date"
+                                                                        title="Joining Date"
+                                                                        value={toDateInputValue(emp.joiningDate)}
+                                                                        onClick={(e) => {
+                                                                            try {
+                                                                                (e.target as HTMLInputElement).showPicker?.();
+                                                                            } catch {}
+                                                                        }}
                                                                         onChange={(e) => { const c = [...employmentHistory]; c[idx] = { ...c[idx], joiningDate: e.target.value }; setEmploymentHistory(c); }}
-                                                                        className="h-9 rounded-lg text-sm"
+                                                                        className="h-9 rounded-lg text-sm cursor-pointer"
                                                                     />
                                                                     <Input
                                                                         type="number"
@@ -2344,6 +2710,29 @@ export function StudentProfile() {
                                                                     rows={2}
                                                                     className="w-full rounded-md border px-3 py-2 text-sm outline-none transition-all resize-none bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20"
                                                                 />
+                                                                <div>
+                                                                    <label className="text-xs font-semibold text-muted-foreground block mb-1">Key Skills Used (comma-separated)</label>
+                                                                    <Input
+                                                                        placeholder="e.g. React, Node.js, SQL"
+                                                                        value={Array.isArray(emp.skillsUsed)
+                                                                            ? emp.skillsUsed.map((s: any) => {
+                                                                                if (typeof s === 'string' && /^[0-9a-fA-F]{24}$/.test(s)) {
+                                                                                    return skillsData?.data?.find((sk: any) => sk._id === s)?.name || s;
+                                                                                }
+                                                                                return typeof s === 'object' && s ? (s.name || s._id) : String(s);
+                                                                            }).join(', ')
+                                                                            : (emp.skillsUsed || '')}
+                                                                        onChange={(e) => {
+                                                                            const c = [...employmentHistory];
+                                                                            c[idx] = {
+                                                                                ...c[idx],
+                                                                                skillsUsed: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                                                                            };
+                                                                            setEmploymentHistory(c);
+                                                                        }}
+                                                                        className="h-9 rounded-lg text-sm"
+                                                                    />
+                                                                </div>
                                                                 <div className="flex justify-end">
                                                                     <Button
                                                                         type="button"
@@ -2362,7 +2751,7 @@ export function StudentProfile() {
                                                                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                                                     {emp.jobTitle && <span className="font-medium text-foreground">{emp.jobTitle}</span>}
                                                                     {empTypeName && <span className="px-1.5 py-0.5 rounded bg-muted font-semibold">{empTypeName}</span>}
-                                                                    {emp.joiningDate && <span>Joined: {emp.joiningDate}</span>}
+                                                                    {emp.joiningDate && <span>Joined: {formatJoiningDateDisplay(emp.joiningDate)}</span>}
                                                                 </div>
                                                                 <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground mt-0.5">
                                                                     {(emp.totalExperienceYears != null || emp.totalExperienceMonths != null) && (
@@ -2384,6 +2773,20 @@ export function StudentProfile() {
                                                                         return <span>Salary: {String(emp.currentSalary)}</span>;
                                                                     })()}
                                                                 </div>
+                                                                {emp.skillsUsed && emp.skillsUsed.length > 0 && (
+                                                                    <div className="flex flex-wrap gap-1 mt-1">
+                                                                        {emp.skillsUsed.map((s, sIdx) => {
+                                                                            const sName = typeof s === 'string' && /^[0-9a-fA-F]{24}$/.test(s)
+                                                                                ? (skillsData?.data?.find((sk: any) => sk._id === s)?.name || s)
+                                                                                : (typeof s === 'object' && s ? (s.name || s._id) : String(s));
+                                                                            return (
+                                                                                <span key={sIdx} className="text-[10px] px-2 py-0.5 rounded bg-muted/80 text-foreground font-medium border border-border/40">
+                                                                                    {sName}
+                                                                                </span>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                )}
                                                                 {emp.jobProfile && <span className="text-xs text-muted-foreground mt-1">{emp.jobProfile}</span>}
                                                             </div>
                                                         )}
@@ -2401,59 +2804,201 @@ export function StudentProfile() {
                                         {isEditing && (
                                             <Button
                                                 type="button"
-                                                onClick={() => setCertifications([...certifications, { name: '', status: 'undergoing' }])}
+                                                onClick={() => setCertifications([...certifications, {
+                                                    name: '',
+                                                    status: 'completed',
+                                                    doesNotExpire: false,
+                                                    completionId: '',
+                                                    url: '',
+                                                    validFromMonth: undefined,
+                                                    validFromYear: undefined,
+                                                    validToMonth: undefined,
+                                                    validToYear: undefined
+                                                }])}
                                                 variant="outline"
                                                 className="h-7 rounded-lg text-xs font-bold px-3 border-border/60"
                                             >
-                                                + Add
+                                                + Add Certification
                                             </Button>
                                         )}
                                     </div>
                                     {certifications.length === 0 ? (
-                                        <p className="text-xs text-muted-foreground italic">{isEditing ? 'No certifications added. Click + Add to get started.' : 'No certifications listed.'}</p>
+                                        <p className="text-xs text-muted-foreground italic">{isEditing ? 'No certifications added. Click + Add Certification to get started.' : 'No certifications listed.'}</p>
                                     ) : (
-                                        <div className="space-y-2.5">
+                                        <div className="space-y-3">
                                             {certifications.map((cert, index) => (
-                                                <div key={index} className="flex gap-2 items-center bg-muted/20 p-2.5 rounded-xl border border-border/40">
+                                                <div key={index} className="bg-muted/20 p-3 rounded-xl border border-border/40 space-y-2.5">
                                                     {isEditing ? (
                                                         <>
-                                                            <Input
-                                                                placeholder="Certification Name"
-                                                                value={cert.name}
-                                                                onChange={(e) => {
-                                                                    const copy = [...certifications];
-                                                                    copy[index] = { ...copy[index], name: e.target.value };
-                                                                    setCertifications(copy);
-                                                                }}
-                                                                className="h-9 rounded-lg flex-1 text-sm"
-                                                            />
-                                                            <div className="flex items-center gap-1.5 shrink-0">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    id={`prof-cert-${index}`}
-                                                                    checked={cert.status === 'completed'}
+                                                            <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+                                                                <Input
+                                                                    placeholder="Certification Name *"
+                                                                    value={cert.name}
                                                                     onChange={(e) => {
                                                                         const copy = [...certifications];
-                                                                        copy[index] = { ...copy[index], status: e.target.checked ? 'completed' : 'undergoing' };
+                                                                        copy[index] = { ...copy[index], name: e.target.value };
                                                                         setCertifications(copy);
                                                                     }}
-                                                                    className="rounded border-gray-300 w-4 h-4 cursor-pointer"
+                                                                    className="h-9 rounded-lg flex-1 text-sm font-medium"
                                                                 />
-                                                                <label htmlFor={`prof-cert-${index}`} className="text-xs font-semibold text-muted-foreground cursor-pointer select-none whitespace-nowrap">Completed</label>
+                                                                <div className="flex items-center gap-3 shrink-0">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            id={`prof-cert-${index}`}
+                                                                            checked={isCertificationCompleted(cert)}
+                                                                            onChange={(e) => {
+                                                                                const copy = [...certifications];
+                                                                                copy[index] = {
+                                                                                    ...copy[index],
+                                                                                    status: e.target.checked ? 'Completed' : 'Undergoing',
+                                                                                    completionId: e.target.checked ? copy[index].completionId : ''
+                                                                                };
+                                                                                setCertifications(copy);
+                                                                            }}
+                                                                            className="rounded border-gray-300 w-4 h-4 cursor-pointer"
+                                                                        />
+                                                                        <label htmlFor={`prof-cert-${index}`} className="text-xs font-semibold text-muted-foreground cursor-pointer select-none">Completed</label>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            id={`prof-cert-expire-${index}`}
+                                                                            checked={!!cert.doesNotExpire}
+                                                                            onChange={(e) => {
+                                                                                const copy = [...certifications];
+                                                                                copy[index] = {
+                                                                                    ...copy[index],
+                                                                                    doesNotExpire: e.target.checked,
+                                                                                    validToMonth: e.target.checked ? undefined : copy[index].validToMonth,
+                                                                                    validToYear: e.target.checked ? undefined : copy[index].validToYear
+                                                                                };
+                                                                                setCertifications(copy);
+                                                                            }}
+                                                                            className="rounded border-gray-300 w-4 h-4 cursor-pointer"
+                                                                        />
+                                                                        <label htmlFor={`prof-cert-expire-${index}`} className="text-xs font-semibold text-muted-foreground cursor-pointer select-none">Does not expire</label>
+                                                                    </div>
+                                                                    <Button
+                                                                        type="button"
+                                                                        onClick={() => setCertifications(certifications.filter((_, i) => i !== index))}
+                                                                        variant="outline"
+                                                                        className="h-7 w-7 p-0 text-destructive border-destructive/20 hover:bg-destructive/5 rounded-lg shrink-0"
+                                                                    >✕</Button>
+                                                                </div>
                                                             </div>
-                                                            <Button
-                                                                type="button"
-                                                                onClick={() => setCertifications(certifications.filter((_, i) => i !== index))}
-                                                                variant="outline"
-                                                                className="h-8 w-8 p-0 text-destructive border-destructive/20 hover:bg-destructive/5 rounded-lg shrink-0"
-                                                            >✕</Button>
+
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                <Input
+                                                                    placeholder="Completion / License ID"
+                                                                    value={cert.completionId || ''}
+                                                                    onChange={(e) => {
+                                                                        const copy = [...certifications];
+                                                                        copy[index] = { ...copy[index], completionId: e.target.value };
+                                                                        setCertifications(copy);
+                                                                    }}
+                                                                    className="h-9 rounded-lg text-sm"
+                                                                />
+                                                                <Input
+                                                                    placeholder="Verification / Credential URL"
+                                                                    value={cert.url || ''}
+                                                                    onChange={(e) => {
+                                                                        const copy = [...certifications];
+                                                                        copy[index] = { ...copy[index], url: e.target.value };
+                                                                        setCertifications(copy);
+                                                                    }}
+                                                                    className="h-9 rounded-lg text-sm"
+                                                                />
+                                                            </div>
+
+                                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                                                <Input
+                                                                    type="number"
+                                                                    placeholder="Valid From Month (1-12)"
+                                                                    min={1}
+                                                                    max={12}
+                                                                    value={cert.validFromMonth != null ? String(cert.validFromMonth) : ''}
+                                                                    onChange={(e) => {
+                                                                        const copy = [...certifications];
+                                                                        copy[index] = { ...copy[index], validFromMonth: e.target.value ? Number(e.target.value) : undefined };
+                                                                        setCertifications(copy);
+                                                                    }}
+                                                                    className="h-9 rounded-lg text-sm"
+                                                                />
+                                                                <Input
+                                                                    type="number"
+                                                                    placeholder="Valid From Year"
+                                                                    value={cert.validFromYear != null ? String(cert.validFromYear) : ''}
+                                                                    onChange={(e) => {
+                                                                        const copy = [...certifications];
+                                                                        copy[index] = { ...copy[index], validFromYear: e.target.value ? Number(e.target.value) : undefined };
+                                                                        setCertifications(copy);
+                                                                    }}
+                                                                    className="h-9 rounded-lg text-sm"
+                                                                />
+                                                                <Input
+                                                                    type="number"
+                                                                    placeholder="Valid To Month"
+                                                                    min={1}
+                                                                    max={12}
+                                                                    disabled={!!cert.doesNotExpire}
+                                                                    value={!cert.doesNotExpire && cert.validToMonth != null ? String(cert.validToMonth) : ''}
+                                                                    onChange={(e) => {
+                                                                        const copy = [...certifications];
+                                                                        copy[index] = { ...copy[index], validToMonth: e.target.value ? Number(e.target.value) : undefined };
+                                                                        setCertifications(copy);
+                                                                    }}
+                                                                    className={`h-9 rounded-lg text-sm ${cert.doesNotExpire ? 'opacity-50 cursor-not-allowed bg-muted/40' : ''}`}
+                                                                />
+                                                                <Input
+                                                                    type="number"
+                                                                    placeholder="Valid To Year"
+                                                                    disabled={!!cert.doesNotExpire}
+                                                                    value={!cert.doesNotExpire && cert.validToYear != null ? String(cert.validToYear) : ''}
+                                                                    onChange={(e) => {
+                                                                        const copy = [...certifications];
+                                                                        copy[index] = { ...copy[index], validToYear: e.target.value ? Number(e.target.value) : undefined };
+                                                                        setCertifications(copy);
+                                                                    }}
+                                                                    className={`h-9 rounded-lg text-sm ${cert.doesNotExpire ? 'opacity-50 cursor-not-allowed bg-muted/40' : ''}`}
+                                                                />
+                                                            </div>
                                                         </>
                                                     ) : (
-                                                        <div className="flex items-center justify-between w-full">
-                                                            <span className="text-sm font-medium">{cert.name || '—'}</span>
-                                                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${cert.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                                                {cert.status === 'completed' ? 'Completed' : 'Undergoing'}
-                                                            </span>
+                                                        <div className="flex flex-col gap-1.5 w-full">
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-sm font-semibold">{cert.name || '—'}</span>
+                                                                {(() => {
+                                                                    const isCompleted = isCertificationCompleted(cert);
+                                                                    return (
+                                                                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                                            {isCompleted ? 'Completed' : 'Undergoing'}
+                                                                        </span>
+                                                                    );
+                                                                })()}
+                                                            </div>
+                                                            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                                                                {cert.completionId && (
+                                                                    <span>ID: <span className="font-mono font-medium text-foreground">{cert.completionId}</span></span>
+                                                                )}
+                                                                {cert.doesNotExpire ? (
+                                                                    <span>Valid from {cert.validFromMonth ? `${cert.validFromMonth}/` : ''}{cert.validFromYear || '—'} (Does not expire)</span>
+                                                                ) : (
+                                                                    (cert.validFromYear || cert.validToYear) && (
+                                                                        <span>Valid: {cert.validFromMonth ? `${cert.validFromMonth}/` : ''}{cert.validFromYear || '—'} – {cert.validToMonth ? `${cert.validToMonth}/` : ''}{cert.validToYear || '—'}</span>
+                                                                    )
+                                                                )}
+                                                                {cert.url && (
+                                                                    <a
+                                                                        href={cert.url.startsWith('http') ? cert.url : `https://${cert.url}`}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="inline-flex items-center gap-1 text-primary hover:underline font-medium"
+                                                                    >
+                                                                        Verify Credential <ExternalLink className="w-3 h-3" />
+                                                                    </a>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>
@@ -2591,7 +3136,17 @@ export function StudentProfile() {
                                                                             {/* Status: exact casing 'Ongoing' | 'Completed' */}
                                                                             <select
                                                                                 value={proj.status === 'Completed' ? 'Completed' : 'Ongoing'}
-                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], status: e.target.value as 'Ongoing' | 'Completed' }; setProjects(c); }}
+                                                                                onChange={(e) => {
+                                                                                    const nextStatus = e.target.value as 'Ongoing' | 'Completed';
+                                                                                    const c = [...projects];
+                                                                                    c[idx] = {
+                                                                                        ...c[idx],
+                                                                                        status: nextStatus,
+                                                                                        workedTillMonth: nextStatus === 'Ongoing' ? undefined : c[idx].workedTillMonth,
+                                                                                        workedTillYear: nextStatus === 'Ongoing' ? undefined : c[idx].workedTillYear
+                                                                                    };
+                                                                                    setProjects(c);
+                                                                                }}
                                                                                 className="h-9 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 font-medium"
                                                                             >
                                                                                 <option value="Ongoing">Ongoing</option>
@@ -2609,6 +3164,20 @@ export function StudentProfile() {
                                                                                 <option value="Hybrid">Hybrid</option>
                                                                             </select>
 
+                                                                            {/* Nature of Employment */}
+                                                                            <select
+                                                                                value={proj.natureOfEmployment || ''}
+                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], natureOfEmployment: e.target.value }; setProjects(c); }}
+                                                                                className="h-9 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 font-medium"
+                                                                            >
+                                                                                <option value="">Nature of Employment</option>
+                                                                                <option value="Full Time">Full Time</option>
+                                                                                <option value="Part Time">Part Time</option>
+                                                                                <option value="Contract">Contract</option>
+                                                                                <option value="Freelance">Freelance</option>
+                                                                                <option value="Internship">Internship</option>
+                                                                            </select>
+
                                                                             {/* Team Size */}
                                                                             <select
                                                                                 value={proj.teamSize || ''}
@@ -2622,7 +3191,9 @@ export function StudentProfile() {
                                                                                 <option value="21-50">21-50</option>
                                                                                 <option value="50+">50+</option>
                                                                             </select>
+                                                                        </div>
 
+                                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                                             {/* Role (ObjectId from rolesData lookup) */}
                                                                             <select
                                                                                 value={proj.role || ''}
@@ -2634,28 +3205,74 @@ export function StudentProfile() {
                                                                                     <option key={r._id} value={r._id}>{r.name}</option>
                                                                                 ))}
                                                                             </select>
-                                                                        </div>
 
-                                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                                             <Input
                                                                                 placeholder="Location (e.g. London)"
                                                                                 value={proj.location || ''}
                                                                                 onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], location: e.target.value }; setProjects(c); }}
                                                                                 className="h-9 rounded-lg text-sm"
                                                                             />
+                                                                        </div>
+
+                                                                        {/* Project Duration */}
+                                                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                                                             <Input
-                                                                                placeholder="Skills Used (e.g. React, Node.js)"
-                                                                                value={proj.skillsUsed || ''}
-                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], skillsUsed: e.target.value }; setProjects(c); }}
+                                                                                type="number"
+                                                                                placeholder="From Month (1-12)"
+                                                                                min={1}
+                                                                                max={12}
+                                                                                value={proj.workedFromMonth != null ? String(proj.workedFromMonth) : ''}
+                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], workedFromMonth: e.target.value ? Number(e.target.value) : undefined }; setProjects(c); }}
                                                                                 className="h-9 rounded-lg text-sm"
                                                                             />
+                                                                            <Input
+                                                                                type="number"
+                                                                                placeholder="From Year"
+                                                                                value={proj.workedFromYear != null ? String(proj.workedFromYear) : ''}
+                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], workedFromYear: e.target.value ? Number(e.target.value) : undefined }; setProjects(c); }}
+                                                                                className="h-9 rounded-lg text-sm"
+                                                                            />
+                                                                            <Input
+                                                                                type="number"
+                                                                                placeholder={proj.status === 'Ongoing' ? 'Ongoing' : 'Till Month'}
+                                                                                min={1}
+                                                                                max={12}
+                                                                                disabled={proj.status === 'Ongoing'}
+                                                                                value={proj.status !== 'Ongoing' && proj.workedTillMonth != null ? String(proj.workedTillMonth) : ''}
+                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], workedTillMonth: e.target.value ? Number(e.target.value) : undefined }; setProjects(c); }}
+                                                                                className={`h-9 rounded-lg text-sm ${proj.status === 'Ongoing' ? 'opacity-50 cursor-not-allowed bg-muted/40' : ''}`}
+                                                                            />
+                                                                            <Input
+                                                                                type="number"
+                                                                                placeholder={proj.status === 'Ongoing' ? 'Present' : 'Till Year'}
+                                                                                disabled={proj.status === 'Ongoing'}
+                                                                                value={proj.status !== 'Ongoing' && proj.workedTillYear != null ? String(proj.workedTillYear) : ''}
+                                                                                onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], workedTillYear: e.target.value ? Number(e.target.value) : undefined }; setProjects(c); }}
+                                                                                className={`h-9 rounded-lg text-sm ${proj.status === 'Ongoing' ? 'opacity-50 cursor-not-allowed bg-muted/40' : ''}`}
+                                                                            />
                                                                         </div>
+
+                                                                        <Input
+                                                                            placeholder="Skills Used (e.g. React, Node.js, GraphQL)"
+                                                                            value={proj.skillsUsed || ''}
+                                                                            onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], skillsUsed: e.target.value }; setProjects(c); }}
+                                                                            className="h-9 rounded-lg text-sm"
+                                                                        />
 
                                                                         {/* Details (NOT description per spec) */}
                                                                         <textarea
                                                                             placeholder="Project details..."
                                                                             value={proj.details || ''}
                                                                             onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], details: e.target.value }; setProjects(c); }}
+                                                                            rows={2}
+                                                                            className="w-full rounded-md border px-3 py-2 text-sm outline-none transition-all resize-none bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20"
+                                                                        />
+
+                                                                        {/* Role Description */}
+                                                                        <textarea
+                                                                            placeholder="Role description & key responsibilities..."
+                                                                            value={proj.roleDescription || ''}
+                                                                            onChange={(e) => { const c = [...projects]; c[idx] = { ...c[idx], roleDescription: e.target.value }; setProjects(c); }}
                                                                             rows={2}
                                                                             className="w-full rounded-md border px-3 py-2 text-sm outline-none transition-all resize-none bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20"
                                                                         />
@@ -2681,12 +3298,29 @@ export function StudentProfile() {
                                                                             </span>
                                                                         </div>
                                                                         {proj.details && <span className="text-xs text-muted-foreground">{proj.details}</span>}
+                                                                        {proj.roleDescription && (
+                                                                            <p className="text-xs text-muted-foreground mt-0.5"><span className="font-semibold text-foreground">Role:</span> {proj.roleDescription}</p>
+                                                                        )}
                                                                         <div className="flex gap-3 mt-0.5 flex-wrap text-[11px] text-muted-foreground font-medium">
+                                                                            {(proj.workedFromYear || proj.workedTillYear || proj.status === 'Ongoing') && (
+                                                                                <span>Duration: {proj.workedFromMonth ? `${proj.workedFromMonth}/` : ''}{proj.workedFromYear || '—'} – {proj.status === 'Ongoing' ? 'Present' : `${proj.workedTillMonth ? `${proj.workedTillMonth}/` : ''}${proj.workedTillYear || '—'}`}</span>
+                                                                            )}
+                                                                            {proj.natureOfEmployment && <span>Type: {proj.natureOfEmployment}</span>}
                                                                             {proj.projectSite && <span>Site: {proj.projectSite}</span>}
                                                                             {roleName && <span>Role: {roleName}</span>}
                                                                             {proj.teamSize && <span>Team: {proj.teamSize}</span>}
                                                                             {proj.client && <span>Client: {proj.client}</span>}
+                                                                            {proj.location && <span>Location: {proj.location}</span>}
                                                                         </div>
+                                                                        {proj.skillsUsed && proj.skillsUsed.length > 0 && (
+                                                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                                                {proj.skillsUsed.split(',').map((s: string, sIdx: number) => (
+                                                                                    <span key={sIdx} className="text-[10px] px-2 py-0.5 rounded bg-muted/80 text-foreground font-medium border border-border/40">
+                                                                                        {s.trim()}
+                                                                                    </span>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -2710,16 +3344,96 @@ export function StudentProfile() {
                                         </div>
 
                                         {/* Other Achievements */}
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Other Achievements</label>
-                                            <textarea
-                                                placeholder="Write about any other accomplishments..."
-                                                value={otherAchievements}
-                                                onChange={(e) => setOtherAchievements(e.target.value)}
-                                                disabled={!isEditing}
-                                                rows={3}
-                                                className={`w-full rounded-md border px-3 py-2.5 text-sm font-medium outline-none transition-all resize-none ${!isEditing ? 'bg-muted/30 border-border/40 text-muted-foreground cursor-not-allowed' : 'bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20'}`}
-                                            />
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Other Achievements</label>
+                                                {isEditing && (
+                                                    <Button
+                                                        type="button"
+                                                        onClick={() => setOtherAchievements([...otherAchievements, { name: '', link: '', description: '' }])}
+                                                        variant="outline"
+                                                        className="h-7 rounded-lg text-xs font-bold px-3 border-border/60"
+                                                    >
+                                                        + Add Achievement
+                                                    </Button>
+                                                )}
+                                            </div>
+                                            {otherAchievements.length === 0 ? (
+                                                <p className="text-xs text-muted-foreground italic">
+                                                    {isEditing ? 'No other achievements added. Click + Add Achievement to add awards, publications, competitions, or notable milestones.' : 'No other achievements listed.'}
+                                                </p>
+                                            ) : (
+                                                isEditing ? (
+                                                    <div className="space-y-3">
+                                                        {otherAchievements.map((ach, aIdx) => (
+                                                            <div key={aIdx} className="bg-muted/20 p-3 rounded-xl border border-border/40 space-y-2">
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                    <Input
+                                                                        placeholder="Achievement Name / Title *"
+                                                                        value={ach.name || ''}
+                                                                        onChange={(e) => {
+                                                                            const copy = [...otherAchievements];
+                                                                            copy[aIdx] = { ...copy[aIdx], name: e.target.value };
+                                                                            setOtherAchievements(copy);
+                                                                        }}
+                                                                        className="h-9 rounded-lg text-sm font-medium"
+                                                                    />
+                                                                    <Input
+                                                                        placeholder="Link / URL (optional)"
+                                                                        value={ach.link || ''}
+                                                                        onChange={(e) => {
+                                                                            const copy = [...otherAchievements];
+                                                                            copy[aIdx] = { ...copy[aIdx], link: e.target.value };
+                                                                            setOtherAchievements(copy);
+                                                                        }}
+                                                                        className="h-9 rounded-lg text-sm"
+                                                                    />
+                                                                </div>
+                                                                <textarea
+                                                                    placeholder="Description (optional)..."
+                                                                    value={ach.description || ''}
+                                                                    onChange={(e) => {
+                                                                        const copy = [...otherAchievements];
+                                                                        copy[aIdx] = { ...copy[aIdx], description: e.target.value };
+                                                                        setOtherAchievements(copy);
+                                                                    }}
+                                                                    rows={2}
+                                                                    className="w-full rounded-md border px-3 py-2 text-sm outline-none transition-all resize-none bg-background border-input focus:border-ring focus:ring-2 focus:ring-ring/20"
+                                                                />
+                                                                <div className="flex justify-end">
+                                                                    <Button
+                                                                        type="button"
+                                                                        onClick={() => setOtherAchievements(otherAchievements.filter((_, i) => i !== aIdx))}
+                                                                        variant="outline"
+                                                                        className="h-7 rounded-lg text-xs font-bold text-destructive border-destructive/20 hover:bg-destructive/5 px-2"
+                                                                    >Remove</Button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-2">
+                                                        {otherAchievements.map((ach, aIdx) => (
+                                                            <div key={aIdx} className="bg-muted/20 p-3 rounded-xl border border-border/40 flex flex-col gap-1">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-sm font-semibold text-foreground">{ach.name || '—'}</span>
+                                                                    {ach.link && (
+                                                                        <a
+                                                                            href={ach.link.startsWith('http') ? ach.link : `https://${ach.link}`}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+                                                                        >
+                                                                            View Link <ExternalLink className="w-3 h-3" />
+                                                                        </a>
+                                                                    )}
+                                                                </div>
+                                                                {ach.description && <p className="text-xs text-muted-foreground">{ach.description}</p>}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )
+                                            )}
                                         </div>
                                     </div>
                                 </div>
