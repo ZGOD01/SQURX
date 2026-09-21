@@ -78,7 +78,7 @@ export function Navbar() {
                 className="hidden sm:block text-[15px] font-bold text-gray-500 hover:text-[#111] transition-colors"
                 style={{ fontFamily: "'Outfit', sans-serif" }}
               >
-                Sign ins
+                Sign in
               </Link>
               <Link to="/auth/register">
                 <Button className="bg-[#111] hover:bg-black text-white font-bold rounded-full px-6 md:px-8 h-11 transition-all duration-300 hover:scale-[1.03] active:scale-95 shadow-lg shadow-black/10 text-[14px]">
