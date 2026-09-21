@@ -9,6 +9,7 @@ import { consultationApi } from '@/lib/consultationApi';
 import { useNotificationStore } from '@/lib/store/notifications';
 import type { EducationHistoryItem, EmploymentHistoryItem, ProjectItem, LanguageKnownItem, CertificationItem, OtherAchievementItem } from '@/lib/mockDb/schema';
 import { formatJoiningDateDisplay, formatJoiningDatePayload, isCertificationCompleted, toDateInputValue } from '@/lib/mockApi';
+import { normalizeInternshipItem, saveStoredInternships, getStoredInternships } from '@/lib/internshipsStorage';
 import {
     useGetCountriesQuery,
     useGetEducationsQuery,
@@ -433,16 +434,11 @@ export function StudentProfile() {
                 ? profile.projects
                 : (Array.isArray(savedProjects) && savedProjects.length > 0 ? savedProjects : (profile.projects || []));
             setProjects(effectiveProjects);
-            const savedInternships = (() => {
-                try {
-                    const raw = typeof window !== 'undefined' && user?.id ? localStorage.getItem(`squrx_internships_${user.id}`) : null;
-                    return raw ? JSON.parse(raw) : null;
-                } catch { return null; }
-            })();
+            const savedInternships = getStoredInternships(user?.id || (profile as any)?._id || (profile as any)?.userId);
             const effectiveInternships = (profile.internships && profile.internships.length > 0)
                 ? profile.internships
                 : (Array.isArray(savedInternships) && savedInternships.length > 0 ? savedInternships : (profile.internships || []));
-            setInternships(effectiveInternships);
+            setInternships(effectiveInternships.map(normalizeInternshipItem));
             setProfileSummary(profile.profileSummary || '');
             if (Array.isArray(profile.otherAchievements)) {
                 setOtherAchievements(profile.otherAchievements);
@@ -454,7 +450,7 @@ export function StudentProfile() {
 
             setProfileInitialized(true);
         }
-    }, [profile, profileInitialized]);
+    }, [profile, user, profileInitialized]);
 
     // Fallback currency selection if not set
     useEffect(() => {
@@ -736,16 +732,11 @@ export function StudentProfile() {
                 ? profile.projects
                 : (Array.isArray(savedProjects2) && savedProjects2.length > 0 ? savedProjects2 : (profile.projects || []));
             setProjects(effectiveProjects2);
-            const savedInternships2 = (() => {
-                try {
-                    const raw = typeof window !== 'undefined' && user?.id ? localStorage.getItem(`squrx_internships_${user.id}`) : null;
-                    return raw ? JSON.parse(raw) : null;
-                } catch { return null; }
-            })();
+            const savedInternships2 = getStoredInternships(user?.id || (profile as any)?._id || (profile as any)?.userId);
             const effectiveInternships2 = (profile.internships && profile.internships.length > 0)
                 ? profile.internships
                 : (Array.isArray(savedInternships2) && savedInternships2.length > 0 ? savedInternships2 : (profile.internships || []));
-            setInternships(effectiveInternships2);
+            setInternships(effectiveInternships2.map(normalizeInternshipItem));
             setProfileSummary(profile.profileSummary || '');
             if (Array.isArray(profile.otherAchievements)) {
                 setOtherAchievements(profile.otherAchievements);
@@ -756,7 +747,7 @@ export function StudentProfile() {
             }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [profile]);
+    }, [profile, user, isEditing]);
 
     // ── GDPR consent ─────────────────────────────
     useEffect(() => {
@@ -1011,6 +1002,10 @@ export function StudentProfile() {
                 currency: currentSalaryCurrency || defaultCurrId
             } : null;
 
+            const cleanInternships = (Array.isArray(internships) ? internships : [])
+                .filter((i: any) => i && (i.companyName?.trim() || i.company?.trim() || i.role?.trim() || i.title?.trim() || i.duration?.trim()))
+                .map(normalizeInternshipItem);
+
             await updateProfile(user.id, {
                 location,
                 jobType,
@@ -1115,7 +1110,7 @@ export function StudentProfile() {
                     roleDescription: p.roleDescription || undefined,
                     skillsUsed: p.skillsUsed || undefined
                 })),
-                internships,
+                internships: cleanInternships,
                 profileSummary,
                 otherAchievements: otherAchievements.filter(o => o.name?.trim()).map(o => ({
                     name: o.name.trim(),
@@ -1128,9 +1123,9 @@ export function StudentProfile() {
                 resumeName: profile?.resumeName ?? null,
             });
 
+            saveStoredInternships(user?.id, cleanInternships);
             if (user?.id) {
                 try {
-                    localStorage.setItem(`squrx_internships_${user.id}`, JSON.stringify(internships));
                     localStorage.setItem(`squrx_projects_${user.id}`, JSON.stringify(projects));
                 } catch {}
             }
@@ -3018,7 +3013,7 @@ export function StudentProfile() {
                                         {isEditing && (
                                             <Button
                                                 type="button"
-                                                onClick={() => setInternships([...internships, { companyName: '', duration: '', role: '' }])}
+                                                onClick={() => setInternships([...(internships || []), { companyName: '', duration: '', role: '' }])}
                                                 variant="outline"
                                                 className="h-7 rounded-lg text-xs font-bold px-3 border-border/60"
                                             >
@@ -3026,38 +3021,50 @@ export function StudentProfile() {
                                             </Button>
                                         )}
                                     </div>
-                                    {internships.length === 0 ? (
+                                    {(!internships || internships.length === 0) ? (
                                         <p className="text-xs text-muted-foreground italic">{isEditing ? 'No internships added. Click + Add to get started.' : 'No internships listed.'}</p>
                                     ) : (
                                         <div className="space-y-3">
-                                            {internships.map((intern, index) => (
+                                            {(internships || []).map((intern, index) => (
                                                 <div key={index} className="bg-muted/20 p-3 rounded-xl border border-border/40 space-y-2">
                                                     {isEditing ? (
                                                         <>
                                                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                                                 <Input
                                                                     placeholder="Company Name"
-                                                                    value={intern.companyName}
-                                                                    onChange={(e) => { const c = [...internships]; c[index] = { ...c[index], companyName: e.target.value }; setInternships(c); }}
+                                                                    value={intern.companyName || (intern as any).company || ''}
+                                                                    onChange={(e) => {
+                                                                        const c = [...(internships || [])];
+                                                                        c[index] = { ...c[index], companyName: e.target.value, company: e.target.value } as any;
+                                                                        setInternships(c);
+                                                                    }}
                                                                     className="h-9 rounded-lg text-sm"
                                                                 />
                                                                 <Input
                                                                     placeholder="Duration (e.g. 3 Months)"
-                                                                    value={intern.duration}
-                                                                    onChange={(e) => { const c = [...internships]; c[index] = { ...c[index], duration: e.target.value }; setInternships(c); }}
+                                                                    value={intern.duration || ''}
+                                                                    onChange={(e) => {
+                                                                        const c = [...(internships || [])];
+                                                                        c[index] = { ...c[index], duration: e.target.value };
+                                                                        setInternships(c);
+                                                                    }}
                                                                     className="h-9 rounded-lg text-sm"
                                                                 />
                                                                 <Input
                                                                     placeholder="Role"
-                                                                    value={intern.role}
-                                                                    onChange={(e) => { const c = [...internships]; c[index] = { ...c[index], role: e.target.value }; setInternships(c); }}
+                                                                    value={intern.role || (intern as any).title || (intern as any).position || ''}
+                                                                    onChange={(e) => {
+                                                                        const c = [...(internships || [])];
+                                                                        c[index] = { ...c[index], role: e.target.value, title: e.target.value } as any;
+                                                                        setInternships(c);
+                                                                    }}
                                                                     className="h-9 rounded-lg text-sm"
                                                                 />
                                                             </div>
                                                             <div className="flex justify-end">
                                                                 <Button
                                                                     type="button"
-                                                                    onClick={() => setInternships(internships.filter((_, i) => i !== index))}
+                                                                    onClick={() => setInternships((internships || []).filter((_, i) => i !== index))}
                                                                     variant="outline"
                                                                     className="h-7 rounded-lg text-xs font-bold text-destructive border-destructive/20 hover:bg-destructive/5 px-2"
                                                                 >Remove</Button>
@@ -3065,8 +3072,8 @@ export function StudentProfile() {
                                                         </>
                                                     ) : (
                                                         <div className="flex flex-col gap-0.5">
-                                                            <span className="text-sm font-semibold">{intern.companyName || '—'}</span>
-                                                            <span className="text-xs text-muted-foreground">{intern.role}{intern.duration ? ` · ${intern.duration}` : ''}</span>
+                                                            <span className="text-sm font-semibold">{intern.companyName || (intern as any).company || '—'}</span>
+                                                            <span className="text-xs text-muted-foreground">{(intern.role || (intern as any).title || '')}{intern.duration ? ` · ${intern.duration}` : ''}</span>
                                                         </div>
                                                     )}
                                                 </div>

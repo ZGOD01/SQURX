@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { mockApi } from '@/lib/mockApi';
 import type { StudentProfile, JobVacancy, JobApplication, ConsultationBooking, SystemActivity } from '@/lib/mockDb/schema';
 import { consultationApi } from '@/lib/consultationApi';
+import { normalizeInternshipItem, saveStoredInternships, getStoredInternships } from '@/lib/internshipsStorage';
 
 interface StudentStore {
   profile: StudentProfile | null;
@@ -68,17 +69,10 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
         profile = await mockApi.getStudentProfile(userId);
       }
       if (profile && (!profile.internships || profile.internships.length === 0)) {
-        try {
-          if (typeof window !== 'undefined') {
-            const stored = localStorage.getItem(`squrx_internships_${userId}`);
-            if (stored) {
-              const parsed = JSON.parse(stored);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                profile = { ...profile, internships: parsed };
-              }
-            }
-          }
-        } catch {}
+        const stored = getStoredInternships(userId);
+        if (Array.isArray(stored) && stored.length > 0) {
+          profile = { ...profile, internships: stored };
+        }
       }
       if (profile && (!profile.projects || profile.projects.length === 0)) {
         try {
@@ -148,20 +142,14 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
       // Re-apply explicit CV, internships, and projects overrides on top of what the backend returned
       // so a stale /user/me response cannot resurrect a deleted/replaced CV or wipe local data.
       let mergedInternships = profile?.internships;
-      if (hasInternshipsOverride) {
-        mergedInternships = internshipsOverride;
+      if (hasInternshipsOverride && Array.isArray(internshipsOverride)) {
+        mergedInternships = internshipsOverride.map(normalizeInternshipItem);
+        saveStoredInternships(userId, mergedInternships);
       } else if (!mergedInternships || mergedInternships.length === 0) {
-        try {
-          if (typeof window !== 'undefined') {
-            const stored = localStorage.getItem(`squrx_internships_${userId}`);
-            if (stored) {
-              const parsed = JSON.parse(stored);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                mergedInternships = parsed;
-              }
-            }
-          }
-        } catch {}
+        const stored = getStoredInternships(userId);
+        if (Array.isArray(stored) && stored.length > 0) {
+          mergedInternships = stored;
+        }
       }
 
       let mergedProjects = profile?.projects;

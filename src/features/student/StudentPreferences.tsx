@@ -6,17 +6,14 @@ import { Card, CardHeader, CardTitle, CardContent, Button, TagInput, Toast } fro
 import { PageTransition } from '@/components/motion';
 import { studentPreferencesSchema, type StudentPreferencesValues } from '@/lib/validators/student';
 import { useNotificationStore } from '@/lib/store/notifications';
-import { Loader2, BellRing, BriefcaseBusiness, Compass, Sparkles } from 'lucide-react';
-import { mockApi } from '@/lib/mockApi';
+import { Loader2, BellRing, Compass } from 'lucide-react';
 import { useAuthStore } from '../auth/store';
 export function StudentPreferences() {
     const { user } = useAuthStore();
     const { profile, updateProfile } = useStudentStore();
     const { sendEmail } = useNotificationStore();
     const [isSaving, setIsSaving] = useState(false);
-    const [isGenerating, setIsGenerating] = useState(false);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
-    const [generatedAlerts, setGeneratedAlerts] = useState<any[] | null>(null);
 
     const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<StudentPreferencesValues>({
         resolver: zodResolver(studentPreferencesSchema),
@@ -41,20 +38,6 @@ export function StudentPreferences() {
         }
         setIsSaving(false);
         setToastMessage('Preferences saved successfully.');
-    };
-
-    const generateAlerts = async () => {
-        setIsGenerating(true);
-        // Simulate complex matching algorithm
-        await new Promise(res => setTimeout(res, 1500));
-
-        // fetch db, shuffle, slice to simulate matched alerts based on alertCount
-        const vacancies = await mockApi.getStudentVacancies();
-        const db = [...vacancies].sort(() => 0.5 - Math.random());
-        const matched = db.slice(0, profile?.alertCount || 5);
-
-        setGeneratedAlerts(matched);
-        setIsGenerating(false);
     };
 
     return (
@@ -146,7 +129,7 @@ export function StudentPreferences() {
                     </Card>
                 </div>
 
-                {/* Demo Alert Generation Box */}
+                {/* Live Alerts Engine Box */}
                 <div className="space-y-6">
                     <Card className="border-primary/20 bg-primary/5 shadow-sm sticky top-6">
                         <CardHeader>
@@ -156,55 +139,15 @@ export function StudentPreferences() {
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <p className="text-sm text-foreground/80 leading-relaxed">
-                                Squrex uses your preferences to actively hunt the global network for matches. Trigger a simulation to see what jobs you would receive this week.
+                                Squrex uses your preferences to actively hunt the global network for matches. Live weekly alerts tailored to your preferences will be available soon.
                             </p>
 
                             <Button
-                                onClick={generateAlerts}
-                                className="w-full bg-primary/90 hover:bg-primary shadow-lg shadow-primary/20 group"
-                                disabled={isGenerating || locations.length === 0}
+                                disabled
+                                className="w-full bg-primary/80 text-white font-medium cursor-not-allowed opacity-90 disabled:opacity-85 shadow-none"
                             >
-                                {isGenerating ? (
-                                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing network...</>
-                                ) : (
-                                    <><Sparkles className="w-4 h-4 mr-2 group-hover:rotate-12 transition-transform" /> Generate this week's alerts</>
-                                )}
+                                Coming Soon
                             </Button>
-
-                            {generatedAlerts && (
-                                <div className="mt-6 space-y-3 pt-6 border-t border-border">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h4 className="text-sm font-bold text-primary">Found {generatedAlerts.length} exact matches</h4>
-                                        <button onClick={() => setGeneratedAlerts(null)} className="text-xs text-muted-foreground hover:text-foreground underline">Clear</button>
-                                    </div>
-
-                                    <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                                        {generatedAlerts.map(job => (
-                                            <div key={job.id} className="bg-background border border-border/80 p-4 rounded-xl shadow-sm relative group hover:border-primary/30 transition-colors">
-                                                <div className="pr-12">
-                                                    <h5 className="font-bold text-sm leading-tight mb-1">{job.title}</h5>
-                                                    <p className="text-xs text-muted-foreground font-medium">{job.companyName}</p>
-                                                    <div className="mt-2 flex gap-2">
-                                                        <span className="text-[10px] bg-muted px-2 py-0.5 rounded-full font-medium">{job.location.split(',')[0]}</span>
-                                                        <span className="text-[10px] bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full font-medium">{job.salary}</span>
-                                                    </div>
-                                                </div>
-                                                <a
-                                                    href={job.applyLink}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-all shadow-sm"
-                                                >
-                                                    <BriefcaseBusiness size={14} />
-                                                </a>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <p className="text-[10px] text-muted-foreground mt-3 font-light text-center">
-                                        * By clicking apply you might be redirected to third party site for application
-                                    </p>
-                                </div>
-                            )}
                         </CardContent>
                     </Card>
                 </div>

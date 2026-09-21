@@ -2,6 +2,7 @@ import { MockDB } from './mockDb';
 import type { User, StudentProfile, CompanyProfile, JobVacancy, JobApplication, ConsultationBooking, SystemActivity } from './mockDb/schema';
 import { API_BASE_URL } from './config';
 import { getInMemToken } from '@/features/auth/store';
+import { normalizeInternshipItem, saveStoredInternships, getStoredInternships } from './internshipsStorage';
 
 
 const delay = (ms = 800) => new Promise(resolve => setTimeout(resolve, ms));
@@ -660,36 +661,26 @@ export const mockApi = {
                         }
                     }
 
-                    if (Array.isArray(data.internships) && data.internships.length > 0) {
-                        profile.internships = data.internships;
-                        try {
-                            if (typeof window !== 'undefined') {
-                                localStorage.setItem(`squrx_internships_${userId}`, JSON.stringify(data.internships));
-                            }
-                        } catch {}
+                    const backendInternships = Array.isArray(data.internships) && data.internships.length > 0
+                        ? data.internships
+                        : (Array.isArray(data.internship) && data.internship.length > 0 ? data.internship : null);
+
+                    if (backendInternships) {
+                        const normalizedInternships = backendInternships.map(normalizeInternshipItem);
+                        profile.internships = normalizedInternships;
+                        saveStoredInternships(userId, normalizedInternships);
                     } else {
                         // Backend did not return internships (or returned empty array).
                         // Restore from localStorage backup or preserve existing MockDB internships so user data is never lost!
-                        let localInternships: any[] | null = null;
-                        try {
-                            if (typeof window !== 'undefined') {
-                                const stored = localStorage.getItem(`squrx_internships_${userId}`);
-                                if (stored) localInternships = JSON.parse(stored);
-                            }
-                        } catch {}
-
+                        const localInternships = getStoredInternships(userId);
                         if (Array.isArray(localInternships) && localInternships.length > 0) {
                             profile.internships = localInternships;
+                            saveStoredInternships(userId, localInternships);
                         } else if (Array.isArray(profile.internships) && profile.internships.length > 0) {
-                            try {
-                                if (typeof window !== 'undefined') {
-                                    localStorage.setItem(`squrx_internships_${userId}`, JSON.stringify(profile.internships));
-                                }
-                            } catch {}
-                        } else if (Array.isArray(data.internships)) {
-                            profile.internships = [];
+                            profile.internships = profile.internships.map(normalizeInternshipItem);
+                            saveStoredInternships(userId, profile.internships);
                         } else {
-                            profile.internships = profile.internships || [];
+                            profile.internships = [];
                         }
                     }
                     profile.profileSummary = data.profileSummary || '';
@@ -719,17 +710,10 @@ export const mockApi = {
     }
     // Final check: if profile.internships or profile.projects are still empty, restore from localStorage if available
     if (profile && (!profile.internships || profile.internships.length === 0)) {
-        try {
-            if (typeof window !== 'undefined') {
-                const stored = localStorage.getItem(`squrx_internships_${userId}`);
-                if (stored) {
-                    const parsed = JSON.parse(stored);
-                    if (Array.isArray(parsed) && parsed.length > 0) {
-                        profile.internships = parsed;
-                    }
-                }
-            }
-        } catch {}
+        const stored = getStoredInternships(userId);
+        if (Array.isArray(stored) && stored.length > 0) {
+            profile.internships = stored;
+        }
     }
     if (profile && (!profile.projects || profile.projects.length === 0)) {
         try {
@@ -749,21 +733,12 @@ export const mockApi = {
 
   updateStudentProfile: async (userId: string, data: Partial<StudentProfile> & Record<string, any>): Promise<void> => {
     await delay();
-    if (data.internships !== undefined) {
-        const cleanedInternships = Array.isArray(data.internships)
-            ? data.internships
-                .filter((i: any) => i && (i.companyName?.trim() || i.role?.trim() || i.duration?.trim()))
-                .map((i: any) => ({
-                    companyName: i.companyName?.trim() || '',
-                    duration: i.duration?.trim() || '',
-                    role: i.role?.trim() || ''
-                }))
-            : [];
-        try {
-            if (typeof window !== 'undefined') {
-                localStorage.setItem(`squrx_internships_${userId}`, JSON.stringify(cleanedInternships));
-            }
-        } catch {}
+    if (data.internships !== undefined || data.internship !== undefined) {
+        const rawList = Array.isArray(data.internships) ? data.internships : (Array.isArray(data.internship) ? data.internship : []);
+        const cleanedInternships = rawList
+            .filter((i: any) => i && (i.companyName?.trim() || i.company?.trim() || i.role?.trim() || i.title?.trim() || i.duration?.trim()))
+            .map(normalizeInternshipItem);
+        saveStoredInternships(userId, cleanedInternships);
         data = { ...data, internships: cleanedInternships };
     }
     if (data.projects !== undefined && Array.isArray(data.projects)) {
@@ -1067,16 +1042,13 @@ export const mockApi = {
                 }
             }
 
-            if (data.internships !== undefined) {
-                payload.internships = Array.isArray(data.internships)
-                    ? data.internships
-                        .filter((i: any) => i && (i.companyName?.trim() || i.role?.trim() || i.duration?.trim()))
-                        .map((i: any) => ({
-                            companyName: i.companyName?.trim() || '',
-                            duration: i.duration?.trim() || '',
-                            role: i.role?.trim() || ''
-                        }))
-                    : [];
+            if (data.internships !== undefined || data.internship !== undefined) {
+                const rawList = Array.isArray(data.internships) ? data.internships : (Array.isArray(data.internship) ? data.internship : []);
+                const formattedInternships = rawList
+                    .filter((i: any) => i && (i.companyName?.trim() || i.company?.trim() || i.role?.trim() || i.title?.trim() || i.duration?.trim()))
+                    .map(normalizeInternshipItem);
+                payload.internships = formattedInternships;
+                payload.internship = formattedInternships;
             }
 
             if (data.profileSummary !== undefined) {

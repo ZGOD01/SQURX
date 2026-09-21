@@ -127,6 +127,7 @@ export interface FetchJobsParams {
   source?: string;
   page?: number;
   limit?: number;
+  signal?: AbortSignal;
 }
 
 export interface FetchJobsResponse {
@@ -309,6 +310,9 @@ export function mapApiJobToItem(job: ApiJob): ApiJobItem {
   };
 }
 
+// ─── Concurrent In-flight Request Deduplication ──────────────────────────────
+const inFlightRequests = new Map<string, Promise<FetchJobsResponse>>();
+
 // ─── API call ─────────────────────────────────────────────────────────────────
 /**
  * Fetches active jobs from the real Squrx backend (`GET /jobs`).
@@ -358,58 +362,77 @@ export async function fetchJobs(
 
   const qs = query.toString();
   const url = `${API_BASE_URL}/jobs${qs ? `?${qs}` : ''}`;
+  const requestKey = `jobs:${url}:${token}`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    cache: 'no-store',
-  });
+  // Coalesce identical concurrent in-flight requests into a single network call
+  if (!params.signal && inFlightRequests.has(requestKey)) {
+    return inFlightRequests.get(requestKey)!;
+  }
 
-  if (!response.ok) {
-    let message = `Failed to fetch jobs (HTTP ${response.status})`;
+  const fetchPromise = (async () => {
     try {
-      const errJson = await response.json();
-      if (errJson?.message) message = errJson.message;
-    } catch {
-      // ignore parse errors
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+        signal: params.signal,
+      });
+
+      if (!response.ok) {
+        let message = `Failed to fetch jobs (HTTP ${response.status})`;
+        try {
+          const errJson = await response.json();
+          if (errJson?.message) message = errJson.message;
+        } catch {
+          // ignore parse errors
+        }
+        throw new Error(message);
+      }
+
+      const json = await response.json();
+
+      let rawJobs: ApiJob[] = [];
+      let total = 0;
+      let page = 1;
+      let limit = 10;
+
+      const payload = json?.data ?? json;
+
+      if (Array.isArray(payload)) {
+        rawJobs = payload;
+        total = payload.length;
+      } else if (payload && typeof payload === 'object') {
+        if (Array.isArray(payload.jobs)) {
+          rawJobs = payload.jobs;
+        } else if (Array.isArray(payload.data)) {
+          rawJobs = payload.data;
+        } else if (Array.isArray(payload.results)) {
+          rawJobs = payload.results;
+        }
+        total = payload.total !== undefined ? payload.total : rawJobs.length;
+        page = payload.page !== undefined ? payload.page : 1;
+        limit = payload.limit !== undefined ? payload.limit : (params.limit ?? 10);
+      }
+
+      return {
+        jobs: rawJobs.map(mapApiJobToItem),
+        total,
+        page,
+        limit
+      };
+    } finally {
+      inFlightRequests.delete(requestKey);
     }
-    throw new Error(message);
+  })();
+
+  if (!params.signal) {
+    inFlightRequests.set(requestKey, fetchPromise);
   }
 
-  const json = await response.json();
-
-  let rawJobs: ApiJob[] = [];
-  let total = 0;
-  let page = 1;
-  let limit = 10;
-
-  const payload = json?.data ?? json;
-
-  if (Array.isArray(payload)) {
-    rawJobs = payload;
-    total = payload.length;
-  } else if (payload && typeof payload === 'object') {
-    if (Array.isArray(payload.jobs)) {
-      rawJobs = payload.jobs;
-    } else if (Array.isArray(payload.data)) {
-      rawJobs = payload.data;
-    } else if (Array.isArray(payload.results)) {
-      rawJobs = payload.results;
-    }
-    total = payload.total !== undefined ? payload.total : rawJobs.length;
-    page = payload.page !== undefined ? payload.page : 1;
-    limit = payload.limit !== undefined ? payload.limit : 10;
-  }
-
-  return {
-    jobs: rawJobs.map(mapApiJobToItem),
-    total,
-    page,
-    limit
-  };
+  return fetchPromise;
 }
 
 /**
@@ -417,7 +440,7 @@ export async function fetchJobs(
  * Requires a valid JWT bearer token. Returns paginated list of jobs with relevanceScore.
  */
 export async function fetchRelevantJobs(
-  params: { page?: number; limit?: number } = {}
+  params: { page?: number; limit?: number; signal?: AbortSignal } = {}
 ): Promise<FetchJobsResponse> {
   const token = getInMemToken();
   if (!token) {
@@ -430,58 +453,77 @@ export async function fetchRelevantJobs(
 
   const qs = query.toString();
   const url = `${API_BASE_URL}/jobs/relevant${qs ? `?${qs}` : ''}`;
+  const requestKey = `relevant:${url}:${token}`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    cache: 'no-store',
-  });
+  // Coalesce identical concurrent in-flight requests into a single network call
+  if (!params.signal && inFlightRequests.has(requestKey)) {
+    return inFlightRequests.get(requestKey)!;
+  }
 
-  if (!response.ok) {
-    let message = `Failed to fetch relevant jobs (HTTP ${response.status})`;
+  const fetchPromise = (async () => {
     try {
-      const errJson = await response.json();
-      if (errJson?.message) message = errJson.message;
-    } catch {
-      // ignore parse errors
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+        signal: params.signal,
+      });
+
+      if (!response.ok) {
+        let message = `Failed to fetch relevant jobs (HTTP ${response.status})`;
+        try {
+          const errJson = await response.json();
+          if (errJson?.message) message = errJson.message;
+        } catch {
+          // ignore parse errors
+        }
+        throw new Error(message);
+      }
+
+      const json = await response.json();
+
+      let rawJobs: ApiJob[] = [];
+      let total = 0;
+      let page = 1;
+      let limit = params.limit ?? 6;
+
+      const payload = json?.data ?? json;
+
+      if (Array.isArray(payload)) {
+        rawJobs = payload;
+        total = payload.length;
+      } else if (payload && typeof payload === 'object') {
+        if (Array.isArray(payload.jobs)) {
+          rawJobs = payload.jobs;
+        } else if (Array.isArray(payload.data)) {
+          rawJobs = payload.data;
+        } else if (Array.isArray(payload.results)) {
+          rawJobs = payload.results;
+        }
+        total = payload.total !== undefined ? payload.total : rawJobs.length;
+        page = payload.page !== undefined ? payload.page : 1;
+        limit = payload.limit !== undefined ? payload.limit : (params.limit ?? 6);
+      }
+
+      return {
+        jobs: rawJobs.map(mapApiJobToItem),
+        total,
+        page,
+        limit
+      };
+    } finally {
+      inFlightRequests.delete(requestKey);
     }
-    throw new Error(message);
+  })();
+
+  if (!params.signal) {
+    inFlightRequests.set(requestKey, fetchPromise);
   }
 
-  const json = await response.json();
-
-  let rawJobs: ApiJob[] = [];
-  let total = 0;
-  let page = 1;
-  let limit = 10;
-
-  const payload = json?.data ?? json;
-
-  if (Array.isArray(payload)) {
-    rawJobs = payload;
-    total = payload.length;
-  } else if (payload && typeof payload === 'object') {
-    if (Array.isArray(payload.jobs)) {
-      rawJobs = payload.jobs;
-    } else if (Array.isArray(payload.data)) {
-      rawJobs = payload.data;
-    } else if (Array.isArray(payload.results)) {
-      rawJobs = payload.results;
-    }
-    total = payload.total !== undefined ? payload.total : rawJobs.length;
-    page = payload.page !== undefined ? payload.page : 1;
-    limit = payload.limit !== undefined ? payload.limit : 10;
-  }
-
-  return {
-    jobs: rawJobs.map(mapApiJobToItem),
-    total,
-    page,
-    limit
-  };
+  return fetchPromise;
 }
 
 /**

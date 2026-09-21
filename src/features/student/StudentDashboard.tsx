@@ -1,11 +1,11 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useStudentStore } from './store';
 import { useAuthStore } from '../auth/store';
 import { Card, Button, Badge, Toast } from '@/components/ui';
 import { PageTransition, StaggerContainer, StaggerItem, HoverLift } from '@/components/motion';
 import { Building2, MapPin, ExternalLink, Loader2, Sparkles, IndianRupee, WifiOff, FileText, UploadCloud, Eye, Trash2 } from 'lucide-react';
-import { fetchJobs, type ApiJobItem } from '@/lib/jobsApi';
+import { fetchRelevantJobs, type ApiJobItem } from '@/lib/jobsApi';
 import { consultationApi } from '@/lib/consultationApi';
 import { getCleanFileName } from './StudentProfile';
 
@@ -118,38 +118,34 @@ export function StudentDashboard() {
         }
     };
 
-    useEffect(() => {
-        const load = async () => {
-            setIsLoading(true);
-            setFetchError(null);
-            try {
-                // Fetch up to 200 jobs from the real backend
-                const data = await fetchJobs({ limit: 200 });
-                setJobs(data.jobs);
-            } catch (err: any) {
-                console.error('[StudentDashboard] Failed to load jobs:', err);
-                setFetchError(err?.message ?? 'Unable to load jobs.');
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        load();
+    const hasFetchedRef = useRef(false);
+
+    const loadRelevantJobs = useCallback(async () => {
+        setIsLoading(true);
+        setFetchError(null);
+        try {
+            // Fetch relevant jobs with limit 6 specifically for the dashboard section
+            const data = await fetchRelevantJobs({ limit: 6 });
+            setJobs(data.jobs.slice(0, 6));
+        } catch (err: any) {
+            console.error('[StudentDashboard] Failed to load relevant jobs:', err);
+            setFetchError(err?.message ?? 'Unable to load relevant jobs.');
+        } finally {
+            setIsLoading(false);
+        }
     }, []);
 
-    // Match jobs to student's career goal / domain keywords
-    const preferredDomain = profile?.careerGoal || '';
+    useEffect(() => {
+        if (!hasFetchedRef.current) {
+            hasFetchedRef.current = true;
+            loadRelevantJobs();
+        }
+    }, [loadRelevantJobs]);
 
-    const personalizedJobs = jobs.filter(j => {
-        if (!preferredDomain) return true;
-        const text = (j.title + ' ' + (j.description || '') + ' ' + (j.skills || []).join(' ')).toLowerCase();
-        const keywords = preferredDomain.toLowerCase().split(/\s+/).filter(k => k.length > 2);
-        return keywords.length === 0 || keywords.some(k => text.includes(k));
-    });
+    // Show up to 6 relevant jobs returned from the dedicated backend endpoint
+    const displayJobs = jobs.slice(0, 6);
 
-    // Show up to 6 personalised jobs; fall back to first 6 if no match
-    const displayJobs = (personalizedJobs.length > 0 ? personalizedJobs : jobs).slice(0, 6);
-
-    const domainLabel = preferredDomain || 'Recommended';
+    const domainLabel = profile?.careerGoal || 'Relevant';
 
     return (
         <PageTransition className="space-y-8 max-w-7xl mx-auto pb-12">
@@ -292,17 +288,8 @@ export function StudentDashboard() {
                         <p className="text-sm text-rose-600 mt-0.5 leading-relaxed">{fetchError}</p>
                     </div>
                     <button
-                        onClick={async () => {
-                            setIsLoading(true);
-                            setFetchError(null);
-                            try {
-                                const data = await fetchJobs({ limit: 200 });
-                                setJobs(data.jobs);
-                            } catch (err: any) {
-                                setFetchError(err?.message ?? 'Unable to load jobs.');
-                            } finally {
-                                setIsLoading(false);
-                            }
+                        onClick={() => {
+                            loadRelevantJobs();
                         }}
                         className="shrink-0 px-4 py-1.5 text-xs font-bold rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-700 transition-colors"
                     >
@@ -327,11 +314,19 @@ export function StudentDashboard() {
                                         <div className="w-12 h-12 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-500 bg-black/5 text-black">
                                             <Building2 size={24} />
                                         </div>
-                                        {job.jobType && (
-                                            <Badge variant="secondary" className="font-medium bg-black/5 text-black rounded-lg">
-                                                {job.jobType}
-                                            </Badge>
-                                        )}
+                                        <div className="flex items-center gap-1.5">
+                                            {job.relevanceScore !== undefined && (
+                                                <Badge variant="secondary" className="font-semibold bg-blue-50 text-blue-700 border border-blue-200 text-xs rounded-lg">
+                                                    <Sparkles size={11} className="mr-1 fill-blue-500 text-blue-500" />
+                                                    {Math.round(job.relevanceScore)}% Match
+                                                </Badge>
+                                            )}
+                                            {job.jobType && (
+                                                <Badge variant="secondary" className="font-medium bg-black/5 text-black rounded-lg">
+                                                    {job.jobType}
+                                                </Badge>
+                                            )}
+                                        </div>
                                     </div>
 
                                     <h3 className="text-lg font-bold leading-tight mb-1 group-hover:text-black/80 transition-colors line-clamp-2">
@@ -370,9 +365,9 @@ export function StudentDashboard() {
             ) : !fetchError ? (
                 <div className="flex flex-col items-center justify-center p-16 text-center bg-black/[0.02] border border-black/5 rounded-[2rem]">
                     <Sparkles className="w-12 h-12 text-black/30 mb-4" />
-                    <h3 className="text-xl font-bold mb-2 tracking-tight">No jobs found yet</h3>
+                    <h3 className="text-xl font-bold mb-2 tracking-tight">No relevant jobs found yet</h3>
                     <p className="text-black/50 font-light max-w-md">
-                        No live roles are available right now. Check back soon — the board refreshes automatically.
+                        No personalized roles are available right now. Check back soon or explore all open listings.
                     </p>
                     <Link to="/student/jobs" className="mt-6">
                         <Button variant="outline" className="rounded-full px-8 h-11">Browse All Jobs</Button>

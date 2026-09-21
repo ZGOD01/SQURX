@@ -10,6 +10,7 @@ import { ArrowRight, Loader2, Check, UploadCloud } from 'lucide-react';
 import { consultationApi } from '@/lib/consultationApi';
 import type { EmploymentHistoryItem, CertificationItem, ProjectItem } from '@/lib/mockDb/schema';
 import { formatJoiningDatePayload, isCertificationCompleted, toDateInputValue } from '@/lib/mockApi';
+import { normalizeInternshipItem, saveStoredInternships, getStoredInternships } from '@/lib/internshipsStorage';
 import {
     useGetCountriesQuery,
     useGetEducationsQuery,
@@ -324,16 +325,17 @@ export function Onboarding() {
                 ? profile.projects
                 : (Array.isArray(savedProjects) && savedProjects.length > 0 ? savedProjects : (profile?.projects || []));
             setProjects(Array.isArray(effectiveProjects) ? effectiveProjects : []);
-            const savedInternships = (() => {
-                try {
-                    const raw = typeof window !== 'undefined' && user?.id ? localStorage.getItem(`squrx_internships_${user.id}`) : null;
-                    return raw ? JSON.parse(raw) : null;
-                } catch { return null; }
-            })();
-            const effectiveInternships = (profile?.internships && profile.internships.length > 0)
+            const effectiveUserId = user?.id || (profile as any)?._id || (profile as any)?.userId;
+            const fallbackInternships = getStoredInternships(effectiveUserId);
+            const rawProfileInternships = (profile?.internships && profile.internships.length > 0)
                 ? profile.internships
-                : (Array.isArray(savedInternships) && savedInternships.length > 0 ? savedInternships : (profile?.internships || []));
-            setInternships(effectiveInternships);
+                : ((profile as any)?.internship && (profile as any).internship.length > 0)
+                    ? (profile as any).internship
+                    : [];
+            const effectiveInternships = rawProfileInternships.length > 0
+                ? rawProfileInternships.map(normalizeInternshipItem)
+                : (Array.isArray(fallbackInternships) ? fallbackInternships : []);
+            setInternships(Array.isArray(effectiveInternships) ? effectiveInternships : []);
             setProfileSummary(profile?.profileSummary || '');
             setOtherAchievements(
                 Array.isArray(profile?.otherAchievements)
@@ -495,11 +497,10 @@ export function Onboarding() {
             const defaultProfId = languageProficienciesData?.data?.[0]?._id || '';
             const defaultProfName = languageProficienciesData?.data?.[0]?.name || '';
 
-            if (user?.id) {
-                try {
-                    localStorage.setItem(`squrx_internships_${user.id}`, JSON.stringify(internships));
-                } catch {}
-            }
+            const cleanInternships = (internships || [])
+                .filter(i => (i.companyName || (i as any).company || '').trim() || (i.role || (i as any).title || '').trim())
+                .map(normalizeInternshipItem);
+            saveStoredInternships(user?.id, cleanInternships);
 
             const cleanProjects = projects.filter(p => p && p.title?.trim()).map(p => ({
                 title: p.title.trim(),
@@ -610,14 +611,15 @@ export function Onboarding() {
                 })),
                 awards,
                 projects: cleanProjects,
-                internships,
+                internships: cleanInternships,
+                internship: cleanInternships as any,
                 profileSummary,
                 otherAchievements,
             });
 
+            saveStoredInternships(user?.id, cleanInternships);
             if (user?.id) {
                 try {
-                    localStorage.setItem(`squrx_internships_${user.id}`, JSON.stringify(internships));
                     localStorage.setItem(`squrx_projects_${user.id}`, JSON.stringify(cleanProjects));
                 } catch {}
             }
@@ -1768,46 +1770,59 @@ export function Onboarding() {
                                             <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400">Internships</h3>
                                             <Button
                                                 type="button"
-                                                onClick={() => setInternships([...internships, { companyName: '', duration: '', role: '' }])}
+                                                onClick={() => setInternships([...(internships || []), { companyName: '', company: '', duration: '', role: '', title: '' } as any])}
                                                 variant="outline"
                                                 className="h-8 rounded-lg text-xs font-bold px-3 border-gray-200"
                                             >
                                                 + Add Internship
                                             </Button>
                                         </div>
-                                        {internships.length === 0 ? (
+                                        {(!internships || internships.length === 0) ? (
                                             <p className="text-xs text-gray-400 pl-1 italic">No internships added yet.</p>
                                         ) : (
                                             <div className="space-y-3">
-                                                {internships.map((intern, index) => (
+                                                {(internships || []).map((intern, index) => (
                                                     <div key={index} className="space-y-2 bg-gray-50/50 p-3 rounded-xl border border-gray-100">
                                                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                                             <Input
                                                                 placeholder="Company Name"
-                                                                value={intern.companyName}
+                                                                value={intern.companyName || (intern as any).company || ''}
                                                                 onChange={(e) => {
-                                                                    const copy = [...internships];
-                                                                    copy[index].companyName = e.target.value;
+                                                                    const copy = [...(internships || [])];
+                                                                    copy[index] = {
+                                                                        ...copy[index],
+                                                                        companyName: e.target.value,
+                                                                        company: e.target.value
+                                                                    } as any;
                                                                     setInternships(copy);
                                                                 }}
                                                                 className="h-10 rounded-lg bg-white"
                                                             />
                                                             <Input
                                                                 placeholder="Duration (e.g. 3 Months)"
-                                                                value={intern.duration}
+                                                                value={intern.duration || ''}
                                                                 onChange={(e) => {
-                                                                    const copy = [...internships];
-                                                                    copy[index].duration = e.target.value;
+                                                                    const copy = [...(internships || [])];
+                                                                    copy[index] = {
+                                                                        ...copy[index],
+                                                                        duration: e.target.value
+                                                                    } as any;
                                                                     setInternships(copy);
                                                                 }}
                                                                 className="h-10 rounded-lg bg-white"
                                                             />
                                                             <Input
                                                                 placeholder="Role (e.g. Frontend Intern)"
-                                                                value={intern.role}
+                                                                value={intern.role || (intern as any).title || (intern as any).position || ''}
                                                                 onChange={(e) => {
-                                                                    const copy = [...internships];
-                                                                    copy[index].role = e.target.value;
+                                                                    const copy = [...(internships || [])];
+                                                                    copy[index] = {
+                                                                        ...copy[index],
+                                                                        role: e.target.value,
+                                                                        title: e.target.value,
+                                                                        position: e.target.value,
+                                                                        designation: e.target.value
+                                                                    } as any;
                                                                     setInternships(copy);
                                                                 }}
                                                                 className="h-10 rounded-lg bg-white"
@@ -1816,7 +1831,7 @@ export function Onboarding() {
                                                         <div className="flex justify-end">
                                                             <Button
                                                                 type="button"
-                                                                onClick={() => setInternships(internships.filter((_, i) => i !== index))}
+                                                                onClick={() => setInternships((internships || []).filter((_, i) => i !== index))}
                                                                 variant="outline"
                                                                 className="h-8 rounded-lg text-xs font-bold text-red-500 border-red-100 hover:bg-red-50 px-2"
                                                             >
