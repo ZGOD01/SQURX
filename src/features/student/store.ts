@@ -367,8 +367,9 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
     }
 
     // 9. Awards, Recognitions & Other Achievements (5%)
+    const rawAwards = p.awards as any;
     const hasAwards = Boolean(
-      p.awards && (typeof p.awards === 'string' ? p.awards.trim().length > 0 : (Array.isArray(p.awards) && p.awards.length > 0))
+      rawAwards && (typeof rawAwards === 'string' ? rawAwards.trim().length > 0 : (Array.isArray(rawAwards) && rawAwards.length > 0))
     );
     const hasOtherAchievements = Boolean(
       p.otherAchievements && (

@@ -9,7 +9,7 @@ import { PageTransition } from '@/components/motion';
 import { ArrowRight, Loader2, Check, UploadCloud } from 'lucide-react';
 import { consultationApi } from '@/lib/consultationApi';
 import type { EmploymentHistoryItem, CertificationItem, ProjectItem } from '@/lib/mockDb/schema';
-import { formatJoiningDateDisplay, formatJoiningDatePayload, isCertificationCompleted, toDateInputValue } from '@/lib/mockApi';
+import { formatJoiningDatePayload, isCertificationCompleted, toDateInputValue } from '@/lib/mockApi';
 import {
     useGetCountriesQuery,
     useGetEducationsQuery,
@@ -68,9 +68,7 @@ export function Onboarding() {
     const [skills, setSkills] = useState('');
 
     const [experienceLevel, setExperienceLevel] = useState('');
-    const [experienceLevelQuery, setExperienceLevelQuery] = useState('');
     const [experienceLevelId, setExperienceLevelId] = useState('');
-    const [showExpSuggestions, setShowExpSuggestions] = useState(false);
 
     const [careerGoal, setCareerGoal] = useState('');
     const [showDomainSuggestions, setShowDomainSuggestions] = useState(false);
@@ -248,7 +246,6 @@ export function Onboarding() {
             const initialExpId = profile?.experienceLevelId || '';
             setExperienceLevel(initialExp);
             setExperienceLevelId(initialExpId);
-            setExperienceLevelQuery(initialExp ? (initialExp === 'Fresher' || initialExp.includes('Years') ? initialExp : `${initialExp} Years`) : '');
 
             const initialCareerGoal = profile?.careerGoal || '';
             setCareerGoal(initialCareerGoal);
@@ -288,7 +285,7 @@ export function Onboarding() {
             setDob(profile?.dob || '');
             setCurrentLocation(profile?.currentLocation || '');
             setHometown(profile?.hometown || '');
-            const rawCountry = profile?.hometownCountry;
+            const rawCountry = profile?.hometownCountry as any;
             const countryId = typeof rawCountry === 'object' && rawCountry ? (rawCountry._id || '') : (rawCountry || '');
             setHometownCountry(countryId);
             const initialDomain = profile?.domain ? (typeof profile.domain === 'object' ? (profile.domain._id || '') : profile.domain) : '';
@@ -394,7 +391,6 @@ export function Onboarding() {
                 const match = experienceLevelsData.data.find((el: any) => el._id === experienceLevelId);
                 if (match) {
                     setExperienceLevel(match.name);
-                    setExperienceLevelQuery(match.name === 'Fresher' ? 'Fresher' : `${match.name} Years`);
                 }
             } else if (experienceLevel && !experienceLevelId) {
                 const match = experienceLevelsData.data.find((el: any) => el.name.toLowerCase() === experienceLevel.toLowerCase() || el._id === experienceLevel);
@@ -574,7 +570,8 @@ export function Onboarding() {
                         : (typeof e.skillsUsed === 'string' ? (e.skillsUsed as string).split(',').map(s => s.trim()).filter(Boolean) : []);
                     const resolvedSkillIds = rawSkills
                         .map(s => {
-                            const str = typeof s === 'object' && s ? (s._id || s.name) : String(s).trim();
+                            const item: any = s;
+                            const str = typeof item === 'object' && item ? (item._id || item.name) : String(s).trim();
                             if (/^[0-9a-fA-F]{24}$/.test(str)) return str;
                             const matched = allSkillsData?.data?.find((sd: any) => sd.name.toLowerCase() === str.toLowerCase())
                                 || skillsData?.data?.find((sd: any) => sd.name.toLowerCase() === str.toLowerCase());
@@ -900,7 +897,6 @@ export function Onboarding() {
                                                 setExperienceLevelId(selId);
                                                 const found = experienceLevelsData?.data?.find((el: any) => el._id === selId);
                                                 setExperienceLevel(found?.name || '');
-                                                setExperienceLevelQuery(found?.name === 'Fresher' ? 'Fresher' : (found ? `${found.name} Years` : ''));
                                             }}
                                             className="w-full h-12 bg-white border border-gray-200 focus:border-black focus:ring-2 focus:ring-black/10 rounded-xl px-3 text-sm font-semibold outline-none transition-all cursor-pointer"
                                         >
@@ -1357,7 +1353,6 @@ export function Onboarding() {
                                                     employmentType: '',
                                                     isCurrentEmployment: false,
                                                     joiningDate: '',
-                                                    workedTill: '',
                                                     totalExperienceYears: undefined,
                                                     totalExperienceMonths: undefined,
                                                     currentSalary: null,

@@ -301,7 +301,7 @@ export const mockApi = {
                     }
                     if (Array.isArray(data.educationHistory) && data.educationHistory.length > 0) {
                         profile.educationHistory = data.educationHistory.map((item: any, idx: number) => {
-                            const existingEdu = profile.educationHistory?.[idx];
+                            const existingEdu = profile?.educationHistory?.[idx];
                             const eduId = typeof item.education === 'object' && item.education ? (item.education._id || '') : (item.education || '');
                             const eduName = typeof item.education === 'object' && item.education ? (item.education.name || '') : '';
                             const uniId = typeof item.university === 'object' && item.university ? (item.university._id || '') : (item.university || '');
@@ -928,9 +928,10 @@ export const mockApi = {
             if (data.currentLocation && data.currentLocation.trim()) payload.currentLocation = data.currentLocation.trim();
             if (data.hometown && data.hometown.trim()) payload.hometown = data.hometown.trim();
             if (data.hometownCountry || data.hometownCountryId) {
+                const countryObj: any = data.hometownCountry;
                 const rawCountry = isValidObjectId(data.hometownCountryId)
                     ? data.hometownCountryId
-                    : (typeof data.hometownCountry === 'object' && data.hometownCountry ? data.hometownCountry._id : data.hometownCountry);
+                    : (typeof countryObj === 'object' && countryObj ? countryObj._id : countryObj);
                 if (typeof rawCountry === 'string' && isValidObjectId(rawCountry.trim())) {
                     payload.hometownCountry = rawCountry.trim();
                 }

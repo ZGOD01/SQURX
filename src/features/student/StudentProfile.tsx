@@ -199,7 +199,6 @@ export function StudentProfile() {
     const [otherAchievements, setOtherAchievements] = useState<OtherAchievementItem[]>([]);
 
     // ── Autocomplete dropdowns ───────────────────
-    const [showExpSuggestions, setShowExpSuggestions] = useState(false);
     const [showJobTypeSuggestions, setShowJobTypeSuggestions] = useState(false);
     const [showDomainSuggestions, setShowDomainSuggestions] = useState(false);
     const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
@@ -390,7 +389,8 @@ export function StudentProfile() {
                 }
             }
             setDob(displayDob);
-            setDomain(profile.domain || '');
+            const domainVal = typeof profile.domain === 'object' && profile.domain ? ((profile.domain as any)._id || (profile.domain as any).name || '') : (profile.domain || '');
+            setDomain(domainVal);
             setCustomDomain(profile.customDomain || '');
             setCurrentLocation(profile.currentLocation || '');
             setHometown(profile.hometown || '');
@@ -692,7 +692,8 @@ export function StudentProfile() {
                 }
             }
             setDob(displayDob);
-            setDomain(profile.domain || '');
+            const domainVal = typeof profile.domain === 'object' && profile.domain ? ((profile.domain as any)._id || (profile.domain as any).name || '') : (profile.domain || '');
+            setDomain(domainVal);
             setCustomDomain(profile.customDomain || '');
             setCurrentLocation(profile.currentLocation || '');
             setHometown(profile.hometown || '');
@@ -1887,7 +1888,9 @@ export function StudentProfile() {
                                                     if (domain === 'other' || profile?.domain === 'other') {
                                                         return customDomain || profile?.customDomain || 'Other';
                                                     }
-                                                    const dId = domain || profile?.domain;
+                                                    const rawDomain = profile?.domain;
+                                                    const profDomainStr = typeof rawDomain === 'object' && rawDomain ? ((rawDomain as any)._id || (rawDomain as any).name || '') : (rawDomain || '');
+                                                    const dId = domain || profDomainStr;
                                                     const match = domainsData?.data?.find((d: any) => d._id === dId || d.name === dId);
                                                     if (match) return match.name;
                                                     if (dId && !/^[0-9a-fA-F]{24}$/.test(dId)) return dId;
@@ -2776,9 +2779,10 @@ export function StudentProfile() {
                                                                 {emp.skillsUsed && emp.skillsUsed.length > 0 && (
                                                                     <div className="flex flex-wrap gap-1 mt-1">
                                                                         {emp.skillsUsed.map((s, sIdx) => {
-                                                                            const sName = typeof s === 'string' && /^[0-9a-fA-F]{24}$/.test(s)
-                                                                                ? (skillsData?.data?.find((sk: any) => sk._id === s)?.name || s)
-                                                                                : (typeof s === 'object' && s ? (s.name || s._id) : String(s));
+                                                                            const item: any = s;
+                                                                            const sName = typeof item === 'string' && /^[0-9a-fA-F]{24}$/.test(item)
+                                                                                ? (skillsData?.data?.find((sk: any) => sk._id === item)?.name || item)
+                                                                                : (typeof item === 'object' && item ? (item.name || item._id) : String(item));
                                                                             return (
                                                                                 <span key={sIdx} className="text-[10px] px-2 py-0.5 rounded bg-muted/80 text-foreground font-medium border border-border/40">
                                                                                     {sName}

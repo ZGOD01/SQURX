@@ -8,7 +8,6 @@ import {
     FileCheck, 
     Check, 
     CreditCard, 
-    ArrowRight, 
     CheckCircle2, 
     Lock,
     X
@@ -244,6 +243,7 @@ Our specialized applicant care team has been notified. A career mentor will cont
         setErrors({});
         setIsModalOpen(true);
     };
+    void handleOpenCheckout;
 
     const subtotal = selectedService?.price || 0;
     const discountVal = subtotal * (discountPercent / 100);
