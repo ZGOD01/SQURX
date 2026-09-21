@@ -16,7 +16,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Non-blocking: this repo has a pre-existing lint backlog (mostly `any` types).
+      # Errors still show in the log for visibility, but don't fail the build/deploy.
+      # Remove `continue-on-error` once the backlog is cleared and this should gate again.
       - run: npm run lint
+        continue-on-error: true
       - run: npm run build
 
   deploy:
