@@ -380,12 +380,22 @@ export function StudentJobs() {
         setIsLoading(true);
         setFetchError(null);
 
+        const hasSearch = !!debouncedQ.trim();
+        const hasExp = experienceLevel !== 'All';
+        const hasLoc = !!debouncedLocation.trim() || preferredLocations.length > 0;
+        const hasSal = !!debouncedMinSalary || !!debouncedMaxSalary || !!currency;
+        const hasIndDom = !!industry || !!domain;
+
+        const hasActiveFilters = hasSearch || hasExp || hasLoc || hasSal || hasIndDom;
+
         const primaryLocation = debouncedLocation.trim() || preferredLocations[0] || undefined;
         const mappedTaxonomy = mapDomainOrIndustryToTaxonomy(industry, domain);
         const mappedExp = mapExperienceLevelToBackend(experienceLevel);
+        const expDoc = experienceStages.find(s => s.id === experienceLevel);
+        const expId = expDoc?._id;
 
         try {
-            // Case 1: Recommended / Relevant Tab
+            // Case 1: Recommended Tab
             if (activeTab === 'relevant') {
                 const response = await fetchRelevantJobs({ page, limit, signal: controller.signal });
                 setJobs(response.jobs);
@@ -395,8 +405,19 @@ export function StudentJobs() {
                 return;
             }
 
-            // Case 2: All Jobs (single query with active filters; zero cascading fallbacks)
-            const response = await fetchJobs({
+            // Case 2: Unfiltered All Jobs (Full backend catalog)
+            if (!hasActiveFilters) {
+                const response = await fetchJobs({ page, limit, signal: controller.signal });
+                setJobs(response.jobs);
+                setTotal(response.total);
+                setIsRelaxed(false);
+                setRelaxationReason(null);
+                return;
+            }
+
+            // Case 3: Active Filters — Progressive Quick-Match Strategy
+            // Attempt 1: Strict query matching active filters with exact database experience name
+            const attempt1 = await fetchJobs({
                 page,
                 limit,
                 keywords: debouncedQ.trim() || undefined,
@@ -409,8 +430,170 @@ export function StudentJobs() {
                 signal: controller.signal,
             });
 
-            setJobs(response.jobs);
-            setTotal(response.total);
+            if (attempt1.total > 0) {
+                setJobs(attempt1.jobs);
+                setTotal(attempt1.total);
+                setIsRelaxed(false);
+                setRelaxationReason(null);
+                return;
+            }
+
+            // Attempt 1b: If experience level was chosen and returned 0, check if backend queries by ObjectId
+            if (hasExp && expId) {
+                const attemptExpId = await fetchJobs({
+                    page,
+                    limit,
+                    keywords: debouncedQ.trim() || undefined,
+                    taxonomy: mappedTaxonomy,
+                    location: primaryLocation,
+                    experienceLevel: expId,
+                    minSalary: debouncedMinSalary || undefined,
+                    maxSalary: debouncedMaxSalary || undefined,
+                    currency: currency || undefined,
+                    signal: controller.signal,
+                });
+
+                if (attemptExpId.total > 0) {
+                    setJobs(attemptExpId.jobs);
+                    setTotal(attemptExpId.total);
+                    setIsRelaxed(false);
+                    setRelaxationReason(null);
+                    return;
+                }
+            }
+
+            // Attempt 2: If strict query gave 0, relax salary constraint
+            if (hasSal) {
+                const attempt2 = await fetchJobs({
+                    page: 1,
+                    limit,
+                    keywords: debouncedQ.trim() || undefined,
+                    taxonomy: mappedTaxonomy,
+                    location: primaryLocation,
+                    experienceLevel: mappedExp,
+                    signal: controller.signal,
+                });
+
+                if (attempt2.total > 0) {
+                    setJobs(attempt2.jobs);
+                    setTotal(attempt2.total);
+                    setIsRelaxed(true);
+                    setRelaxationReason('Broadened salary range to show all matching roles.');
+                    return;
+                }
+            }
+
+            // Attempt 3: Try alternate preferred locations if multiple were specified
+            if (preferredLocations.length > 1) {
+                for (let i = 1; i < preferredLocations.length; i++) {
+                    const altLoc = preferredLocations[i];
+                    const attemptLoc = await fetchJobs({
+                        page: 1,
+                        limit,
+                        keywords: debouncedQ.trim() || undefined,
+                        taxonomy: mappedTaxonomy,
+                        location: altLoc,
+                        experienceLevel: mappedExp,
+                        signal: controller.signal,
+                    });
+                    if (attemptLoc.total > 0) {
+                        setJobs(attemptLoc.jobs);
+                        setTotal(attemptLoc.total);
+                        setIsRelaxed(true);
+                        setRelaxationReason(`Showing matching roles in ${altLoc} (from your preferred locations).`);
+                        return;
+                    }
+                }
+            }
+
+            // Attempt 4: Expand location when domain/stage/keywords were specified
+            if (hasLoc && (hasIndDom || hasExp || hasSearch)) {
+                const attempt4 = await fetchJobs({
+                    page: 1,
+                    limit,
+                    keywords: debouncedQ.trim() || undefined,
+                    taxonomy: mappedTaxonomy,
+                    experienceLevel: mappedExp,
+                    signal: controller.signal,
+                });
+
+                if (attempt4.total > 0) {
+                    const activeCriteriaLabels = [
+                        domain || industry,
+                        experienceLevel !== 'All' ? experienceLevel : null
+                    ].filter(Boolean).join(' • ');
+
+                    setJobs(attempt4.jobs);
+                    setTotal(attempt4.total);
+                    setIsRelaxed(true);
+                    setRelaxationReason(`Showing ${activeCriteriaLabels || 'relevant'} opportunities across all locations & remote.`);
+                    return;
+                }
+            }
+
+            // Attempt 5: Experience Level semantic search if database lacks structured experienceLevel field
+            if (hasExp && mappedExp) {
+                const semanticKeywords = mappedExp === 'Fresher' ? 'fresher entry graduate junior intern'
+                    : mappedExp === '1-3' ? 'junior associate'
+                    : mappedExp === '3-5' ? 'developer engineer'
+                    : 'senior lead architect';
+
+                const queryWords = debouncedQ.trim() ? `${debouncedQ.trim()} ${semanticKeywords}` : semanticKeywords;
+                const attemptExpSemantic = await fetchJobs({
+                    page: 1,
+                    limit,
+                    keywords: queryWords,
+                    taxonomy: mappedTaxonomy,
+                    location: primaryLocation,
+                    signal: controller.signal,
+                });
+
+                if (attemptExpSemantic.total > 0) {
+                    setJobs(attemptExpSemantic.jobs);
+                    setTotal(attemptExpSemantic.total);
+                    setIsRelaxed(true);
+                    setRelaxationReason(`Showing available opportunities matching ${mappedExp} level.`);
+                    return;
+                }
+            }
+
+            // Attempt 6: Broaden to domain or search keyword alone
+            if (mappedTaxonomy || hasSearch) {
+                const attempt6 = await fetchJobs({
+                    page: 1,
+                    limit,
+                    keywords: debouncedQ.trim() || undefined,
+                    taxonomy: mappedTaxonomy,
+                    signal: controller.signal,
+                });
+
+                if (attempt6.total > 0) {
+                    setJobs(attempt6.jobs);
+                    setTotal(attempt6.total);
+                    setIsRelaxed(true);
+                    setRelaxationReason(`Showing opportunities in ${mappedTaxonomy || debouncedQ.trim()}.`);
+                    return;
+                }
+            }
+
+            // Attempt 7: Catalog fallback so the user never gets an empty screen
+            const attemptCatalog = await fetchJobs({
+                page: 1,
+                limit,
+                signal: controller.signal,
+            });
+
+            if (attemptCatalog.total > 0) {
+                setJobs(attemptCatalog.jobs);
+                setTotal(attemptCatalog.total);
+                setIsRelaxed(true);
+                setRelaxationReason(`Showing top available opportunities matching your profile.`);
+                return;
+            }
+
+            // If truly zero
+            setJobs([]);
+            setTotal(0);
             setIsRelaxed(false);
             setRelaxationReason(null);
         } catch (err: any) {
@@ -436,7 +619,8 @@ export function StudentJobs() {
         debouncedMaxSalary, 
         currency, 
         industry, 
-        domain
+        domain,
+        experienceStages
     ]);
 
     useEffect(() => {
