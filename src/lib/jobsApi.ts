@@ -21,6 +21,13 @@ export interface ApiJobItem {
   status?: string;
   visaSponsorship?: string;
   relevanceScore?: number;
+  taxonomy?: string;
+  category?: string;
+  industry?: string;
+  domain?: string;
+  city?: string;
+  country?: string;
+  locationsDerived?: string[];
 }
 
 // ─── Raw API job shape returned by GET /jobs ─────────────────────────────────
@@ -307,6 +314,13 @@ export function mapApiJobToItem(job: ApiJob): ApiJobItem {
     status: job.status || undefined,
     visaSponsorship,
     relevanceScore: job.relevanceScore !== undefined ? job.relevanceScore : undefined,
+    taxonomy: extractString(job.taxonomy) || undefined,
+    category: extractString(job.category) || undefined,
+    industry: extractString((job as any).industry) || undefined,
+    domain: extractString((job as any).domain) || undefined,
+    city: extractString(job.city) || undefined,
+    country: extractString(job.country) || undefined,
+    locationsDerived: Array.isArray(job.locationsDerived) ? job.locationsDerived : undefined,
   };
 }
 
@@ -335,10 +349,17 @@ export async function fetchJobs(
     query.set('keywords', params.q);
   }
 
-  const taxVal = params.taxonomy || params.domain;
-  if (taxVal) {
-    const val = Array.isArray(taxVal) ? taxVal[0] : taxVal;
+  if (params.taxonomy) {
+    const val = Array.isArray(params.taxonomy) ? params.taxonomy[0] : params.taxonomy;
     if (val) query.set('taxonomy', val);
+  }
+
+  if (params.domain) {
+    const val = Array.isArray(params.domain) ? params.domain[0] : params.domain;
+    if (val) {
+      query.set('domain', val);
+      if (!query.has('taxonomy')) query.set('taxonomy', val);
+    }
   }
 
   if (params.location) query.set('location', params.location);

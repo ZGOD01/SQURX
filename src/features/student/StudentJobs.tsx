@@ -89,11 +89,26 @@ function mapDomainOrIndustryToTaxonomy(industry: string, domain: string): string
     return undefined;
 }
 
+// ── Word Boundary Matching Helper ─────────────────────────────────────────────
+function hasWordMatch(text: string, term: string): boolean {
+    if (!text || !term) return false;
+    const escaped = term.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Ensure term is matched as a complete word/token, never a substring of another word
+    const regex = new RegExp(`(^|[^a-zA-Z0-9])${escaped}([^a-zA-Z0-9]|$)`, 'i');
+    return regex.test(text);
+}
+
 // ── Smart Match Checking Helpers for Display Scoring ──────────────────────────
 function matchCareerStage(job: ApiJobItem, level: string): boolean {
     if (!level || level === 'All') return true;
     const jobExp = (job.experienceLevel || '').toLowerCase().trim();
     const jobTitle = (job.title || '').toLowerCase();
+
+    // Prevent Senior/Lead/Staff roles from incorrectly matching entry-level or junior filters
+    const isSeniorTitle = ['senior', 'sr.', 'sr ', 'lead', 'principal', 'staff', 'director', 'head', 'architect'].some(t => jobTitle.includes(t));
+    if ((level === 'Fresher' || level === '1-3') && isSeniorTitle) {
+        return false;
+    }
 
     if (level === 'Fresher') {
         if (jobExp === 'fresher' || jobExp === '0' || jobExp === '0-1') return true;
@@ -122,32 +137,74 @@ function matchCareerStage(job: ApiJobItem, level: string): boolean {
     return jobExp.includes(level.toLowerCase()) || level.toLowerCase().includes(jobExp);
 }
 
+const CITY_SYNONYMS: Record<string, string[]> = {
+    bangalore: ['bangalore', 'bengaluru'],
+    bengaluru: ['bangalore', 'bengaluru'],
+    mumbai: ['mumbai', 'bombay'],
+    bombay: ['mumbai', 'bombay'],
+    delhi: ['delhi', 'new delhi', 'noida', 'gurgaon', 'gurugram', 'ncr'],
+    'new delhi': ['delhi', 'new delhi', 'noida', 'gurgaon', 'gurugram', 'ncr'],
+    noida: ['noida', 'delhi', 'ncr'],
+    gurgaon: ['gurgaon', 'gurugram', 'delhi', 'ncr'],
+    gurugram: ['gurgaon', 'gurugram', 'delhi', 'ncr'],
+    chennai: ['chennai', 'madras'],
+    madras: ['chennai', 'madras'],
+    kolkata: ['kolkata', 'calcutta'],
+    calcutta: ['kolkata', 'calcutta'],
+    sf: ['san francisco', 'sf', 'bay area'],
+    'san francisco': ['san francisco', 'sf', 'bay area'],
+    nyc: ['new york', 'nyc', 'new york city', 'ny'],
+    'new york': ['new york', 'nyc', 'new york city', 'ny'],
+    london: ['london', 'uk', 'united kingdom'],
+    singapore: ['singapore'],
+    berlin: ['berlin', 'germany'],
+    austin: ['austin', 'texas', 'tx'],
+    seattle: ['seattle', 'washington', 'wa'],
+};
+
 function matchLocation(job: ApiJobItem, locInput: string, preferredLocs: string[]): boolean {
     const rawTokens = [locInput, ...preferredLocs].map(l => l.trim().toLowerCase()).filter(Boolean);
     if (rawTokens.length === 0) return true;
 
     const jobLoc = (job.location || '').toLowerCase();
+    const jobCity = (job.city || '').toLowerCase();
+    const jobCountry = (job.country || '').toLowerCase();
+    const jobDerived = (job.locationsDerived || []).map(l => l.toLowerCase()).join(' ');
+    const fullJobLoc = `${jobLoc} ${jobCity} ${jobCountry} ${jobDerived}`.trim();
+
+    if (!fullJobLoc) return false;
+
     const isJobRemote = jobLoc.includes('remote') || (job.jobType || '').toLowerCase().includes('remote');
 
     for (const token of rawTokens) {
-        if (token === 'remote' && isJobRemote) return true;
-        if (jobLoc.includes(token) || token.includes(jobLoc)) return true;
+        if (token === 'remote') {
+            if (isJobRemote) return true;
+            continue;
+        }
 
-        if (token.includes('india') || token === 'in') {
-            if (isJobRemote || INDIA_LOCATIONS.some(city => jobLoc.includes(city))) return true;
+        // Exact city synonyms match
+        const synonyms = CITY_SYNONYMS[token] || [token];
+        for (const syn of synonyms) {
+            if (hasWordMatch(fullJobLoc, syn)) return true;
         }
-        if (token.includes('us') || token.includes('usa') || token.includes('united states')) {
-            if (isJobRemote || US_LOCATIONS.some(city => jobLoc.includes(city))) return true;
+
+        // Regional grouping matches
+        if (token === 'india' || token === 'in') {
+            if (fullJobLoc.includes('india') || INDIA_LOCATIONS.some(city => hasWordMatch(fullJobLoc, city))) return true;
         }
-        if (token.includes('uk') || token.includes('united kingdom')) {
-            if (isJobRemote || UK_LOCATIONS.some(city => jobLoc.includes(city))) return true;
+        if (token === 'us' || token === 'usa' || token === 'united states') {
+            if (fullJobLoc.includes('united states') || fullJobLoc.includes('usa') || US_LOCATIONS.some(city => hasWordMatch(fullJobLoc, city))) return true;
         }
-        if (jobLoc.split(/[\s,/-]+/).some(part => part && (part === token || token.includes(part)))) {
+        if (token === 'uk' || token === 'united kingdom') {
+            if (fullJobLoc.includes('united kingdom') || fullJobLoc.includes('uk') || UK_LOCATIONS.some(city => hasWordMatch(fullJobLoc, city))) return true;
+        }
+
+        if (hasWordMatch(fullJobLoc, token)) {
             return true;
         }
     }
 
-    return isJobRemote;
+    return false;
 }
 
 function matchSalary(job: ApiJobItem, minSalary: string, maxSalary: string, currency: string): boolean {
@@ -192,61 +249,248 @@ function matchKeywords(job: ApiJobItem, keywords: string): boolean {
         job.location || '',
     ].join(' ').toLowerCase();
 
-    return tokens.some(tok => jobText.includes(tok));
+    return tokens.some(tok => hasWordMatch(jobText, tok));
 }
 
-const INDUSTRY_KEYWORDS: Record<string, string[]> = {
-    IT: ['software', 'developer', 'engineer', 'tech', 'technology', 'it', 'web', 'cloud', 'data', 'react', 'node', 'python', 'java', 'fullstack', 'frontend', 'backend', 'devops', 'mobile', 'ai'],
-    Finance: ['finance', 'financial', 'banking', 'bank', 'fintech', 'accounting', 'audit', 'tax', 'investment', 'wealth', 'analyst', 'equity', 'trading'],
-    Healthcare: ['health', 'healthcare', 'medical', 'pharma', 'pharmaceutical', 'biotech', 'clinical', 'hospital', 'care', 'nurse', 'doctor'],
-    Education: ['education', 'edtech', 'academic', 'teaching', 'school', 'university', 'college', 'learning', 'tutor'],
-    Manufacturing: ['manufacturing', 'production', 'industrial', 'plant', 'factory', 'mechanical', 'supply chain', 'warehouse', 'assembly'],
-    Retail: ['retail', 'ecommerce', 'e-commerce', 'store', 'merchandise', 'fmcg', 'consumer', 'shop', 'inventory'],
-    Consulting: ['consulting', 'consultant', 'advisory', 'strategy', 'solutions'],
-    Media: ['media', 'entertainment', 'content', 'video', 'creative', 'journalism', 'digital', 'broadcast'],
-    Telecom: ['telecom', 'telecommunications', 'network', 'wireless', 'cellular', 'broadband'],
+// ── Industry Configuration with Direct Taxonomies & Boundary Keywords ────────
+const INDUSTRY_CONFIG: Record<string, { directTaxonomies: string[]; keywords: string[] }> = {
+    IT: {
+        directTaxonomies: ['Software Engineering', 'Cloud Architecture', 'Data Science & AI', 'Cybersecurity', 'Game Development', 'Quality Assurance', 'UI/UX Design'],
+        keywords: [
+            'software', 'information technology', 'tech', 'technology', 'developer', 'engineering',
+            'cloud', 'devops', 'frontend', 'backend', 'fullstack', 'full-stack', 'web development',
+            'mobile app', 'cybersecurity', 'database', 'system admin', 'data science', 'artificial intelligence',
+            'machine learning', 'qa', 'sdet', 'it services', 'programmer', 'coding', 'react', 'node', 'python',
+            'java', 'aws', 'azure', 'it'
+        ]
+    },
+    Finance: {
+        directTaxonomies: ['Finance & Accounting', 'Venture Capital'],
+        keywords: [
+            'finance', 'financial', 'banking', 'bank', 'fintech', 'accounting', 'accountant',
+            'audit', 'auditor', 'tax', 'taxation', 'investment', 'wealth management', 'equity',
+            'trading', 'hedge fund', 'portfolio', 'billing', 'cpa', 'actuary', 'treasury', 'financial analyst'
+        ]
+    },
+    Healthcare: {
+        directTaxonomies: ['Healthcare'],
+        keywords: [
+            'health', 'healthcare', 'medical', 'medicine', 'pharma', 'pharmaceutical', 'biotech',
+            'biotechnology', 'clinical', 'hospital', 'nurse', 'nursing', 'doctor', 'physician',
+            'patient care', 'pharmacy', 'life sciences', 'therapeutics', 'dental', 'clinic'
+        ]
+    },
+    Education: {
+        directTaxonomies: ['Education & EdTech'],
+        keywords: [
+            'education', 'edtech', 'academic', 'teaching', 'teacher', 'school', 'university',
+            'college', 'learning', 'tutor', 'tutoring', 'faculty', 'curriculum', 'instructor',
+            'professor', 'pedagogy', 'student affairs'
+        ]
+    },
+    Manufacturing: {
+        directTaxonomies: ['Mechanical Engineering', 'Electrical Engineering'],
+        keywords: [
+            'manufacturing', 'production', 'industrial', 'plant', 'factory', 'mechanical',
+            'assembly', 'cnc', 'fabrication', 'machinery', 'automotive', 'aerospace',
+            'warehouse', 'maintenance engineer'
+        ]
+    },
+    Retail: {
+        directTaxonomies: ['Supply Chain & Logistics', 'Real Estate'],
+        keywords: [
+            'retail', 'ecommerce', 'e-commerce', 'store', 'merchandise', 'merchandising',
+            'fmcg', 'consumer goods', 'supermarket', 'inventory', 'buyer', 'apparel', 'fashion'
+        ]
+    },
+    Consulting: {
+        directTaxonomies: ['Management Consulting'],
+        keywords: [
+            'consulting', 'consultant', 'advisory', 'management consulting', 'strategy consulting',
+            'consultancy', 'business advisory', 'solutions consulting'
+        ]
+    },
+    Media: {
+        directTaxonomies: ['Media & Journalism'],
+        keywords: [
+            'media', 'entertainment', 'content', 'journalism', 'journalist', 'broadcast',
+            'broadcasting', 'video production', 'creative agency', 'publishing', 'editorial',
+            'film', 'television', 'animation', 'multimedia'
+        ]
+    },
+    Telecom: {
+        directTaxonomies: ['Telecom'],
+        keywords: [
+            'telecom', 'telecommunications', 'telecommunication', 'cellular', 'wireless',
+            'broadband', 'fiber optic', 'network engineer', 'voip', '5g', 'telephony'
+        ]
+    },
 };
 
-const DOMAIN_KEYWORDS: Record<string, string[]> = {
-    Engineering: ['engineering', 'engineer', 'developer', 'software', 'devops', 'architect', 'frontend', 'backend', 'fullstack'],
-    'Data Science': ['data', 'analytics', 'analyst', 'machine learning', 'ml', 'ai', 'bi', 'big data', 'sql', 'python'],
-    Design: ['design', 'designer', 'ui', 'ux', 'product design', 'graphic', 'figma', 'visual', 'interface'],
-    Marketing: ['marketing', 'growth', 'seo', 'sem', 'content', 'brand', 'campaign', 'social media', 'digital marketing'],
-    Sales: ['sales', 'business development', 'bdr', 'sdr', 'account executive', 'client', 'revenue'],
-    HR: ['hr', 'human resources', 'talent', 'recruiting', 'recruiter', 'people'],
-    Operations: ['operations', 'ops', 'project management', 'program manager', 'scrum', 'agile', 'logistics'],
-    Product: ['product', 'product manager', 'pm', 'product owner', 'roadmap'],
-    Legal: ['legal', 'law', 'compliance', 'counsel', 'attorney'],
-    Cybersecurity: ['security', 'cyber', 'soc', 'infosec', 'penetration', 'vulnerability'],
-    'Quality Assurance': ['qa', 'testing', 'automation', 'test engineer', 'selenium', 'cypress', 'quality'],
+// ── Domain Configuration with Direct Taxonomies & Boundary Keywords ──────────
+const DOMAIN_CONFIG: Record<string, { directTaxonomies: string[]; keywords: string[] }> = {
+    Engineering: {
+        directTaxonomies: ['Software Engineering', 'Electrical Engineering', 'Mechanical Engineering', 'Cloud Architecture', 'Game Development'],
+        keywords: [
+            'software engineer', 'software developer', 'web developer', 'full stack', 'fullstack',
+            'frontend', 'front-end', 'backend', 'back-end', 'devops', 'sre', 'site reliability',
+            'system architect', 'software architect', 'systems engineer', 'cloud engineer',
+            'mobile developer', 'ios developer', 'android developer', 'embedded engineer',
+            'firmware', 'programmer', 'coder', 'react developer', 'node developer', 'python developer',
+            'java developer', 'engineer', 'engineering'
+        ]
+    },
+    'Data Science': {
+        directTaxonomies: ['Data Science', 'Data Science & AI'],
+        keywords: [
+            'data scientist', 'data science', 'machine learning', 'ml engineer', 'ai engineer',
+            'artificial intelligence', 'deep learning', 'data analyst', 'data analytics',
+            'big data', 'bi analyst', 'business intelligence', 'nlp', 'computer vision',
+            'data engineer', 'statistical', 'statistician', 'data modeling'
+        ]
+    },
+    Design: {
+        directTaxonomies: ['UI/UX Design'],
+        keywords: [
+            'ui/ux', 'ui designer', 'ux designer', 'product designer', 'product design',
+            'visual designer', 'graphic designer', 'interaction design', 'user experience',
+            'user interface', 'figma', 'wireframe', 'prototyping', 'creative designer', 'designer', 'design'
+        ]
+    },
+    Product: {
+        directTaxonomies: ['Product Management'],
+        keywords: [
+            'product manager', 'product management', 'product owner', 'technical product manager',
+            'apm', 'associate product manager', 'head of product', 'product lead', 'product strategy', 'roadmap'
+        ]
+    },
+    Marketing: {
+        directTaxonomies: ['Marketing & Growth'],
+        keywords: [
+            'marketing', 'digital marketing', 'growth marketing', 'growth marketer', 'seo', 'sem',
+            'ppc', 'content marketer', 'content marketing', 'social media', 'brand marketing',
+            'brand manager', 'performance marketing', 'campaign manager', 'copywriter'
+        ]
+    },
+    Sales: {
+        directTaxonomies: ['Sales & BizDev'],
+        keywords: [
+            'sales', 'business development', 'bdr', 'sdr', 'account executive', 'account manager',
+            'client partner', 'inside sales', 'enterprise sales', 'sales representative', 'sales manager', 'revenue'
+        ]
+    },
+    HR: {
+        directTaxonomies: ['Human Resources'],
+        keywords: [
+            'human resources', 'hr manager', 'hr generalist', 'talent acquisition', 'recruiter',
+            'recruiting', 'people operations', 'talent partner', 'hrbp', 'people & culture', 'staffing', 'hr'
+        ]
+    },
+    Operations: {
+        directTaxonomies: ['Operations & Strategy', 'Supply Chain & Logistics'],
+        keywords: [
+            'operations', 'operations manager', 'program manager', 'project manager', 'scrum master',
+            'agile coach', 'bizops', 'business operations', 'supply chain', 'logistics', 'procurement'
+        ]
+    },
+    'Quality Assurance': {
+        directTaxonomies: ['Quality Assurance'],
+        keywords: [
+            'quality assurance', 'qa engineer', 'software tester', 'test engineer', 'automation engineer',
+            'sdet', 'manual tester', 'test automation', 'selenium', 'cypress', 'qa analyst', 'qa'
+        ]
+    },
+    Cybersecurity: {
+        directTaxonomies: ['Cybersecurity'],
+        keywords: [
+            'cybersecurity', 'cyber security', 'information security', 'infosec', 'security engineer',
+            'soc analyst', 'penetration tester', 'pen testing', 'ethical hacker', 'vulnerability',
+            'cloud security', 'incident response'
+        ]
+    },
+    Legal: {
+        directTaxonomies: ['Legal & Compliance'],
+        keywords: [
+            'legal', 'legal counsel', 'counsel', 'attorney', 'lawyer', 'compliance',
+            'regulatory compliance', 'paralegal', 'contract manager', 'contracts'
+        ]
+    },
 };
 
-function matchIndustryAndDomain(job: ApiJobItem, industry: string, domain: string): boolean {
-    if (!industry && !domain) return true;
+function matchIndustry(job: ApiJobItem, industry: string): boolean {
+    if (!industry || industry === 'All' || industry === 'Other') return true;
 
-    const jobText = [
-        job.title || '',
-        job.description || '',
-        ...(job.skills || []),
-        job.companyName || '',
-        job.jobType || '',
+    const config = INDUSTRY_CONFIG[industry];
+    if (!config) return true;
+
+    // 1. Direct explicit field match on job
+    const directVal = [
+        job.industry || '',
+        job.taxonomy || '',
+        job.category || '',
+        job.domain || ''
     ].join(' ').toLowerCase();
 
-    let indMatched = !industry || industry === 'Other';
-    if (industry && industry !== 'Other') {
-        const keywords = INDUSTRY_KEYWORDS[industry] || [industry.toLowerCase()];
-        indMatched = keywords.some(k => jobText.includes(k));
+    if (directVal) {
+        if (hasWordMatch(directVal, industry)) return true;
+        if (config.directTaxonomies.some(t => directVal.includes(t.toLowerCase()))) return true;
     }
 
-    let domMatched = !domain || domain === 'Other';
-    if (domain && domain !== 'Other') {
-        const keywords = DOMAIN_KEYWORDS[domain] || [domain.toLowerCase()];
-        domMatched = keywords.some(k => jobText.includes(k));
+    // 2. High-confidence Title & Company match
+    const titleAndCompany = `${job.title || ''} ${job.companyName || ''}`;
+    if (config.keywords.some(k => hasWordMatch(titleAndCompany, k))) return true;
+
+    // 3. Key skills match
+    const skillsText = (job.skills || []).join(' ');
+    if (config.keywords.some(k => hasWordMatch(skillsText, k))) return true;
+
+    // 4. Description match (require distinctive industry terms, not generic words like 'tech', 'technology', or 'it')
+    if (job.description) {
+        const specificKeywords = config.keywords.filter(k => k !== 'tech' && k !== 'technology' && k !== 'it');
+        if (specificKeywords.some(k => hasWordMatch(job.description || '', k))) return true;
     }
 
-    if (industry && domain) {
-        return indMatched || domMatched;
+    return false;
+}
+
+function matchDomain(job: ApiJobItem, domain: string): boolean {
+    if (!domain || domain === 'All' || domain === 'Other') return true;
+
+    const config = DOMAIN_CONFIG[domain];
+    if (!config) return true;
+
+    // 1. Direct explicit field match on job
+    const directVal = [
+        job.domain || '',
+        job.taxonomy || '',
+        job.category || ''
+    ].join(' ').toLowerCase();
+
+    if (directVal) {
+        if (hasWordMatch(directVal, domain)) return true;
+        if (config.directTaxonomies.some(t => directVal.includes(t.toLowerCase()))) return true;
     }
+
+    // 2. High-confidence Title match (title defines the domain role)
+    const titleText = job.title || '';
+    if (config.keywords.some(k => hasWordMatch(titleText, k))) return true;
+
+    // 3. Key skills match
+    const skillsText = (job.skills || []).join(' ');
+    if (config.keywords.some(k => hasWordMatch(skillsText, k))) return true;
+
+    // 4. Description match (only with multi-word compound phrases or long specialized terms to avoid false positives)
+    if (job.description) {
+        const specificKeywords = config.keywords.filter(k => k.includes(' ') || k.length > 5);
+        if (specificKeywords.some(k => hasWordMatch(job.description || '', k))) return true;
+    }
+
+    return false;
+}
+
+export function matchIndustryAndDomain(job: ApiJobItem, industry: string, domain: string): boolean {
+    const indMatched = matchIndustry(job, industry);
+    const domMatched = matchDomain(job, domain);
     return indMatched && domMatched;
 }
 
@@ -287,11 +531,8 @@ export function StudentJobs() {
     // ── Tabs ──
     const [activeTab, setActiveTab] = useState<'all' | 'relevant'>('all');
 
-    // ── Debounced inputs ──
+    // ── Debounced inputs (only hero live search needs debouncing) ──
     const [debouncedQ, setDebouncedQ] = useState('');
-    const [debouncedLocation, setDebouncedLocation] = useState('');
-    const [debouncedMinSalary, setDebouncedMinSalary] = useState('');
-    const [debouncedMaxSalary, setDebouncedMaxSalary] = useState('');
 
     // ── Live Lookups directly from backend API ──
     const { data: currenciesData } = useGetCurrenciesQuery();
@@ -345,28 +586,24 @@ export function StudentJobs() {
 
     const appliedJobs = applications.map(app => app.vacancyId);
 
-    // Debounce text inputs
+    // Debounce live hero search input
     useEffect(() => {
         const timer = setTimeout(() => setDebouncedQ(q), 350);
         return () => clearTimeout(timer);
     }, [q]);
 
-    useEffect(() => {
-        const timer = setTimeout(() => setDebouncedLocation(location), 350);
-        return () => clearTimeout(timer);
-    }, [location]);
-
-    useEffect(() => {
-        const timer = setTimeout(() => setDebouncedMinSalary(minSalary), 350);
-        return () => clearTimeout(timer);
-    }, [minSalary]);
-
-    useEffect(() => {
-        const timer = setTimeout(() => setDebouncedMaxSalary(maxSalary), 350);
-        return () => clearTimeout(timer);
-    }, [maxSalary]);
-
     const abortControllerRef = useRef<AbortController | null>(null);
+
+    // ── Strict Filter Predicate ──
+    const isJobStrictlyMatching = useCallback((job: ApiJobItem, relaxSalary = false) => {
+        if (industry && !matchIndustry(job, industry)) return false;
+        if (domain && !matchDomain(job, domain)) return false;
+        if ((location || preferredLocations.length > 0) && !matchLocation(job, location, preferredLocations)) return false;
+        if (experienceLevel !== 'All' && !matchCareerStage(job, experienceLevel)) return false;
+        if (debouncedQ.trim() && !matchKeywords(job, debouncedQ)) return false;
+        if (!relaxSalary && (minSalary || maxSalary || currency) && !matchSalary(job, minSalary, maxSalary, currency)) return false;
+        return true;
+    }, [industry, domain, location, preferredLocations, experienceLevel, debouncedQ, minSalary, maxSalary, currency]);
 
     // ── Single-Invocation Job Loader ──────────────────────────────────────────
     const loadJobsData = useCallback(async () => {
@@ -382,17 +619,48 @@ export function StudentJobs() {
 
         const hasSearch = !!debouncedQ.trim();
         const hasExp = experienceLevel !== 'All';
-        const hasLoc = !!debouncedLocation.trim() || preferredLocations.length > 0;
-        const hasSal = !!debouncedMinSalary || !!debouncedMaxSalary || !!currency;
+        const hasLoc = !!location.trim() || preferredLocations.length > 0;
+        const hasSal = !!minSalary || !!maxSalary || !!currency;
         const hasIndDom = !!industry || !!domain;
 
         const hasActiveFilters = hasSearch || hasExp || hasLoc || hasSal || hasIndDom;
 
-        const primaryLocation = debouncedLocation.trim() || preferredLocations[0] || undefined;
+        const primaryLocation = location.trim() || preferredLocations[0] || undefined;
         const mappedTaxonomy = mapDomainOrIndustryToTaxonomy(industry, domain);
         const mappedExp = mapExperienceLevelToBackend(experienceLevel);
         const expDoc = experienceStages.find(s => s.id === experienceLevel);
         const expId = expDoc?._id;
+
+        // Targeted semantic search keywords when filtering by domain or industry
+        const domainSearchTerms: Record<string, string> = {
+            Engineering: 'software engineer developer fullstack frontend backend devops',
+            'Data Science': 'data scientist machine learning ai analytics analyst',
+            Design: 'ui ux designer product design graphic visual',
+            Product: 'product manager product owner pm',
+            Marketing: 'marketing growth digital seo content',
+            Sales: 'sales business development account executive',
+            HR: 'human resources hr recruiter talent',
+            Operations: 'operations program manager project supply chain',
+            'Quality Assurance': 'quality assurance qa test automation',
+            Cybersecurity: 'cybersecurity security infosec analyst',
+            Legal: 'legal compliance counsel attorney',
+        };
+
+        const industrySearchTerms: Record<string, string> = {
+            IT: 'software technology IT developer tech',
+            Finance: 'finance banking fintech accounting investment',
+            Healthcare: 'healthcare medical pharma biotech clinical',
+            Education: 'education edtech academic learning university',
+            Manufacturing: 'manufacturing industrial production factory mechanical',
+            Retail: 'retail ecommerce store consumer',
+            Consulting: 'consulting consultant advisory strategy',
+            Media: 'media entertainment journalism content video',
+            Telecom: 'telecom telecommunications network wireless',
+        };
+
+        const targetDomainTerm = domain ? domainSearchTerms[domain] || domain : '';
+        const targetIndustryTerm = industry ? industrySearchTerms[industry] || industry : '';
+        const targetedKeywords = [debouncedQ.trim(), targetDomainTerm, targetIndustryTerm].filter(Boolean).join(' ');
 
         try {
             // Case 1: Recommended Tab
@@ -415,183 +683,57 @@ export function StudentJobs() {
                 return;
             }
 
-            // Case 3: Active Filters — Progressive Quick-Match Strategy
-            // Attempt 1: Strict query matching active filters with exact database experience name
+            // Case 3: Active Filters — Single deterministic query with active filters
             const attempt1 = await fetchJobs({
-                page,
-                limit,
+                page: 1,
+                limit: 50,
                 keywords: debouncedQ.trim() || undefined,
                 taxonomy: mappedTaxonomy,
+                domain: domain || mappedTaxonomy,
+                industry: industry || undefined,
                 location: primaryLocation,
-                experienceLevel: mappedExp,
-                minSalary: debouncedMinSalary || undefined,
-                maxSalary: debouncedMaxSalary || undefined,
+                experienceLevel: mappedExp || (hasExp && expId ? expId : undefined),
+                minSalary: minSalary || undefined,
+                maxSalary: maxSalary || undefined,
                 currency: currency || undefined,
                 signal: controller.signal,
             });
 
-            if (attempt1.total > 0) {
-                setJobs(attempt1.jobs);
-                setTotal(attempt1.total);
+            const valid1 = attempt1.jobs.filter(j => isJobStrictlyMatching(j));
+            if (valid1.length > 0) {
+                setJobs(valid1);
+                setTotal(valid1.length);
                 setIsRelaxed(false);
                 setRelaxationReason(null);
                 return;
             }
 
-            // Attempt 1b: If experience level was chosen and returned 0, check if backend queries by ObjectId
-            if (hasExp && expId) {
-                const attemptExpId = await fetchJobs({
-                    page,
-                    limit,
-                    keywords: debouncedQ.trim() || undefined,
-                    taxonomy: mappedTaxonomy,
+            // Fallback attempt: If backend database records omit the taxonomy/industry fields,
+            // query with targeted domain/industry keywords so MongoDB text index can match candidate roles
+            if (targetedKeywords && !debouncedQ.trim()) {
+                const attempt2 = await fetchJobs({
+                    page: 1,
+                    limit: 50,
+                    keywords: targetedKeywords,
                     location: primaryLocation,
-                    experienceLevel: expId,
-                    minSalary: debouncedMinSalary || undefined,
-                    maxSalary: debouncedMaxSalary || undefined,
+                    experienceLevel: mappedExp,
+                    minSalary: minSalary || undefined,
+                    maxSalary: maxSalary || undefined,
                     currency: currency || undefined,
                     signal: controller.signal,
                 });
 
-                if (attemptExpId.total > 0) {
-                    setJobs(attemptExpId.jobs);
-                    setTotal(attemptExpId.total);
+                const valid2 = attempt2.jobs.filter(j => isJobStrictlyMatching(j));
+                if (valid2.length > 0) {
+                    setJobs(valid2);
+                    setTotal(valid2.length);
                     setIsRelaxed(false);
                     setRelaxationReason(null);
                     return;
                 }
             }
 
-            // Attempt 2: If strict query gave 0, relax salary constraint
-            if (hasSal) {
-                const attempt2 = await fetchJobs({
-                    page: 1,
-                    limit,
-                    keywords: debouncedQ.trim() || undefined,
-                    taxonomy: mappedTaxonomy,
-                    location: primaryLocation,
-                    experienceLevel: mappedExp,
-                    signal: controller.signal,
-                });
-
-                if (attempt2.total > 0) {
-                    setJobs(attempt2.jobs);
-                    setTotal(attempt2.total);
-                    setIsRelaxed(true);
-                    setRelaxationReason('Broadened salary range to show all matching roles.');
-                    return;
-                }
-            }
-
-            // Attempt 3: Try alternate preferred locations if multiple were specified
-            if (preferredLocations.length > 1) {
-                for (let i = 1; i < preferredLocations.length; i++) {
-                    const altLoc = preferredLocations[i];
-                    const attemptLoc = await fetchJobs({
-                        page: 1,
-                        limit,
-                        keywords: debouncedQ.trim() || undefined,
-                        taxonomy: mappedTaxonomy,
-                        location: altLoc,
-                        experienceLevel: mappedExp,
-                        signal: controller.signal,
-                    });
-                    if (attemptLoc.total > 0) {
-                        setJobs(attemptLoc.jobs);
-                        setTotal(attemptLoc.total);
-                        setIsRelaxed(true);
-                        setRelaxationReason(`Showing matching roles in ${altLoc} (from your preferred locations).`);
-                        return;
-                    }
-                }
-            }
-
-            // Attempt 4: Expand location when domain/stage/keywords were specified
-            if (hasLoc && (hasIndDom || hasExp || hasSearch)) {
-                const attempt4 = await fetchJobs({
-                    page: 1,
-                    limit,
-                    keywords: debouncedQ.trim() || undefined,
-                    taxonomy: mappedTaxonomy,
-                    experienceLevel: mappedExp,
-                    signal: controller.signal,
-                });
-
-                if (attempt4.total > 0) {
-                    const activeCriteriaLabels = [
-                        domain || industry,
-                        experienceLevel !== 'All' ? experienceLevel : null
-                    ].filter(Boolean).join(' • ');
-
-                    setJobs(attempt4.jobs);
-                    setTotal(attempt4.total);
-                    setIsRelaxed(true);
-                    setRelaxationReason(`Showing ${activeCriteriaLabels || 'relevant'} opportunities across all locations & remote.`);
-                    return;
-                }
-            }
-
-            // Attempt 5: Experience Level semantic search if database lacks structured experienceLevel field
-            if (hasExp && mappedExp) {
-                const semanticKeywords = mappedExp === 'Fresher' ? 'fresher entry graduate junior intern'
-                    : mappedExp === '1-3' ? 'junior associate'
-                    : mappedExp === '3-5' ? 'developer engineer'
-                    : 'senior lead architect';
-
-                const queryWords = debouncedQ.trim() ? `${debouncedQ.trim()} ${semanticKeywords}` : semanticKeywords;
-                const attemptExpSemantic = await fetchJobs({
-                    page: 1,
-                    limit,
-                    keywords: queryWords,
-                    taxonomy: mappedTaxonomy,
-                    location: primaryLocation,
-                    signal: controller.signal,
-                });
-
-                if (attemptExpSemantic.total > 0) {
-                    setJobs(attemptExpSemantic.jobs);
-                    setTotal(attemptExpSemantic.total);
-                    setIsRelaxed(true);
-                    setRelaxationReason(`Showing available opportunities matching ${mappedExp} level.`);
-                    return;
-                }
-            }
-
-            // Attempt 6: Broaden to domain or search keyword alone
-            if (mappedTaxonomy || hasSearch) {
-                const attempt6 = await fetchJobs({
-                    page: 1,
-                    limit,
-                    keywords: debouncedQ.trim() || undefined,
-                    taxonomy: mappedTaxonomy,
-                    signal: controller.signal,
-                });
-
-                if (attempt6.total > 0) {
-                    setJobs(attempt6.jobs);
-                    setTotal(attempt6.total);
-                    setIsRelaxed(true);
-                    setRelaxationReason(`Showing opportunities in ${mappedTaxonomy || debouncedQ.trim()}.`);
-                    return;
-                }
-            }
-
-            // Attempt 7: Catalog fallback so the user never gets an empty screen
-            const attemptCatalog = await fetchJobs({
-                page: 1,
-                limit,
-                signal: controller.signal,
-            });
-
-            if (attemptCatalog.total > 0) {
-                setJobs(attemptCatalog.jobs);
-                setTotal(attemptCatalog.total);
-                setIsRelaxed(true);
-                setRelaxationReason(`Showing top available opportunities matching your profile.`);
-                return;
-            }
-
-            // If truly zero
+            // Zero matching jobs exist for this filter combination
             setJobs([]);
             setTotal(0);
             setIsRelaxed(false);
@@ -613,14 +755,14 @@ export function StudentJobs() {
         activeTab, 
         debouncedQ, 
         experienceLevel, 
-        debouncedLocation, 
+        location, 
         preferredLocations, 
-        debouncedMinSalary, 
-        debouncedMaxSalary, 
+        minSalary, 
+        maxSalary, 
         currency, 
         industry, 
         domain,
-        experienceStages
+        isJobStrictlyMatching
     ]);
 
     useEffect(() => {
@@ -650,55 +792,25 @@ export function StudentJobs() {
             return jobs.map(j => ({ ...j, matchScore: 100 }));
         }
 
-        return jobs.map(job => {
-            let matchedCriteria = 0;
-            const matchDetails: string[] = [];
+        // Strictly keep ONLY jobs that pass the active filters
+        return jobs
+            .filter(j => isJobStrictlyMatching(j, isRelaxed))
+            .map(job => {
+                const matchDetails: string[] = [];
+                if (industry) matchDetails.push(industry);
+                if (domain) matchDetails.push(domain);
+                if (location || preferredLocations.length > 0) matchDetails.push(location || preferredLocations[0]);
+                if (experienceLevel !== 'All') matchDetails.push(experienceLevel);
+                if (debouncedQ.trim()) matchDetails.push(`"${debouncedQ.trim()}"`);
+                if (minSalary || maxSalary || currency) matchDetails.push('Salary');
 
-            if (experienceLevel !== 'All') {
-                if (matchCareerStage(job, experienceLevel)) {
-                    matchedCriteria++;
-                    matchDetails.push(experienceLevel);
-                }
-            }
-
-            if (location || preferredLocations.length > 0) {
-                if (matchLocation(job, location, preferredLocations)) {
-                    matchedCriteria++;
-                    matchDetails.push(location || preferredLocations[0]);
-                }
-            }
-
-            if (minSalary || maxSalary || currency) {
-                if (matchSalary(job, minSalary, maxSalary, currency)) {
-                    matchedCriteria++;
-                    matchDetails.push('Salary');
-                }
-            }
-
-            if (industry || domain) {
-                if (matchIndustryAndDomain(job, industry, domain)) {
-                    matchedCriteria++;
-                    matchDetails.push(domain || industry);
-                }
-            }
-
-            if (debouncedQ.trim()) {
-                if (matchKeywords(job, debouncedQ)) {
-                    matchedCriteria++;
-                    matchDetails.push(`"${debouncedQ.trim()}"`);
-                }
-            }
-
-            const rawScore = Math.round((matchedCriteria / activeFilterCount) * 100);
-            const matchScore = Math.max(50, rawScore);
-
-            return {
-                ...job,
-                matchScore,
-                matchDetails
-            };
-        });
-    }, [jobs, activeFilterCount, experienceLevel, location, preferredLocations, minSalary, maxSalary, currency, industry, domain, debouncedQ]);
+                return {
+                    ...job,
+                    matchScore: 100,
+                    matchDetails
+                };
+            });
+    }, [jobs, activeFilterCount, isJobStrictlyMatching, isRelaxed, industry, domain, location, preferredLocations, experienceLevel, debouncedQ, minSalary, maxSalary, currency]);
 
     // ── Filter Actions ──
     const handleQChange = (val: string) => {
@@ -710,12 +822,9 @@ export function StudentJobs() {
         setQ('');
         setDebouncedQ('');
         setLocation('');
-        setDebouncedLocation('');
         setExperienceLevel('All');
         setMinSalary('');
-        setDebouncedMinSalary('');
         setMaxSalary('');
-        setDebouncedMaxSalary('');
         setCurrency('');
         setIndustry('');
         setDomain('');
@@ -762,7 +871,7 @@ export function StudentJobs() {
         setFilterDrawerOpen(false);
     };
 
-    const totalPages = Math.ceil(total / limit) || 1;
+    const totalPages = Math.ceil((activeFilterCount > 0 ? scoredJobsList.length : total) / limit) || 1;
 
     // View Details Modal
     const handleViewDetails = async (job: ApiJobItem) => {
@@ -888,7 +997,7 @@ export function StudentJobs() {
                 {location && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 text-purple-700 border border-purple-500/20 text-xs font-semibold">
                         <MapPin size={11} /> {location}
-                        <button onClick={() => { setLocation(''); setDebouncedLocation(''); setPage(1); }} className="ml-0.5 hover:text-purple-900 transition-colors"><X size={11} /></button>
+                        <button onClick={() => { setLocation(''); setPage(1); }} className="ml-0.5 hover:text-purple-900 transition-colors"><X size={11} /></button>
                     </span>
                 )}
                 {(minSalary || maxSalary) && (
@@ -926,12 +1035,12 @@ export function StudentJobs() {
             </div>
 
             {/* ── Progressive Relaxation Banner ── */}
-            {isRelaxed && !isLoading && jobs.length > 0 && (
+            {isRelaxed && !isLoading && scoredJobsList.length > 0 && relaxationReason && (
                 <div className="flex items-center gap-3 px-5 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-500/25 text-amber-900 mb-2 shadow-sm">
                     <Sparkles className="w-5 h-5 shrink-0 text-amber-600 animate-pulse" />
                     <div className="flex-1 text-sm font-medium">
-                        <span className="font-bold">Showing closest matches: </span>
-                        {relaxationReason || 'We dynamically broadened the search parameters to present available matching opportunities.'}
+                        <span className="font-bold">Filter Notice: </span>
+                        {relaxationReason}
                     </div>
                     <button
                         onClick={clearAllFilters}
@@ -1206,7 +1315,7 @@ export function StudentJobs() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-border/40">
                 <div className="text-sm font-bold text-muted-foreground flex items-center gap-2">
                     <span className="flex items-center justify-center bg-primary/10 text-primary rounded-full px-3 py-1 text-xs font-black">
-                        {total.toLocaleString()}
+                        {(activeFilterCount > 0 ? scoredJobsList.length : total).toLocaleString()}
                     </span>
                     {activeTab === 'relevant' ? 'Recommended Opportunities' : 'Jobs Available'}
                 </div>
