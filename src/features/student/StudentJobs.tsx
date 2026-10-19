@@ -30,25 +30,6 @@ import { useNotificationStore } from '@/lib/store/notifications';
 import { useStudentStore } from './store';
 import { useAuthStore } from '@/features/auth/store';
 
-// ── Country / City mapping for smart location matching ────────────────────────
-const INDIA_LOCATIONS = [
-    'india', 'in', 'bangalore', 'bengaluru', 'pune', 'mumbai', 'delhi', 
-    'new delhi', 'noida', 'gurgaon', 'gurugram', 'hyderabad', 'chennai', 
-    'kolkata', 'ahmedabad', 'jaipur', 'chandigarh', 'kochi', 'kerala', 
-    'indore', 'bhopal', 'nagpur', 'surat', 'vadodara'
-];
-
-const US_LOCATIONS = [
-    'us', 'usa', 'united states', 'san francisco', 'sf', 'new york', 'nyc', 
-    'austin', 'seattle', 'boston', 'chicago', 'los angeles', 'la', 'california', 
-    'texas', 'washington', 'denver', 'atlanta'
-];
-
-const UK_LOCATIONS = [
-    'uk', 'united kingdom', 'london', 'manchester', 'birmingham', 'edinburgh', 
-    'bristol', 'cambridge', 'oxford', 'leeds'
-];
-
 // ── Backend Parameter Mappings ───────────────────────────────────────────────
 /**
  * Map UI Career Stage directly to backend experienceLevel values: 'Fresher' | '1-3' | '3-5' | '5+'
@@ -96,160 +77,6 @@ function hasWordMatch(text: string, term: string): boolean {
     // Ensure term is matched as a complete word/token, never a substring of another word
     const regex = new RegExp(`(^|[^a-zA-Z0-9])${escaped}([^a-zA-Z0-9]|$)`, 'i');
     return regex.test(text);
-}
-
-// ── Smart Match Checking Helpers for Display Scoring ──────────────────────────
-function matchCareerStage(job: ApiJobItem, level: string): boolean {
-    if (!level || level === 'All') return true;
-    const jobExp = (job.experienceLevel || '').toLowerCase().trim();
-    const jobTitle = (job.title || '').toLowerCase();
-
-    // Prevent Senior/Lead/Staff roles from incorrectly matching entry-level or junior filters
-    const isSeniorTitle = ['senior', 'sr.', 'sr ', 'lead', 'principal', 'staff', 'director', 'head', 'architect'].some(t => jobTitle.includes(t));
-    if ((level === 'Fresher' || level === '1-3') && isSeniorTitle) {
-        return false;
-    }
-
-    if (level === 'Fresher') {
-        if (jobExp === 'fresher' || jobExp === '0' || jobExp === '0-1') return true;
-        const fresherTokens = ['fresher', 'entry', '0-1', '0-2', 'graduate', 'intern', 'trainee', 'junior', 'beginner', 'associate'];
-        return fresherTokens.some(t => jobExp.includes(t) || jobTitle.includes(t));
-    }
-
-    if (level === '1-3') {
-        if (jobExp === '1-3' || jobExp.includes('1-3') || jobExp.includes('1 to 3')) return true;
-        const jrTokens = ['junior', 'associate', '1 yr', '2 yr', '3 yr', '0-2', '1-2', '2-3'];
-        return jrTokens.some(t => jobExp.includes(t) || jobTitle.includes(t)) || !jobExp;
-    }
-
-    if (level === '3-5') {
-        if (jobExp === '3-5' || jobExp.includes('3-5') || jobExp.includes('3 to 5')) return true;
-        const midTokens = ['mid', 'middle', 'intermediate', '3 yr', '4 yr', '5 yr'];
-        return midTokens.some(t => jobExp.includes(t) || jobTitle.includes(t)) || !jobExp;
-    }
-
-    if (level === '5+') {
-        if (jobExp === '5+' || jobExp.includes('5+') || jobExp.includes('5-10') || jobExp.includes('10+')) return true;
-        const srTokens = ['senior', 'lead', 'principal', 'staff', 'head', 'architect', 'manager', 'director'];
-        return srTokens.some(t => jobExp.includes(t) || jobTitle.includes(t));
-    }
-
-    return jobExp.includes(level.toLowerCase()) || level.toLowerCase().includes(jobExp);
-}
-
-const CITY_SYNONYMS: Record<string, string[]> = {
-    bangalore: ['bangalore', 'bengaluru'],
-    bengaluru: ['bangalore', 'bengaluru'],
-    mumbai: ['mumbai', 'bombay'],
-    bombay: ['mumbai', 'bombay'],
-    delhi: ['delhi', 'new delhi', 'noida', 'gurgaon', 'gurugram', 'ncr'],
-    'new delhi': ['delhi', 'new delhi', 'noida', 'gurgaon', 'gurugram', 'ncr'],
-    noida: ['noida', 'delhi', 'ncr'],
-    gurgaon: ['gurgaon', 'gurugram', 'delhi', 'ncr'],
-    gurugram: ['gurgaon', 'gurugram', 'delhi', 'ncr'],
-    chennai: ['chennai', 'madras'],
-    madras: ['chennai', 'madras'],
-    kolkata: ['kolkata', 'calcutta'],
-    calcutta: ['kolkata', 'calcutta'],
-    sf: ['san francisco', 'sf', 'bay area'],
-    'san francisco': ['san francisco', 'sf', 'bay area'],
-    nyc: ['new york', 'nyc', 'new york city', 'ny'],
-    'new york': ['new york', 'nyc', 'new york city', 'ny'],
-    london: ['london', 'uk', 'united kingdom'],
-    singapore: ['singapore'],
-    berlin: ['berlin', 'germany'],
-    austin: ['austin', 'texas', 'tx'],
-    seattle: ['seattle', 'washington', 'wa'],
-};
-
-function matchLocation(job: ApiJobItem, locInput: string, preferredLocs: string[]): boolean {
-    const rawTokens = [locInput, ...preferredLocs].map(l => l.trim().toLowerCase()).filter(Boolean);
-    if (rawTokens.length === 0) return true;
-
-    const jobLoc = (job.location || '').toLowerCase();
-    const jobCity = (job.city || '').toLowerCase();
-    const jobCountry = (job.country || '').toLowerCase();
-    const jobDerived = (job.locationsDerived || []).map(l => l.toLowerCase()).join(' ');
-    const fullJobLoc = `${jobLoc} ${jobCity} ${jobCountry} ${jobDerived}`.trim();
-
-    if (!fullJobLoc) return false;
-
-    const isJobRemote = jobLoc.includes('remote') || (job.jobType || '').toLowerCase().includes('remote');
-
-    for (const token of rawTokens) {
-        if (token === 'remote') {
-            if (isJobRemote) return true;
-            continue;
-        }
-
-        // Exact city synonyms match
-        const synonyms = CITY_SYNONYMS[token] || [token];
-        for (const syn of synonyms) {
-            if (hasWordMatch(fullJobLoc, syn)) return true;
-        }
-
-        // Regional grouping matches
-        if (token === 'india' || token === 'in') {
-            if (fullJobLoc.includes('india') || INDIA_LOCATIONS.some(city => hasWordMatch(fullJobLoc, city))) return true;
-        }
-        if (token === 'us' || token === 'usa' || token === 'united states') {
-            if (fullJobLoc.includes('united states') || fullJobLoc.includes('usa') || US_LOCATIONS.some(city => hasWordMatch(fullJobLoc, city))) return true;
-        }
-        if (token === 'uk' || token === 'united kingdom') {
-            if (fullJobLoc.includes('united kingdom') || fullJobLoc.includes('uk') || UK_LOCATIONS.some(city => hasWordMatch(fullJobLoc, city))) return true;
-        }
-
-        if (hasWordMatch(fullJobLoc, token)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-function matchSalary(job: ApiJobItem, minSalary: string, maxSalary: string, currency: string): boolean {
-    if (!minSalary && !maxSalary && !currency) return true;
-
-    const min = minSalary ? parseFloat(minSalary) : 0;
-    const max = maxSalary ? parseFloat(maxSalary) : Infinity;
-
-    if (job.salaryMin != null || job.salaryMax != null) {
-        const jMin = job.salaryMin ?? 0;
-        const jMax = job.salaryMax ?? Infinity;
-        return jMax >= min && jMin <= max;
-    }
-
-    if (job.salary) {
-        const rawNums = job.salary.match(/\d[\d,]*/g)?.map(n => parseFloat(n.replace(/,/g, ''))) || [];
-        if (rawNums.length >= 2) {
-            const jMin = Math.min(...rawNums);
-            const jMax = Math.max(...rawNums);
-            return jMax >= min && jMin <= max;
-        } else if (rawNums.length === 1) {
-            const val = rawNums[0];
-            return val >= min * 0.7 && val <= max * 1.3;
-        }
-    }
-
-    return true;
-}
-
-function matchKeywords(job: ApiJobItem, keywords: string): boolean {
-    const trimmed = keywords.trim().toLowerCase();
-    if (!trimmed) return true;
-
-    const tokens = trimmed.split(/\s+/).filter(t => t.length > 1);
-    if (tokens.length === 0) return true;
-
-    const jobText = [
-        job.title || '',
-        job.description || '',
-        ...(job.skills || []),
-        job.companyName || '',
-        job.location || '',
-    ].join(' ').toLowerCase();
-
-    return tokens.some(tok => hasWordMatch(jobText, tok));
 }
 
 // ── Industry Configuration with Direct Taxonomies & Boundary Keywords ────────
@@ -594,17 +421,6 @@ export function StudentJobs() {
 
     const abortControllerRef = useRef<AbortController | null>(null);
 
-    // ── Strict Filter Predicate ──
-    const isJobStrictlyMatching = useCallback((job: ApiJobItem, relaxSalary = false) => {
-        if (industry && !matchIndustry(job, industry)) return false;
-        if (domain && !matchDomain(job, domain)) return false;
-        if ((location || preferredLocations.length > 0) && !matchLocation(job, location, preferredLocations)) return false;
-        if (experienceLevel !== 'All' && !matchCareerStage(job, experienceLevel)) return false;
-        if (debouncedQ.trim() && !matchKeywords(job, debouncedQ)) return false;
-        if (!relaxSalary && (minSalary || maxSalary || currency) && !matchSalary(job, minSalary, maxSalary, currency)) return false;
-        return true;
-    }, [industry, domain, location, preferredLocations, experienceLevel, debouncedQ, minSalary, maxSalary, currency]);
-
     // ── Single-Invocation Job Loader ──────────────────────────────────────────
     const loadJobsData = useCallback(async () => {
         // Cancel any pending in-flight request before launching a new one
@@ -683,10 +499,11 @@ export function StudentJobs() {
                 return;
             }
 
-            // Case 3: Active Filters — Single deterministic query with active filters
-            const attempt1 = await fetchJobs({
-                page: 1,
-                limit: 50,
+            // Case 3: Active filters. The backend applies every filter AND paginates, so use its
+            // page of results and its total (never a client-side slice of a single page).
+            const filteredParams = {
+                page,
+                limit,
                 keywords: debouncedQ.trim() || undefined,
                 taxonomy: mappedTaxonomy,
                 domain: domain || mappedTaxonomy,
@@ -697,23 +514,22 @@ export function StudentJobs() {
                 maxSalary: maxSalary || undefined,
                 currency: currency || undefined,
                 signal: controller.signal,
-            });
-
-            const valid1 = attempt1.jobs.filter(j => isJobStrictlyMatching(j));
-            if (valid1.length > 0) {
-                setJobs(valid1);
-                setTotal(valid1.length);
+            };
+            const attempt1 = await fetchJobs(filteredParams);
+            if (attempt1.total > 0) {
+                setJobs(attempt1.jobs);
+                setTotal(attempt1.total);
                 setIsRelaxed(false);
                 setRelaxationReason(null);
                 return;
             }
 
-            // Fallback attempt: If backend database records omit the taxonomy/industry fields,
-            // query with targeted domain/industry keywords so MongoDB text index can match candidate roles
+            // Fallback: if backend records omit the taxonomy/industry fields, query with targeted
+            // domain/industry keywords so the MongoDB text index can match candidate roles.
             if (targetedKeywords && !debouncedQ.trim()) {
                 const attempt2 = await fetchJobs({
-                    page: 1,
-                    limit: 50,
+                    page,
+                    limit,
                     keywords: targetedKeywords,
                     location: primaryLocation,
                     experienceLevel: mappedExp,
@@ -722,11 +538,9 @@ export function StudentJobs() {
                     currency: currency || undefined,
                     signal: controller.signal,
                 });
-
-                const valid2 = attempt2.jobs.filter(j => isJobStrictlyMatching(j));
-                if (valid2.length > 0) {
-                    setJobs(valid2);
-                    setTotal(valid2.length);
+                if (attempt2.total > 0) {
+                    setJobs(attempt2.jobs);
+                    setTotal(attempt2.total);
                     setIsRelaxed(false);
                     setRelaxationReason(null);
                     return;
@@ -761,8 +575,7 @@ export function StudentJobs() {
         maxSalary, 
         currency, 
         industry, 
-        domain,
-        isJobStrictlyMatching
+        domain
     ]);
 
     useEffect(() => {
@@ -792,9 +605,8 @@ export function StudentJobs() {
             return jobs.map(j => ({ ...j, matchScore: 100 }));
         }
 
-        // Strictly keep ONLY jobs that pass the active filters
+        // The backend already applied the filters, so just attach match details to this page of jobs
         return jobs
-            .filter(j => isJobStrictlyMatching(j, isRelaxed))
             .map(job => {
                 const matchDetails: string[] = [];
                 if (industry) matchDetails.push(industry);
@@ -810,7 +622,7 @@ export function StudentJobs() {
                     matchDetails
                 };
             });
-    }, [jobs, activeFilterCount, isJobStrictlyMatching, isRelaxed, industry, domain, location, preferredLocations, experienceLevel, debouncedQ, minSalary, maxSalary, currency]);
+    }, [jobs, activeFilterCount, industry, domain, location, preferredLocations, experienceLevel, debouncedQ, minSalary, maxSalary, currency]);
 
     // ── Filter Actions ──
     const handleQChange = (val: string) => {
@@ -871,7 +683,7 @@ export function StudentJobs() {
         setFilterDrawerOpen(false);
     };
 
-    const totalPages = Math.ceil((activeFilterCount > 0 ? scoredJobsList.length : total) / limit) || 1;
+    const totalPages = Math.ceil(total / limit) || 1;
 
     // View Details Modal
     const handleViewDetails = async (job: ApiJobItem) => {
@@ -1315,7 +1127,7 @@ export function StudentJobs() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-border/40">
                 <div className="text-sm font-bold text-muted-foreground flex items-center gap-2">
                     <span className="flex items-center justify-center bg-primary/10 text-primary rounded-full px-3 py-1 text-xs font-black">
-                        {(activeFilterCount > 0 ? scoredJobsList.length : total).toLocaleString()}
+                        {total.toLocaleString()}
                     </span>
                     {activeTab === 'relevant' ? 'Recommended Opportunities' : 'Jobs Available'}
                 </div>
